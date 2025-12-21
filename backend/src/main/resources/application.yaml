@@ -1,0 +1,26 @@
+spring:
+    application:
+        name:
+            little-escape
+    datasource:
+        url: jdbc:mysql://localhost:3306/littleescape?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+        username: ezra
+        password: ljh1419*
+        driver-class-name: com.mysql.cj.jdbc.Driver
+    jpa:
+        hibernate:
+            ddl-auto: update
+        show-sql: true
+        properties:
+            hibernate:
+                dialect: org.hibernate.dialect.MySQL8Dialect
+                format_sql: true
+    h2:
+        console:
+            enabled: true
+    logging:
+        level:
+        org.hibernate.SQL: debug
+kakao:
+  rest-api-key: c8cfaa70e5cc90f45eb7e7dbc652d9bb
+  mobility-api-key: c8cfaa70e5cc90f45eb7e7dbc652d9bb
