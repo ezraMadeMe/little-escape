@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { TripSessionContext, CandidateCard, LatLng } from "./PickAndRecommendScreen";
 import type { TransportMode } from "./FirstScreen";
+import { getKakaoJsKey } from "../features/kakaoMap/lib/kakaoSdk";
 
 declare global {
   interface Window {
@@ -61,7 +62,7 @@ type Props = {
 };
 
 export default function SwipeCardsRouteScreen({ ctx, onBack, onRestart }: Props) {
-  const appKey = import.meta.env.VITE_KAKAO_JS_KEY as string | undefined;
+  const appKey = getKakaoJsKey();
 
   // ---- 카드 상태 ----
   const [index, setIndex] = useState(0);

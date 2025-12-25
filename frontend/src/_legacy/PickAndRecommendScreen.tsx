@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { FirstStartPayload, TransportMode } from "./FirstScreen";
-import { useIsMobile } from "./useIsMobile";
+import type { FirstStartPayload, TransportMode } from "./HomePage";
+import { useIsMobile } from "../shared/hooks/useIsMobile";
+import { getKakaoJsKey } from "../features/kakaoMap/lib/kakaoSdk";
 
 declare global {
   interface Window {
@@ -32,7 +33,7 @@ export type TripSessionContext = {
   origin: LatLng;
   mode: TransportMode;
   budgetMin: number;
-  companion: import("./FirstScreen").Companion;
+  companion: import("./HomePage").Companion;
   recommendations: CandidateCard[];
 };
 
@@ -86,7 +87,7 @@ type Props = {
   
 
 export default function PickAndRecommendScreen({ start, onBack, onNext }: Props) {
-  const appKey = import.meta.env.VITE_KAKAO_JS_KEY as string | undefined;
+  const appKey = getKakaoJsKey();
   const isMobile = useIsMobile();
 
   const [mode, setMode] = useState<TransportMode>(start.mode);
@@ -103,6 +104,11 @@ export default function PickAndRecommendScreen({ start, onBack, onNext }: Props)
   const [sdkError, setSdkError] = useState("");
 
   const [pickTarget, setPickTarget] = useState<PickTarget>("ORIGIN");
+  const pickTargetRef = useRef<PickTarget>("ORIGIN");
+
+  useEffect(() => {
+    pickTargetRef.current = pickTarget;
+  }, [pickTarget]);
 
   const [oLat, setOLat] = useState(String(start.origin.lat ?? 37.566295));
   const [oLng, setOLng] = useState(String(start.origin.lng ?? 126.977945));
@@ -160,14 +166,15 @@ export default function PickAndRecommendScreen({ start, onBack, onNext }: Props)
             const latlng = mouseEvent.latLng;
             const lat = latlng.getLat();
             const lng = latlng.getLng();
-            if (pickTarget === "ORIGIN") {
+          
+            if (pickTargetRef.current === "ORIGIN") {
               setOLat(String(lat));
               setOLng(String(lng));
             } else {
               setDLat(String(lat));
               setDLng(String(lng));
             }
-          });
+          });          
 
           setSdkStatus("ready");
         });
@@ -306,39 +313,40 @@ export default function PickAndRecommendScreen({ start, onBack, onNext }: Props)
     const goDemoNext = () => {
         // ✅ 백엔드/DB 없이도 다음 화면으로 이동시키는 더미 컨텍스트
         onNext({
-          sessionId: 1,
-          origin: { lat: origin.lat, lng: origin.lng },
-          mode,
-          budgetMin,
-          recommendations: [
-            {
-              candidateId: 1,
-              destName: "남산공원/N서울타워",
-              areaName: "중구",
-              destLat: 37.551169,
-              destLng: 126.988227,
-              score: 9.2,
-              estDurationMin: 35,
-            },
-            {
-              candidateId: 2,
-              destName: "북촌 한옥마을",
-              areaName: "종로구",
-              destLat: 37.5826,
-              destLng: 126.9830,
-              score: 8.9,
-              estDurationMin: 30,
-            },
-            {
-              candidateId: 3,
-              destName: "서울숲/성수",
-              areaName: "성동구",
-              destLat: 37.5445,
-              destLng: 127.0374,
-              score: 8.7,
-              estDurationMin: 45,
-            },
-          ],
+            sessionId: 1,
+            origin: { lat: origin.lat, lng: origin.lng },
+            mode,
+            budgetMin,
+            recommendations: [
+                {
+                    candidateId: 1,
+                    destName: "남산공원/N서울타워",
+                    areaName: "중구",
+                    destLat: 37.551169,
+                    destLng: 126.988227,
+                    score: 9.2,
+                    estDurationMin: 35,
+                },
+                {
+                    candidateId: 2,
+                    destName: "북촌 한옥마을",
+                    areaName: "종로구",
+                    destLat: 37.5826,
+                    destLng: 126.9830,
+                    score: 8.9,
+                    estDurationMin: 30,
+                },
+                {
+                    candidateId: 3,
+                    destName: "서울숲/성수",
+                    areaName: "성동구",
+                    destLat: 37.5445,
+                    destLng: 127.0374,
+                    score: 8.7,
+                    estDurationMin: 45,
+                },
+            ],
+            companion: "SOLO"
         });
       };      
   };
@@ -346,14 +354,42 @@ export default function PickAndRecommendScreen({ start, onBack, onNext }: Props)
   const goDemoNext = () => {
     onNext({
       sessionId: 1,
-      origin: { lat: origin.lat, lng: origin.lng }, // ✅ origin은 useMemo로 만든 그 origin
+      origin: { lat: origin.lat, lng: origin.lng },
       mode,
       budgetMin,
-      recommendations: [],
+      companion, // ✅ start에서 가져온 companion 유지
+      recommendations: [
+        {
+          candidateId: 1,
+          destName: "남산공원/N서울타워",
+          areaName: "중구",
+          destLat: 37.551169,
+          destLng: 126.988227,
+          score: 9.2,
+          estDurationMin: 35,
+        },
+        {
+          candidateId: 2,
+          destName: "북촌 한옥마을",
+          areaName: "종로구",
+          destLat: 37.5826,
+          destLng: 126.983,
+          score: 8.9,
+          estDurationMin: 30,
+        },
+        {
+          candidateId: 3,
+          destName: "서울숲/성수",
+          areaName: "성동구",
+          destLat: 37.5445,
+          destLng: 127.0374,
+          score: 8.7,
+          estDurationMin: 45,
+        },
+      ],
     });
   };
   
-
   return (
     <div style={layout.page}>
       <div style={layout.shell}>

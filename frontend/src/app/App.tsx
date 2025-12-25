@@ -1,66 +1,169 @@
-import React, { useState } from "react";
-import FirstScreen, { FirstStartPayload } from "./FirstScreen";
-import PickAndRecommendScreen, { TripSessionContext } from "./PickAndRecommendScreen";
-import SwipeDemoScreen from "./SwipeDemoScreen";
-import EscapeCompleteScreen from "./EscapeCompleteScreen";
+import React, { useMemo, useState } from "react";
 
-type Step = "FIRST" | "PICK" | "SWIPE_DEMO" | "ESCAPE";
+import { CreateAppointmentPage } from "../pages/CreateAppointmentPage";
+import { DayBeforeOriginPage } from "../pages/DayBeforeOriginPage";
+import { DayBeforeItineraryPage } from "../pages/DayBeforeItineraryPage";
+import { RevealTodayPage } from "../pages/RevealTodayPage";
+import { EscapeRunPage } from "../pages/EscapeRunPage";
+import { EscapeReviewPage } from "../pages/EscapeReviewPage";
+
+import type {
+  Appointment,
+  AppointmentPrep,
+  DestinationCandidate,
+} from "../features/appointment/model/types";
+import type { LatLng } from "../shared/types/geo";
+import type {
+  EscapeAcceptance,
+  EscapeCompletionPayload,
+  EscapeResult,
+} from "../features/escape/model/types";
+import { pickMission } from "../features/escape/model/mission";
+import PrepPage from "../pages/PrepPage";
+
+type Step = "CREATE" | "PREP_ORIGIN" | "PREP_ITINERARY" | "REVEAL" | "RUN" | "REVIEW";
+type Page = "TIMEPICK" | "PREP"; // 너 enum에 맞춰
 
 export default function App() {
-  const [step, setStep] = useState<Step>("FIRST");
+  const [step, setStep] = useState<Step>("CREATE");
 
-  // 1번 화면 결과
-  const [startPayload, setStartPayload] = useState<FirstStartPayload | null>(null);
+  const [appointment, setAppointment] = useState<Appointment | null>(null);
+  const [origin, setOrigin] = useState<LatLng | null>(null);
 
-  // 2번 화면(픽)에서 원래는 세션 컨텍스트를 만들지만,
-  // 지금은 DB/백엔드 없이 데모로 3번으로 넘어가는 용도로만 유지
-  const [tripCtx, setTripCtx] = useState<TripSessionContext | null>(null);
+  const [prep, setPrep] = useState<AppointmentPrep | null>(null);
+  const [candidates, setCandidates] = useState<DestinationCandidate[] | null>(null);
 
-  // 3번에서 수락 → 4번(도착/후기)로 넘길 데이터
-  const [acceptedAt, setAcceptedAt] = useState<number | null>(null);
-  const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
-  const [destination, setDestination] = useState<{ lat: number; lng: number } | null>(null);
-  const [destinationName, setDestinationName] = useState<string>("목적지");
+  const [acceptance, setAcceptance] = useState<EscapeAcceptance | null>(null);
+  const [missionText, setMissionText] = useState<string | null>(null);
+  const [escapeResult, setEscapeResult] = useState<EscapeResult | null>(null);
 
-  // ---- 화면 렌더 ----
-  if (step === "FIRST") {
+  const [page, setPage] = useState<Page>("TIMEPICK");
+  const [appointmentId, setAppointmentId] = useState<string | null>(null);
+
+  const resetAll = () => {
+    setStep("CREATE");
+    setAppointment(null);
+    setOrigin(null);
+    setPrep(null);
+    setCandidates(null);
+    setAcceptance(null);
+    setMissionText(null);
+    setEscapeResult(null);
+  };
+
+  if (step === "CREATE") {
     return (
-      <FirstScreen
-        onStart={(payload) => {
-          setStartPayload(payload);
-          setStep("SWIPE_DEMO");
+      <CreateAppointmentPage
+        onNext={(a) => {
+          setAppointment(a);
+          setStep("PREP_ORIGIN");
         }}
       />
     );
   }
 
-  if (step === "SWIPE_DEMO") {
+  if (page === "PREP") {
+    if (!appointmentId) return <div style={{ padding: 16 }}>appointmentId 없음</div>;
+    return <PrepPage appointmentId={appointmentId} />;
+  }
+
+  if (step === "PREP_ORIGIN") {
+    const a =
+      appointment ??
+      ({
+        id: "demo",
+        day: "SUN",
+        timeSlot: "AFTERNOON",
+        durationMin: 90,
+        createdAt: Date.now(),
+      } as Appointment);
+
     return (
-      <SwipeDemoScreen
-        onBack={() => setStep("PICK")}
-        onAccept={(p) => {
-          setAcceptedAt(p.acceptedAt);
-          setOrigin(p.origin);
-          setDestination(p.destination);
-          setDestinationName(p.destinationName);
-          setStep("ESCAPE");
+      <DayBeforeOriginPage
+        appointment={a}
+        onBack={() => setStep("CREATE")}
+        onNext={(o) => {
+          setOrigin(o);
+          setStep("PREP_ITINERARY");
         }}
       />
     );
   }
 
-  // ESCAPE
-  return (
-    <EscapeCompleteScreen
-      acceptedAt={acceptedAt!}
-      origin={origin!}
-      destination={destination!}
-      destinationName={destinationName}
-      arrivalRadiusM={50}
-      onSubmit={(payload) => {
-        // 여기서 나중에 백엔드 저장 API 붙이면 됨
-        console.log("ESCAPE SUBMIT", payload);
-      }}
-    />
-  );
+  if (step === "PREP_ITINERARY") {
+    if (!appointment || !origin) {
+      setStep("PREP_ORIGIN");
+      return null;
+    }
+    return (
+      <DayBeforeItineraryPage
+        appointment={appointment}
+        origin={origin}
+        onBack={() => setStep("PREP_ORIGIN")}
+        onNext={(nextPrep, nextCandidates) => {
+          setPrep(nextPrep);
+          setCandidates(nextCandidates);
+          setStep("REVEAL");
+        }}
+      />
+    );
+  }
+
+  if (step === "REVEAL") {
+    if (!appointment || !prep || !candidates?.length) {
+      setStep("PREP_ORIGIN");
+      return null;
+    }
+
+    return (
+      <RevealTodayPage
+        appointment={appointment}
+        prep={prep}
+        candidates={candidates}
+        onBack={() => setStep("PREP_ITINERARY")}
+        onAccept={({ origin, destination, destinationName }) => {
+          const acceptedAt = Date.now();
+          setAcceptance({ acceptedAt, origin, destination, destinationName });
+          setMissionText(pickMission(acceptedAt)); // RUN에서 “일정(미션)” 노출
+          setStep("RUN");
+        }}
+      />
+    );
+  }
+
+  if (step === "RUN") {
+    if (!acceptance || !prep) {
+      resetAll();
+      return null;
+    }
+
+    return (
+      <EscapeRunPage
+        acceptance={acceptance}
+        travelMode={prep.travelMode}
+        missionText={missionText ?? undefined}
+        onBack={() => setStep("REVEAL")}
+        onComplete={(completion: EscapeCompletionPayload) => {
+          const result: EscapeResult = {
+            ...acceptance,
+            missionText: missionText ?? pickMission(acceptance.acceptedAt),
+            completion,
+          };
+          setEscapeResult(result);
+          setStep("REVIEW");
+        } } appointment={{
+          id: "",
+          day: "SAT",
+          timeSlot: "MORNING",
+          durationMin: 0,
+          createdAt: 0
+        }}      />
+    );
+  }
+
+  if (!escapeResult) {
+    resetAll();
+    return null;
+  }
+  return <EscapeReviewPage result={escapeResult} onRestart={resetAll} />;
 }

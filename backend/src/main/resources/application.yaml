@@ -1,26 +1,53 @@
+server:
+  port: 8080
+
 spring:
-    application:
-        name:
-            little-escape
-    datasource:
-        url: jdbc:mysql://localhost:3306/littleescape?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
-        username: ezra
-        password: ljh1419*
-        driver-class-name: com.mysql.cj.jdbc.Driver
-    jpa:
-        hibernate:
-            ddl-auto: update
-        show-sql: true
-        properties:
-            hibernate:
-                dialect: org.hibernate.dialect.MySQL8Dialect
-                format_sql: true
-    h2:
-        console:
-            enabled: true
-    logging:
-        level:
-        org.hibernate.SQL: debug
+  application:
+    name: little-escape-backend
+
+  datasource:
+    url: jdbc:h2:mem:little_escape;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  h2:
+    console:
+      enabled: true
+      path: /h2
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+logging:
+  level:
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/little_escape
+    username: postgres
+    password: postgres
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 kakao:
   rest-api-key: c8cfaa70e5cc90f45eb7e7dbc652d9bb
   mobility-api-key: c8cfaa70e5cc90f45eb7e7dbc652d9bb

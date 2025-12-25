@@ -1,0 +1,1 @@
+rootProject.name = "little-escape-backend"

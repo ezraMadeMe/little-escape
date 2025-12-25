@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useIsMobile } from "./useIsMobile";
+import { useIsMobile } from "../shared/hooks/useIsMobile";
+import { getKakaoJsKey } from "../features/kakaoMap/lib/kakaoSdk";
 
 declare global {
   interface Window {
@@ -154,7 +155,7 @@ type DemoAcceptPayload = {
   };
   
 export default function SwipeDemoScreen({ onBack, onAccept }: SwipeDemoScreenProps) {  
-  const appKey = import.meta.env.VITE_KAKAO_JS_KEY as string | undefined;
+  const appKey = getKakaoJsKey();
 
   const isMobile = useIsMobile();
 
