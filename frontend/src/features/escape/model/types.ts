@@ -2,9 +2,10 @@ import type { LatLng } from "../../../shared/types/geo";
 
 export type EscapeAcceptance = {
   acceptedAt: number;
-  origin: LatLng;
-  destination: LatLng;
-  destinationName: string;
+  origin: { lat: number; lng: number };
+  destination: { lat: number; lng: number };
+  destinationName?: string | null;
+  itineraryLines: string[];
 };
 
 export type EscapeCompletionPayload = {

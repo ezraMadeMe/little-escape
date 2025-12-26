@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type { Appointment, AppointmentPrep, DestinationCandidate } from "../features/appointment/model/types";
 import type { LatLng } from "../shared/types/geo";
 import { RouteMap } from "../features/kakaoMap/components/RouteMap";
@@ -9,30 +9,32 @@ export function RevealTodayPage(props: {
   prep: AppointmentPrep;
   candidates: DestinationCandidate[];
   onBack: () => void;
-  onAccept: (payload: { origin: LatLng; destination: LatLng; destinationName: string }) => void;
+  onAccept: (payload: {
+    origin: LatLng;
+    destination: LatLng;
+    destinationName?: string;
+    itineraryLines: string[];
+  }) => void;
 }) {
   const isMobile = useIsMobile();
   const list = useMemo(() => props.candidates ?? [], [props.candidates]);
-  const [idx, setIdx] = useState(0);
-  const current = list.length ? list[idx % list.length] : null;
 
-  // ✅ 카운트다운
-  const targetMs = useMemo(() => nextAppointmentTimeMs(props.appointment), [props.appointment]);
-  const [remainMs, setRemainMs] = useState<number>(() => Math.max(0, targetMs - Date.now()));
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [activeIdx, setActiveIdx] = useState(0);
 
-  useEffect(() => {
-    const t = setInterval(() => setRemainMs(Math.max(0, targetMs - Date.now())), 250);
-    return () => clearInterval(t);
-  }, [targetMs]);
+  const onScroll = () => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const w = el.clientWidth || 1;
+    const idx = Math.round(el.scrollLeft / w);
+    if (idx !== activeIdx) setActiveIdx(idx);
+  };
 
-  const countdown = useMemo(() => formatHMS(remainMs), [remainMs]);
-  const countdownLabel = remainMs <= 0 ? "곧 공개" : countdown;
+  const current = list[activeIdx] ?? null;
 
-  const [open, setOpen] = useState(false);
-
-  if (!current) {
+  if (!list.length || !current) {
     return (
-      <div style={{ padding: 20 }}>
+      <div style={{ padding: 16 }}>
         <h2 style={{ margin: 0 }}>당일</h2>
         <div style={{ marginTop: 10, opacity: 0.7 }}>후보 일정이 없어. 전날 준비로 돌아가줘.</div>
         <div style={{ marginTop: 16 }}>
@@ -42,144 +44,141 @@ export function RevealTodayPage(props: {
     );
   }
 
+  const pad = isMobile ? 16 : 20;
+
   return (
-    <div style={{ padding: 20 }}>
-      <div style={countBox}>
-        <div style={{ fontSize: 12, opacity: 0.75 }}>약속장소 공개까지</div>
-        <div style={{ fontSize: 20, fontWeight: 900, marginTop: 4 }}>
-          {countdownLabel}
-        </div>
-      </div>
-
-      <h2 style={{ margin: "16px 0 0" }}>당일</h2>
+    <div style={{ padding: pad }}>
+      <h2 style={{ margin: 0 }}>당일</h2>
       <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>
-        일정만 보고 결정해. 누르면 이동과 대략 위치가 뜰 거야.
+        카드를 스와이프해서 고르고, 선택한 일정으로 시작해.
       </div>
 
-      {/* ✅ 일정 텍스트만(카드에 다른 것 넣지 않음) */}
+      {/* ✅ 풀블리드 스와이프(모바일 짤림 방지) */}
       <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") setOpen(true);
-        }}
+        ref={scrollerRef}
+        onScroll={onScroll}
         style={{
           marginTop: 16,
-          padding: 16,
-          borderRadius: 16,
-          border: "1px solid #ddd",
-          background: "#fff",
-          cursor: "pointer",
-          userSelect: "none",
-          WebkitTapHighlightColor: "transparent",
+          marginLeft: -pad,
+          marginRight: -pad,
+          paddingLeft: pad,
+          paddingRight: pad,
+
+          display: "flex",
+          overflowX: "auto",
+          scrollSnapType: "x mandatory",
+          WebkitOverflowScrolling: "touch",
         }}
       >
-        <div style={{ display: "grid", gap: 8 }}>
-          {current.itineraryLines.slice(0, 3).map((t, i) => (
-            <div key={i} style={{ fontSize: 14, lineHeight: 1.45, color: "#111827", wordBreak: "keep-all" }}>
-              {t}
+        {list.map((c, i) => {
+          const destinationTitle =
+            (c as any).destinationAddress ??
+            (c as any).destinationName ??
+            `목표 도착지 (${c.point.lat.toFixed(5)}, ${c.point.lng.toFixed(5)})`;
+
+          const shouldRenderMap = Math.abs(i - activeIdx) <= 1;
+
+          return (
+            <div
+              key={c.id ?? i}
+              style={{
+                flex: "0 0 100%",
+                scrollSnapAlign: "start",
+                paddingRight: 12,
+                boxSizing: "border-box",
+              }}
+            >
+              <div style={cardShell}>
+                <div style={{ fontWeight: 900, fontSize: 16, color: "#111827" }}>{destinationTitle}</div>
+
+                <ItinerarySection itineraryLines={c.itineraryLines} />
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontWeight: 900, fontSize: 14, color: "#111827" }}>이동 소요시간</div>
+                  <div style={{ fontSize: 13, color: "#111827" }}>{c.travel.summary}</div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {c.travel.lines.map((l, idx) => (
+                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, opacity: 0.9 }}>
+                        <span>{l.label}</span>
+                        <span>{l.min}분</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontWeight: 900, fontSize: 13, color: "#111827" }}>대략 위치</div>
+                  <div style={mapBox(isMobile)}>
+                    {shouldRenderMap ? (
+                      <RouteMap
+                        origin={{ lat: props.prep.originLat, lng: props.prep.originLng }}
+                        destination={c.point}
+                      />
+                    ) : (
+                      <div style={{ height: "100%" }} />
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
-      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => setIdx((v) => v + 1)}>다른 일정</button>
+      {/* ✅ 카드 밖 버튼(하나만) */}
+      <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={props.onBack}>뒤로</button>
         <button
           style={btnPrimary}
           onClick={() =>
             props.onAccept({
-              origin: props.prep.origin,
+              origin: { lat: props.prep.originLat, lng: props.prep.originLng },
               destination: current.point,
-              destinationName: "약속장소",
+              destinationName: "",
+              itineraryLines: current.itineraryLines,
             })
           }
         >
           이 일정으로 시작
         </button>
-        <button onClick={props.onBack}>뒤로</button>
       </div>
 
-      {/* ✅ 팝업: 이동 + 지도(대략 위치) / 모바일 bottom-sheet */}
-      {open && (
-        <div style={overlay(isMobile)} onClick={() => setOpen(false)}>
-          <div style={modal(isMobile)} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>이동 소요시간</div>
-
-            <div style={{ marginTop: 10, fontSize: 13, color: "#111827" }}>
-              {current.travel.summary}
-            </div>
-
-            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-              {current.travel.lines.map((l, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#111827", opacity: 0.9 }}>
-                  <span>{l.label}</span>
-                  <span>{l.min}분</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ marginTop: 14, fontWeight: 900, fontSize: 13, color: "#111827" }}>대략 위치</div>
-            <div
-              style={{
-                marginTop: 8,
-                height: isMobile ? 240 : 260,
-                borderRadius: 14,
-                overflow: "hidden",
-                border: "1px solid #e5e7eb",
-                background: "#0f172a",
-              }}
-            >
-              <RouteMap origin={props.prep.origin} destination={current.point} />
-            </div>
-
-            <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={() => setOpen(false)} style={btnOutline}>닫기</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.6 }}>
+        {activeIdx + 1} / {list.length}
+      </div>
     </div>
   );
 }
 
-function nextAppointmentTimeMs(a: Appointment) {
-  const now = new Date();
-  const target = new Date(now.getTime());
-
-  const hour = a.timeSlot === "MORNING" ? 10 : a.timeSlot === "AFTERNOON" ? 14 : 19;
-  target.setHours(hour, 0, 0, 0);
-
-  const want = (d: Date) => {
-    if (a.day === "SAT") return d.getDay() === 6;
-    if (a.day === "SUN") return d.getDay() === 0;
-    // WEEKDAY
-    return d.getDay() >= 1 && d.getDay() <= 5;
-  };
-
-  for (let i = 0; i < 14; i++) {
-    if (want(target) && target.getTime() > now.getTime()) return target.getTime();
-    target.setDate(target.getDate() + 1);
-    target.setHours(hour, 0, 0, 0);
-  }
-  return now.getTime();
+function ItinerarySection({ itineraryLines }: { itineraryLines: string[] }) {
+  return (
+    <div
+      style={{
+        maxHeight: 240,
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        paddingRight: 6,
+      }}
+    >
+      {itineraryLines.map((line, idx) => (
+        <div key={`${idx}-${line}`} style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "white" }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>{`일정${idx + 1}.`}</div>
+          <div style={{ lineHeight: 1.5 }}>{line}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function formatHMS(ms: number) {
-  const s = Math.floor(ms / 1000);
-  const hh = String(Math.floor(s / 3600)).padStart(2, "0");
-  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
-  const ss = String(s % 60).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
-}
-
-const countBox: React.CSSProperties = {
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid #e5e7eb",
-  background: "#fafafa",
-  width: "fit-content",
+const cardShell: React.CSSProperties = {
+  border: "1px solid #ddd",
+  borderRadius: 16,
+  background: "#fff",
+  padding: 16,
+  display: "grid",
+  gap: 14,
 };
 
 const btnPrimary: React.CSSProperties = {
@@ -192,37 +191,12 @@ const btnPrimary: React.CSSProperties = {
   fontWeight: 900,
 };
 
-const btnOutline: React.CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(0,0,0,0.15)",
-  background: "#fff",
-  color: "#111827",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-
-function overlay(isMobile: boolean): React.CSSProperties {
+function mapBox(isMobile: boolean): React.CSSProperties {
   return {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.45)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: isMobile ? "flex-end" : "center",
-    padding: 12,
-    zIndex: 50,
-  };
-}
-
-function modal(isMobile: boolean): React.CSSProperties {
-  return {
-    width: isMobile ? "100%" : "min(520px, 100%)",
-    maxHeight: isMobile ? "85vh" : "80vh",
-    overflowY: "auto",
-    borderRadius: isMobile ? "18px 18px 0 0" : 16,
-    border: "1px solid rgba(0,0,0,0.15)",
-    background: "#fff",
-    padding: 14,
+    height: isMobile ? 220 : 260,
+    borderRadius: 14,
+    overflow: "hidden",
+    border: "1px solid #e5e7eb",
+    background: "#0f172a",
   };
 }

@@ -11,7 +11,7 @@ declare global {
 type Props = {
   origin: LatLng;
   destination: LatLng;
-  path?: LatLng[]; // 있으면 이걸로 폴리라인
+  path?: LatLng[];
 };
 
 function loadKakaoSdk(appKey: string): Promise<void> {
@@ -41,6 +41,13 @@ function loadKakaoSdk(appKey: string): Promise<void> {
 }
 
 export function RouteMap(props: Props) {
+  const { origin, destination, path } = props;
+
+  if (!origin || !destination) {
+    return <div style={{ padding: 12, opacity: 0.7 }}>지도를 불러오는 중…</div>;
+  }
+
+  const safePath = Array.isArray(path) ? path.filter(Boolean) : [];
   const appKey = getKakaoJsKey();
 
   const mapEl = useRef<HTMLDivElement | null>(null);
@@ -54,8 +61,12 @@ export function RouteMap(props: Props) {
   const coordValid = useMemo(() => {
     const latOk = (v: number) => Number.isFinite(v) && v >= -90 && v <= 90;
     const lngOk = (v: number) => Number.isFinite(v) && v >= -180 && v <= 180;
-    return latOk(props.origin.lat) && lngOk(props.origin.lng) && latOk(props.destination.lat) && lngOk(props.destination.lng);
-  }, [props.origin, props.destination]);
+    return latOk(origin.lat) && lngOk(origin.lng) && latOk(destination.lat) && lngOk(destination.lng);
+  }, [origin.lat, origin.lng, destination.lat, destination.lng]);
+
+  const center = useMemo(() => ({ lat: origin.lat, lng: origin.lng }), [origin.lat, origin.lng]);
+  
+  if (!center || !destination) return null;  
 
   // mount: sdk + map init
   useEffect(() => {
@@ -88,9 +99,9 @@ export function RouteMap(props: Props) {
     const map = mapRef.current;
     if (!map || !window.kakao?.maps) return;
 
-    const o = new window.kakao.maps.LatLng(props.origin.lat, props.origin.lng);
-    const d = new window.kakao.maps.LatLng(props.destination.lat, props.destination.lng);
-
+    const o = new window.kakao.maps.LatLng(origin.lat, origin.lng);
+    const d = new window.kakao.maps.LatLng(destination.lat, destination.lng);
+    
     if (!oMarkerRef.current) {
       oMarkerRef.current = new window.kakao.maps.Marker({ position: o });
       oMarkerRef.current.setMap(map);
@@ -112,9 +123,10 @@ export function RouteMap(props: Props) {
     }
 
     const pathLatLng =
-      props.path?.length
-        ? props.path.map((p) => new window.kakao.maps.LatLng(p.lat, p.lng))
-        : [o, d];
+    safePath.length
+      ? safePath.map((p) => new window.kakao.maps.LatLng(p.lat, p.lng))
+      : [o, d];
+  
 
     const line = new window.kakao.maps.Polyline({
       path: pathLatLng,

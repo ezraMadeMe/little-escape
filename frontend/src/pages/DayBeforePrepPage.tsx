@@ -102,9 +102,7 @@ export function DayBeforePrepPage(props: {
                 <div style={{ fontSize: 13, marginBottom: 6 }}>
                   <b>Travel</b>: {c.travel.summary}
                 </div>
-
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 900 }}>{c.itineraryTitle}</div>
                   <div style={{ fontSize: 12, opacity: 0.75 }}>{c.travel.summary}</div>
                 </div>
                 <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.4 }}>
@@ -134,8 +132,10 @@ export function DayBeforePrepPage(props: {
               {
                 appointmentId: props.appointment.id,
                 travelMode,
-                origin,
                 preparedAt: Date.now(),
+                id: props.appointment.id,
+                originLat: props.origin.lat,
+                originLng: props.origin.lng,
               },
               candidates
             )
@@ -194,7 +194,6 @@ function buildCandidates(
       return {
         id: it.id,
         point: it.point,
-        itineraryTitle: it.name,
         itineraryLines,
         travel,
       } satisfies DestinationCandidate;

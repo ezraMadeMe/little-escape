@@ -8,7 +8,12 @@ export function RevealTodayPage(props: {
   prep: AppointmentPrep;
   candidates: DestinationCandidate[];
   onBack: () => void;
-  onAccept: (payload: { origin: LatLng; destination: LatLng; destinationName: string }) => void;
+  onAccept: (payload: {
+    origin: LatLng;
+    destination: LatLng;
+    destinationName?: string;
+    itineraryLines: string[];
+  }) => void;
 }) {
   const list = useMemo(() => props.candidates ?? [], [props.candidates]);
   const [idx, setIdx] = useState(0);
@@ -58,7 +63,6 @@ export function RevealTodayPage(props: {
       {/* ✅ 일정 카드 (당일은 1장 중심 + 다른 일정) */}
       <div style={{ marginTop: 14 }}>
         <button onClick={() => setOpen(true)} style={todayCard}>
-          <div style={{ fontWeight: 900, fontSize: 15 }}>{current.itineraryTitle}</div>
           <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
             {current.itineraryLines.map((t, i) => (
               <div key={i} style={{ fontSize: 13, opacity: 0.88, lineHeight: 1.35 }}>
@@ -77,9 +81,10 @@ export function RevealTodayPage(props: {
             style={btnPrimary}
             onClick={() =>
               props.onAccept({
-                origin: props.prep.origin,
+                origin: { lat: props.prep.originLat, lng: props.prep.originLng },
                 destination: current.point,
-                destinationName: "약속장소", // ✅ 텍스트로 장소명 제공 X (내부 이름만)
+                destinationName: "", // 장소명 숨길거면 빈문자/undefined
+                itineraryLines: current.itineraryLines,
               })
             }
           >
@@ -96,8 +101,6 @@ export function RevealTodayPage(props: {
       {open && (
         <div style={overlay} onClick={() => setOpen(false)}>
           <div style={modal} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>{current.itineraryTitle}</div>
-
             <div style={{ marginTop: 10, fontSize: 13 }}>
               <b>이동</b>: {current.travel.summary}
             </div>
@@ -113,7 +116,10 @@ export function RevealTodayPage(props: {
             <div style={{ marginTop: 12, fontWeight: 900, fontSize: 13 }}>대략 위치</div>
             <div style={{ marginTop: 8, height: 240, borderRadius: 14, overflow: "hidden", border: "1px solid #e5e7eb" }}>
               {/* ✅ 장소명 없이 핀만 보여주는 지도 */}
-              <RouteMap origin={props.prep.origin} destination={current.point} />
+              <RouteMap
+                origin={{ lat: props.prep.originLat, lng: props.prep.originLng }}
+                destination={current.point}
+              />
             </div>
 
             <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -126,7 +132,6 @@ export function RevealTodayPage(props: {
   );
 }
 
-/** 다음 약속 시간(대략) 계산: day+timeslot 기준으로 “가장 가까운 미래 시간” */
 function nextAppointmentTimeMs(a: Appointment) {
   const now = new Date();
   const target = new Date(now.getTime());
@@ -134,31 +139,26 @@ function nextAppointmentTimeMs(a: Appointment) {
   const hour =
     a.timeSlot === "MORNING" ? 10 :
     a.timeSlot === "AFTERNOON" ? 14 :
-    19;
+    a.timeSlot === "EVENING" ? 19 :
+    21; // NIGHT
 
   target.setHours(hour, 0, 0, 0);
 
-  const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6; // Sun 0, Sat 6
-  const isWeekday = (d: Date) => d.getDay() >= 1 && d.getDay() <= 5;
-
-  const want = (d: Date) => {
-    if (a.day === "SAT") return d.getDay() === 6;
-    if (a.day === "SUN") return d.getDay() === 0;
-    return isWeekday(d);
+  const map: Record<Appointment["day"], number> = {
+    MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6, SUN: 0,
   };
 
-  // 이미 시간이 지났거나, 요일 타입이 안 맞으면 다음날로 넘기면서 찾기(최대 14일)
-  for (let i = 0; i < 14; i++) {
-    const ok = want(target);
-    const inFuture = target.getTime() > now.getTime();
-    if (ok && inFuture) return target.getTime();
+  const want = (d: Date) => d.getDay() === map[a.day];
 
+  for (let i = 0; i < 14; i++) {
+    if (want(target) && target.getTime() > now.getTime()) return target.getTime();
     target.setDate(target.getDate() + 1);
     target.setHours(hour, 0, 0, 0);
   }
-
-  return now.getTime(); // fallback
+  return now.getTime();
 }
+
+
 
 function formatHMS(ms: number) {
   const s = Math.floor(ms / 1000);

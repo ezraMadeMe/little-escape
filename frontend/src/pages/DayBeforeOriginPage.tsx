@@ -1,103 +1,145 @@
-import React, { useMemo, useState } from "react";
-import type { Appointment } from "../features/appointment/model/types";
-import type { LatLng } from "../shared/types/geo";
+import React, { useEffect, useMemo, useState } from "react";
+import { loadKakaoSdk, getKakaoJsKey } from "../features/kakaoMap/lib/kakaoSdk";
+import { OriginPickerMap, LatLng } from "../features/kakaoMap/OriginPickerMap";
+import { usePlaceSearch } from "../features/kakaoMap/usePlaceSearch";
 
-export function DayBeforeOriginPage(props: {
-  appointment: Appointment;
-  onBack: () => void;
+type Props = {
   onNext: (origin: LatLng) => void;
-}) {
-  const [manualLat, setManualLat] = useState("");
-  const [manualLng, setManualLng] = useState("");
-  const [loading, setLoading] = useState(false);
+};
 
-  const manualValid = useMemo(() => {
-    const lat = Number(manualLat);
-    const lng = Number(manualLng);
-    return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-  }, [manualLat, manualLng]);
+export function DayBeforeOriginPage({ onNext }: Props) {
+  const [sdkReady, setSdkReady] = useState(false);
 
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert("이 브라우저는 위치를 지원하지 않아.");
-      return;
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<LatLng | null>(null);
+  const [selectedLabel, setSelectedLabel] = useState<string>("");
+
+  const { loading, results, search, setResults } = usePlaceSearch();
+
+  const defaultCenter = useMemo<LatLng>(() => ({ lat: 37.5665, lng: 126.9780 }), []);
+
+  useEffect(() => {
+    const key = getKakaoJsKey();
+    loadKakaoSdk(key).then(() => setSdkReady(true)).catch(() => setSdkReady(false));
+  }, []);
+
+  const reverseGeocode = (pos: LatLng) => {
+    const kakao = (window as any).kakao;
+    if (!kakao?.maps?.services) return;
+    const geocoder = new kakao.maps.services.Geocoder();
+    geocoder.coord2Address(pos.lng, pos.lat, (res: any[], status: any) => {
+      if (status !== kakao.maps.services.Status.OK) return;
+      const addr = res?.[0]?.address?.address_name;
+      if (addr) setSelectedLabel(addr);
+    });
+  };
+
+  const pick = (pos: LatLng, label?: string) => {
+    setSelected(pos);
+    if (label) setSelectedLabel(label);
+    else {
+      setSelectedLabel("");
+      reverseGeocode(pos);
     }
-    setLoading(true);
+  };
+
+  const onSubmitSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    search(query);
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLoading(false);
-        props.onNext({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      },
-      () => {
-        setLoading(false);
-        alert("위치 권한이 필요해. 또는 직접 지정으로 진행해줘.");
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
+      (p) => pick({ lat: p.coords.latitude, lng: p.coords.longitude }, "현재 위치"),
+      () => {}
     );
   };
 
-  const submitManual = () => {
-    if (!manualValid) return;
-    props.onNext({ lat: Number(manualLat), lng: Number(manualLng) });
-  };
-
   return (
-    <div style={{ padding: 20 }}>
-      <h2>전날 준비</h2>
-      <div style={{ marginTop: 6, opacity: 0.75 }}>
-        내일 약속이야. 먼저 <b>출발 위치</b>를 정해줘.
-      </div>
+    <div style={{ padding: 16, display: "grid", gap: 12 }}>
+      <h2>출발 위치 지정</h2>
 
-      <div style={box}>
-        <div style={{ fontWeight: 900, marginBottom: 8 }}>현재 위치</div>
-        <button onClick={useCurrentLocation} disabled={loading} style={btnPrimary}>
-          {loading ? "가져오는 중..." : "현재 위치로 설정"}
+      {/* 검색(C) */}
+      <form onSubmit={onSubmitSearch} style={{ display: "flex", gap: 8 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="출발 위치 검색 (역/카페/주소)"
+          style={{ flex: 1, padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
+        />
+        <button type="submit" style={{ padding: "10px 12px" }}>
+          검색
         </button>
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-          * 후보군은 출발 위치를 기준으로 정리돼.
+        <button type="button" onClick={useMyLocation} style={{ padding: "10px 12px" }}>
+          현재위치
+        </button>
+      </form>
+
+      {/* 검색 결과 리스트 */}
+      {loading && <div>검색 중…</div>}
+      {!loading && results.length > 0 && (
+        <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+          {results.slice(0, 6).map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => {
+                pick(r.point, r.roadAddress || r.address || r.name);
+                setResults([]); // 선택 후 닫기 (MVP)
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: 12,
+                border: "none",
+                borderBottom: "1px solid #f2f2f2",
+                background: "white",
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>{r.name}</div>
+              <div style={{ fontSize: 13, opacity: 0.8 }}>
+                {r.roadAddress || r.address}
+              </div>
+            </button>
+          ))}
         </div>
+      )}
+
+      {/* 지도(A) */}
+      {!sdkReady ? (
+        <div style={{ height: 360, display: "grid", placeItems: "center", border: "1px solid #eee", borderRadius: 12 }}>
+          지도 로딩 실패/대기 중…
+        </div>
+      ) : (
+        <OriginPickerMap
+          center={selected ?? defaultCenter}
+          selected={selected}
+          onPick={(pos) => pick(pos)}
+        />
+      )}
+
+      <div style={{ fontSize: 14, opacity: 0.8 }}>
+        선택됨: {selected ? (selectedLabel || `${selected.lat.toFixed(5)}, ${selected.lng.toFixed(5)}`) : "아직 선택 안 함"}
       </div>
 
-      <div style={box}>
-        <div style={{ fontWeight: 900, marginBottom: 8 }}>직접 지정</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 420 }}>
-          <input value={manualLat} onChange={(e) => setManualLat(e.target.value)} placeholder="lat" style={input} />
-          <input value={manualLng} onChange={(e) => setManualLng(e.target.value)} placeholder="lng" style={input} />
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <button onClick={submitManual} disabled={!manualValid} style={btnOutline}>
-            이 좌표로 설정
-          </button>
-        </div>
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-          예) 37.5665 / 126.9780
-        </div>
-      </div>
+      <button
+        type="button"
+        disabled={!selected}
+        onClick={() => selected && onNext(selected)}
+        style={{
+          padding: 14,
+          borderRadius: 12,
+          border: "none",
+          opacity: selected ? 1 : 0.5,
+          fontWeight: 800,
+        }}
+      >
+        이 위치로 출발
+      </button>
 
-      <div style={{ marginTop: 16 }}>
-        <button onClick={props.onBack}>뒤로</button>
-      </div>
+      {/* ✅ lat/lng 입력은 여기서 완전히 없음 */}
     </div>
   );
 }
-
-const box: React.CSSProperties = { marginTop: 14, padding: 12, border: "1px solid #ddd", borderRadius: 12 };
-const input: React.CSSProperties = { padding: "10px 10px", borderRadius: 10, border: "1px solid #ddd" };
-const btnPrimary: React.CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(0,0,0,0.15)",
-  background: "#111827",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 900,
-};
-const btnOutline: React.CSSProperties = {
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(0,0,0,0.15)",
-  background: "#fff",
-  color: "#111827",
-  cursor: "pointer",
-  fontWeight: 900,
-};
