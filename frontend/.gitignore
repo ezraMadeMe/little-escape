@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Package manager lock files (npm 사용)
+# package-lock.json은 버전 관리에 포함합니다
+yarn.lock
+pnpm-lock.yaml
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
