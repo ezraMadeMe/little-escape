@@ -17,3 +17,7 @@ export async function fetchMissions(): Promise<Mission[]> {
     throw error;
   }
 }
+
+export async function getMissionTemplates(): Promise<Mission[]> {
+  return fetchMissions();
+}

@@ -14,4 +14,5 @@ export interface Appointment {
   missionImageUrl?: string;
   placeImageUrl?: string;
   proofComment?: string;
+  visitCount?: number;
 }

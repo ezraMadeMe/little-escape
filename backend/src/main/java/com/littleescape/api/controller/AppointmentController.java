@@ -39,7 +39,7 @@ public class AppointmentController {
         User user = userRepository.findByOauthId(oauthId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        Appointment appointment = appointmentService.createAppointment(user.getId(), request.scheduledAt());
+        Appointment appointment = appointmentService.createAppointment(user.getId(), request.scheduledAt(), request.missionId());
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -47,7 +47,7 @@ public class AppointmentController {
     }
 
     @PatchMapping("/{id}/mission")
-    public ResponseEntity<Void> updateAppointmentMission(
+    public ResponseEntity<Long> updateAppointmentMission(
             @AuthenticationPrincipal String oauthId,
             @PathVariable Long id,
             @Valid @RequestBody AppointmentMissionUpdateRequest request) {
@@ -59,9 +59,26 @@ public class AppointmentController {
         User user = userRepository.findByOauthId(oauthId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        appointmentService.updateAppointmentMission(user.getId(), id, request.missionId());
+        Long appointmentId = appointmentService.updateAppointmentMission(user.getId(), id, request.missionId());
 
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(appointmentId);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<AppointmentResponse> getAppointmentDetail(
+            @AuthenticationPrincipal String oauthId,
+            @PathVariable Long id) {
+
+        if (oauthId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        User user = userRepository.findByOauthId(oauthId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        AppointmentResponse appointment = appointmentService.getAppointmentDetail(user.getId(), id);
+
+        return ResponseEntity.ok(appointment);
     }
 
     @GetMapping("/me")

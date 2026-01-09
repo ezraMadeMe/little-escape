@@ -21,15 +21,18 @@ public record AppointmentResponse(
     String missionImageUrl,
     String placeImageUrl,
     // 완료 인증 필드
-    String proofComment
+    String proofComment,
+    // 방문 횟수
+    Long visitCount
 ) {
-    public static AppointmentResponse from(Appointment appointment) {
+    public static AppointmentResponse from(Appointment appointment, Long visitCount) {
         // 장소가 매칭되었는지 확인
         boolean hasPlace = appointment.getPlace() != null;
+        boolean hasMission = appointment.getMissionTemplate() != null;
 
         return new AppointmentResponse(
             appointment.getId(),
-            appointment.getMissionTemplate().getTitle(),
+            hasMission ? appointment.getMissionTemplate().getTitle() : null,
             appointment.getStatus(),
             appointment.getScheduledAt(),
             appointment.getCreatedAt(),
@@ -40,10 +43,12 @@ public record AppointmentResponse(
             hasPlace ? appointment.getPlace().getLatitude() : null,
             hasPlace ? appointment.getPlace().getLongitude() : null,
             // 이미지 URL 매핑
-            appointment.getMissionTemplate().getImageUrl(),
+            hasMission ? appointment.getMissionTemplate().getImageUrl() : null,
             hasPlace ? appointment.getPlace().getImageUrl() : null,
             // 완료 인증 정보
-            appointment.getProofComment()
+            appointment.getProofComment(),
+            // 방문 횟수 (계산된 값)
+            visitCount
         );
     }
 }
