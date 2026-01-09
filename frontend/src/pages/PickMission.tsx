@@ -51,7 +51,7 @@ function PickMission() {
       setAccepting(true);
       await updateAppointmentMission(Number(appointmentId), currentMission.id);
       alert('미션이 선택되었습니다! D-Day를 기대하세요.');
-      navigate('/mypage');
+      navigate(`/mission/${appointmentId}`);
     } catch (err) {
       console.error('미션 선택 실패:', err);
       alert('미션을 선택하는데 실패했습니다. 다시 시도해주세요.');

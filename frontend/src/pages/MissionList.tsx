@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createAppointment } from '../api/appointmentApi';
+import { createAppointment, getMyAppointments } from '../api/appointmentApi';
 import { getCurrentUser } from '../api/userApi';
 import { User } from '../types/user';
+import { AppointmentStatus } from '../types/appointment';
 
 function MissionList() {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ function MissionList() {
 
   const isLoggedIn = !!localStorage.getItem('accessToken');
 
+  // ... (기존 핸들러 함수들 생략 가능하지만 문맥 유지를 위해 포함)
   const handleKakaoLogin = () => {
     window.location.href = 'http://localhost:8080/oauth2/authorization/kakao';
   };
@@ -26,13 +28,11 @@ function MissionList() {
     navigate('/mypage');
   };
 
-  // 내일 오후 2시를 기본값으로 설정
   const getDefaultDateTime = () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(14, 0, 0, 0);
 
-    // datetime-local input format: YYYY-MM-DDTHH:mm
     const year = tomorrow.getFullYear();
     const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
     const day = String(tomorrow.getDate()).padStart(2, '0');
@@ -57,18 +57,15 @@ function MissionList() {
     try {
       setIsCreating(true);
 
-      // ISO 8601 형식으로 변환 (백엔드 LocalDateTime 형식)
       const dateTime = new Date(scheduledAt);
       const isoString = dateTime.toISOString();
 
       const appointment = await createAppointment({ scheduledAt: isoString });
 
-      // 약속 생성 성공 시 미션 선택 페이지로 이동
       navigate(`/pick-mission/${appointment.id}`);
     } catch (err: any) {
       console.error('약속 생성 실패:', err);
 
-      // "이미 진행 중인 약속이 있습니다" 에러 처리
       if (err.message && err.message.includes('이미 진행 중인 약속')) {
         alert('이미 진행 중인 약속이 있습니다. 기존 약속을 완료하거나 취소해주세요.');
         navigate('/mypage');
@@ -81,16 +78,31 @@ function MissionList() {
   };
 
   useEffect(() => {
-    const loadUser = async () => {
+    const init = async () => {
       try {
         setLoading(true);
 
         if (isLoggedIn) {
           try {
+            // 사용자 정보 로드
             const userData = await getCurrentUser();
             setUser(userData);
+
+            // 진행 중인 약속 확인 (미션이 정해진 것)
+            const appointments = await getMyAppointments();
+            const activeAppointment = appointments.find(
+              (apt) =>
+                (apt.status === AppointmentStatus.PENDING || apt.status === AppointmentStatus.ACCEPTED) &&
+                apt.missionTitle // missionId 대신 missionTitle로 미션 할당 여부 확인 (AppointmentResponse 구조상)
+            );
+
+            if (activeAppointment) {
+              navigate(`/mission/${activeAppointment.id}`, { replace: true });
+              return;
+            }
+
           } catch (userErr) {
-            console.error('사용자 정보를 불러오는데 실패했습니다:', userErr);
+            console.error('초기 데이터 로딩 실패:', userErr);
             localStorage.removeItem('accessToken');
           }
         }
@@ -101,10 +113,9 @@ function MissionList() {
       }
     };
 
-    // 기본 시간 설정
     setScheduledAt(getDefaultDateTime());
-    loadUser();
-  }, []);
+    init();
+  }, [isLoggedIn, navigate]); // navigate 의존성 추가
 
   if (loading) {
     return (
@@ -116,6 +127,7 @@ function MissionList() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex flex-col">
+      {/* ... (나머지 UI 코드는 그대로 유지) */}
       {/* 헤더 */}
       <header className="pt-6 px-6 pb-4">
         <div className="max-w-md mx-auto flex justify-between items-center">

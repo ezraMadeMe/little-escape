@@ -115,11 +115,12 @@ function MissionDetail() {
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate('/mypage')}
-            className="text-white/80 hover:text-white transition-colors"
+            className="text-white/80 hover:text-white transition-colors flex items-center gap-1"
           >
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
+            <span className="text-sm font-medium">목록으로</span>
           </button>
 
           {/* D-Day 카운터 */}
@@ -130,11 +131,21 @@ function MissionDetail() {
           </div>
         </div>
 
-        {/* 미션 제목 */}
-        <div className="mt-8 text-center">
+        {/* 미션 제목 및 변경 버튼 */}
+        <div className="mt-8 text-center relative">
           <h1 className="text-4xl font-bold text-white mb-2 drop-shadow-lg">
             {appointment.missionTitle || '미션 미선택'}
           </h1>
+          
+          {!unlocked && (
+            <button
+              onClick={() => navigate(`/pick-mission/${appointmentId}`)}
+              className="inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 px-3 py-1 rounded-full text-xs text-white/90 transition-colors backdrop-blur-sm border border-white/10 mb-2"
+            >
+              <span>🔄 미션 변경하기</span>
+            </button>
+          )}
+
           <p className="text-white/80 text-sm">
             {new Date(appointment.scheduledAt).toLocaleDateString('ko-KR', {
               year: 'numeric',

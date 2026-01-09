@@ -171,6 +171,7 @@ public class AppointmentService {
         log.info("=== 내 약속 조회 시작 ===");
         log.info("사용자 ID: {}", userId);
 
+        // DB 레벨에서 예정일 기준 내림차순 정렬하여 조회
         List<Appointment> appointments = appointmentRepository.findAllByUserIdOrderByScheduledAtDesc(userId);
         log.info("조회된 약속 개수: {}", appointments.size());
 
