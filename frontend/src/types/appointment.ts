@@ -1,9 +1,18 @@
+export enum AppointmentStatus {
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+  COMPLETED = 'COMPLETED',
+  NO_SHOW = 'NO_SHOW',
+}
+
 export interface Appointment {
   id: number;
   userId?: number;
   missionId?: number;
   missionTitle: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+  status: AppointmentStatus;
   scheduledAt: string;
   createdAt: string;
   placeName?: string;

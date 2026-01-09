@@ -14,9 +14,8 @@ function MissionList() {
 
   const isLoggedIn = !!localStorage.getItem('accessToken');
 
-  // ... (기존 핸들러 함수들 생략 가능하지만 문맥 유지를 위해 포함)
   const handleKakaoLogin = () => {
-    window.location.href = 'http://localhost:8080/oauth2/authorization/kakao';
+    window.location.href = `http://${window.location.hostname}:8080/oauth2/authorization/kakao`;
   };
 
   const handleLogout = () => {
@@ -84,16 +83,14 @@ function MissionList() {
 
         if (isLoggedIn) {
           try {
-            // 사용자 정보 로드
             const userData = await getCurrentUser();
             setUser(userData);
 
-            // 진행 중인 약속 확인 (미션이 정해진 것)
             const appointments = await getMyAppointments();
             const activeAppointment = appointments.find(
               (apt) =>
                 (apt.status === AppointmentStatus.PENDING || apt.status === AppointmentStatus.ACCEPTED) &&
-                apt.missionTitle // missionId 대신 missionTitle로 미션 할당 여부 확인 (AppointmentResponse 구조상)
+                apt.missionTitle
             );
 
             if (activeAppointment) {
@@ -115,7 +112,7 @@ function MissionList() {
 
     setScheduledAt(getDefaultDateTime());
     init();
-  }, [isLoggedIn, navigate]); // navigate 의존성 추가
+  }, [isLoggedIn, navigate]);
 
   if (loading) {
     return (
@@ -127,23 +124,22 @@ function MissionList() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex flex-col">
-      {/* ... (나머지 UI 코드는 그대로 유지) */}
       {/* 헤더 */}
-      <header className="pt-6 px-6 pb-4">
+      <header className="pt-8 px-6 pb-4">
         <div className="max-w-md mx-auto flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-800">Little Escape</h2>
+          <h2 className="text-xl font-bold text-gray-800">Little Escape</h2>
           {isLoggedIn && user ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <button
                 onClick={handleGoToMyPage}
-                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                className="text-base text-indigo-600 hover:text-indigo-700 font-medium p-2"
               >
-                내 약속
+                나의 여정
               </button>
               <span className="text-gray-400">|</span>
               <button
                 onClick={handleLogout}
-                className="text-sm text-gray-600 hover:text-gray-700"
+                className="text-base text-gray-600 hover:text-gray-700 p-2"
               >
                 로그아웃
               </button>
@@ -151,7 +147,7 @@ function MissionList() {
           ) : (
             <button
               onClick={handleKakaoLogin}
-              className="text-sm bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-2 px-4 rounded-lg transition-all duration-200"
+              className="h-10 px-5 bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-bold rounded-lg transition-all duration-200 text-base shadow-sm"
             >
               로그인
             </button>
@@ -160,23 +156,23 @@ function MissionList() {
       </header>
 
       {/* 메인 컨텐츠 */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 pb-32">
-        <div className="max-w-md w-full space-y-8">
+      <main className="flex-1 flex flex-col items-center justify-center px-6 pb-40">
+        <div className="max-w-md w-full space-y-10">
           {/* 감성적인 헤드라인 */}
-          <div className="text-center space-y-3">
+          <div className="text-center space-y-4">
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">
               이번 주, 나를 위해<br />
               잠시 시간을 비워둘까요?
             </h1>
-            <p className="text-base md:text-lg text-gray-600">
+            <p className="text-lg text-gray-600 leading-relaxed">
               작은 일탈을 위한 시간을 먼저 확보하세요.
             </p>
           </div>
 
           {/* 시간 선택 카드 */}
-          <div className="bg-white rounded-3xl shadow-xl p-8 space-y-6">
-            <div className="space-y-3">
-              <label htmlFor="datetime" className="block text-sm font-semibold text-gray-700">
+          <div className="bg-white rounded-3xl shadow-xl p-8 space-y-8">
+            <div className="space-y-4">
+              <label htmlFor="datetime" className="block text-base font-bold text-gray-700">
                 언제 시간을 내시겠어요?
               </label>
               <input
@@ -184,35 +180,35 @@ function MissionList() {
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
-                className="w-full px-4 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 outline-none"
+                className="w-full h-16 px-5 text-xl border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 outline-none bg-gray-50"
               />
             </div>
 
             {/* 설명 텍스트 */}
-            <div className="bg-indigo-50 rounded-xl p-4">
-              <p className="text-sm text-indigo-900 leading-relaxed">
+            <div className="bg-indigo-50 rounded-xl p-5">
+              <p className="text-base text-indigo-900 leading-relaxed">
                 💡 시간을 먼저 정하시면, 그 시간이 다가올 때 알림으로 어떤 일탈을 할지 선택할 수 있어요.
               </p>
             </div>
           </div>
 
           {/* 추가 안내 */}
-          <div className="text-center text-sm text-gray-500 space-y-2">
-            <p>약속 시간이 되면 알림을 보내드릴게요.</p>
+          <div className="text-center text-base text-gray-500 space-y-2">
+            <p>약속한 시간이 되면 알림을 보내드릴게요.</p>
             <p>그때 하고 싶은 미션을 골라보세요 ✨</p>
           </div>
         </div>
       </main>
 
       {/* 하단 고정 버튼 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 pt-4 pb-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <div className="max-w-md mx-auto">
           <button
             onClick={handleCreateTimeCommitment}
             disabled={isCreating || !scheduledAt}
-            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-lg py-4 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
+            className="w-full h-16 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg flex items-center justify-center"
           >
-            {isCreating ? '처리 중...' : '이 시간에 약속 잡기'}
+            {isCreating ? '처리 중...' : '나를 위한 시간 비워두기'}
           </button>
         </div>
       </div>

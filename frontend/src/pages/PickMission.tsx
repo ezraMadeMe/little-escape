@@ -104,62 +104,62 @@ function PickMission() {
       {/* 좌우 화살표 */}
       <button
         onClick={handlePrev}
-        className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/20 hover:bg-white/30 text-white w-12 h-12 rounded-full flex items-center justify-center backdrop-blur-sm transition-all"
+        className="absolute left-4 top-1/2 -translate-y-1/2 z-10 bg-white/20 hover:bg-white/30 text-white w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-sm transition-all shadow-lg border border-white/10"
         aria-label="Previous mission"
       >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
       </button>
 
       <button
         onClick={handleNext}
-        className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/20 hover:bg-white/30 text-white w-12 h-12 rounded-full flex items-center justify-center backdrop-blur-sm transition-all"
+        className="absolute right-4 top-1/2 -translate-y-1/2 z-10 bg-white/20 hover:bg-white/30 text-white w-14 h-14 rounded-full flex items-center justify-center backdrop-blur-sm transition-all shadow-lg border border-white/10"
         aria-label="Next mission"
       >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </button>
 
       {/* 중앙 은은한 문구 */}
-      <div className="absolute top-1/3 left-0 right-0 text-center z-10 px-6">
-        <p className="text-white/60 text-lg font-light tracking-wide">
+      <div className="absolute top-1/4 left-0 right-0 text-center z-10 px-6">
+        <p className="text-white/80 text-xl font-light tracking-wide drop-shadow-md">
           당신을 위한 작은 일탈
         </p>
       </div>
 
       {/* 하단 카드 (Bottom Sheet) */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black via-black/95 to-transparent px-6 py-8 pb-12">
+      <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black via-black/95 to-transparent px-6 py-10 pb-16">
         {/* 인디케이터 */}
-        <div className="flex justify-center gap-2 mb-6">
+        <div className="flex justify-center gap-3 mb-6">
           {missions.map((_, index) => (
             <div
               key={index}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                index === currentIndex ? 'w-8 bg-white' : 'w-2 bg-white/30'
+              className={`h-1.5 rounded-full transition-all duration-300 shadow-sm ${
+                index === currentIndex ? 'w-10 bg-white' : 'w-2 bg-white/30'
               }`}
             />
           ))}
         </div>
 
         {/* 카테고리 뱃지 */}
-        <div className="flex gap-2 mb-3">
-          <span className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold text-white">
+        <div className="flex gap-3 mb-5">
+          <span className="bg-white/20 backdrop-blur-sm px-4 py-1.5 rounded-full text-sm font-bold text-white shadow-sm border border-white/10">
             {currentMission.category}
           </span>
-          <span className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold text-white">
+          <span className="bg-white/20 backdrop-blur-sm px-4 py-1.5 rounded-full text-sm font-bold text-white shadow-sm border border-white/10">
             {currentMission.difficultyLevel}
           </span>
         </div>
 
         {/* 미션 타이틀 */}
-        <h1 className="text-4xl font-bold text-white mb-4 leading-tight">
+        <h1 className="text-4xl font-bold text-white mb-6 leading-tight drop-shadow-xl">
           {currentMission.title}
         </h1>
 
         {/* 설명 */}
-        <p className="text-white/80 text-base mb-8 leading-relaxed">
+        <p className="text-white/90 text-lg mb-10 leading-relaxed font-medium drop-shadow-md">
           {currentMission.description}
         </p>
 
@@ -167,9 +167,9 @@ function PickMission() {
         <button
           onClick={handleAccept}
           disabled={accepting}
-          className="w-full bg-white hover:bg-gray-100 text-gray-900 font-bold text-lg py-4 rounded-2xl shadow-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full h-16 bg-white hover:bg-gray-100 text-gray-900 font-bold text-xl rounded-2xl shadow-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center active:scale-[0.98]"
         >
-          {accepting ? '처리 중...' : '이 일탈 수락하기'}
+          {accepting ? '처리 중...' : '오늘의 일탈로 선택하기'}
         </button>
       </div>
     </div>

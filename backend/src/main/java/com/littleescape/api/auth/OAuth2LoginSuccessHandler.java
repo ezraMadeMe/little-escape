@@ -21,7 +21,6 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
 
     private final JwtProvider jwtProvider;
     private final UserRepository userRepository;
-    private static final String FRONTEND_REDIRECT_URL = "http://localhost:5173/auth/callback";
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -50,7 +49,12 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         String role = "USER";
         String accessToken = jwtProvider.createToken(oauthId, role);
 
-        String redirectUrl = UriComponentsBuilder.fromUriString(FRONTEND_REDIRECT_URL)
+        // 현재 요청이 들어온 서버 IP(백엔드 IP)를 기반으로 프론트엔드 주소 생성
+        // 개발 환경에서는 프론트/백이 같은 IP를 사용한다고 가정 (포트만 다름)
+        String currentServerIp = request.getServerName();
+        String frontendRedirectUrl = "http://" + currentServerIp + ":5173/auth/callback";
+
+        String redirectUrl = UriComponentsBuilder.fromUriString(frontendRedirectUrl)
                 .queryParam("token", accessToken)
                 .build()
                 .toUriString();

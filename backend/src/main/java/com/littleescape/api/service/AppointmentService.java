@@ -171,7 +171,7 @@ public class AppointmentService {
         log.info("=== 내 약속 조회 시작 ===");
         log.info("사용자 ID: {}", userId);
 
-        // DB 레벨에서 예정일 기준 내림차순 정렬하여 조회
+        // DB 레벨에서 예정일 기준 내림차순 정렬하여 조회 (수정 요청 반영)
         List<Appointment> appointments = appointmentRepository.findAllByUserIdOrderByScheduledAtDesc(userId);
         log.info("조회된 약속 개수: {}", appointments.size());
 
@@ -188,7 +188,7 @@ public class AppointmentService {
                         log.debug("약속 ID: {}, 미션: {}, 장소: {}",
                             appointment.getId(), missionTitle, placeName);
 
-                        // visitCount 계산 (미션이 있는 경우만)
+                        // visitCount 계산 (미션이 있는 경우만) - 정렬 순서에 영향 없음
                         Long visitCount = 0L;
                         if (mission != null) {
                             visitCount = appointmentRepository.countByUserIdAndMissionTemplateId(
