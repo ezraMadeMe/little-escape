@@ -1,18 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchMissions } from '../api/missionApi';
-import { getCurrentUser } from '../api/userApi';
 import { createAppointment } from '../api/appointmentApi';
-import { Mission } from '../types/mission';
+import { getCurrentUser } from '../api/userApi';
 import { User } from '../types/user';
 
 function MissionList() {
   const navigate = useNavigate();
-  const [missions, setMissions] = useState<Mission[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [creatingAppointment, setCreatingAppointment] = useState<number | null>(null);
+  const [scheduledAt, setScheduledAt] = useState<string>('');
+  const [isCreating, setIsCreating] = useState<boolean>(false);
 
   const isLoggedIn = !!localStorage.getItem('accessToken');
 
@@ -29,30 +26,64 @@ function MissionList() {
     navigate('/mypage');
   };
 
-  const handleSelectMission = async (missionId: number) => {
+  // 내일 오후 2시를 기본값으로 설정
+  const getDefaultDateTime = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(14, 0, 0, 0);
+
+    // datetime-local input format: YYYY-MM-DDTHH:mm
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const day = String(tomorrow.getDate()).padStart(2, '0');
+    const hours = String(tomorrow.getHours()).padStart(2, '0');
+    const minutes = String(tomorrow.getMinutes()).padStart(2, '0');
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const handleCreateTimeCommitment = async () => {
     if (!isLoggedIn) {
       alert('로그인이 필요합니다.');
+      handleKakaoLogin();
+      return;
+    }
+
+    if (!scheduledAt) {
+      alert('시간을 선택해주세요.');
       return;
     }
 
     try {
-      setCreatingAppointment(missionId);
-      await createAppointment(missionId);
-      alert('약속이 잡혔습니다! 이번 주말을 기대하세요.');
-    } catch (err) {
+      setIsCreating(true);
+
+      // ISO 8601 형식으로 변환 (백엔드 LocalDateTime 형식)
+      const dateTime = new Date(scheduledAt);
+      const isoString = dateTime.toISOString();
+
+      const appointment = await createAppointment({ scheduledAt: isoString });
+
+      // 약속 생성 성공 시 미션 선택 페이지로 이동
+      navigate(`/pick-mission/${appointment.id}`);
+    } catch (err: any) {
       console.error('약속 생성 실패:', err);
-      alert('약속을 생성하는데 실패했습니다. 다시 시도해주세요.');
+
+      // "이미 진행 중인 약속이 있습니다" 에러 처리
+      if (err.message && err.message.includes('이미 진행 중인 약속')) {
+        alert('이미 진행 중인 약속이 있습니다. 기존 약속을 완료하거나 취소해주세요.');
+        navigate('/mypage');
+      } else {
+        alert('약속을 생성하는데 실패했습니다. 다시 시도해주세요.');
+      }
     } finally {
-      setCreatingAppointment(null);
+      setIsCreating(false);
     }
   };
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadUser = async () => {
       try {
         setLoading(true);
-        const missionsData = await fetchMissions();
-        setMissions(missionsData);
 
         if (isLoggedIn) {
           try {
@@ -63,61 +94,44 @@ function MissionList() {
             localStorage.removeItem('accessToken');
           }
         }
-
-        setError(null);
       } catch (err) {
-        setError('미션을 불러오는데 실패했습니다.');
         console.error(err);
       } finally {
         setLoading(false);
       }
     };
 
-    loadData();
+    // 기본 시간 설정
+    setScheduledAt(getDefaultDateTime());
+    loadUser();
   }, []);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
         <div className="text-xl text-gray-600">로딩 중...</div>
       </div>
     );
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-xl text-red-600">{error}</div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        {/* 헤더 영역 */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-          <div className="text-center md:text-left">
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">
-              오늘의 작은 일탈을 선택하세요
-            </h1>
-            <p className="text-gray-600">당신의 일상에 특별함을 더해보세요</p>
-          </div>
-
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex flex-col">
+      {/* 헤더 */}
+      <header className="pt-6 px-6 pb-4">
+        <div className="max-w-md mx-auto flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-gray-800">Little Escape</h2>
           {isLoggedIn && user ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-gray-700 hidden md:block">
-                {user.nickname}님
-              </span>
+            <div className="flex items-center gap-2">
               <button
                 onClick={handleGoToMyPage}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
               >
                 내 약속
               </button>
+              <span className="text-gray-400">|</span>
               <button
                 onClick={handleLogout}
-                className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+                className="text-sm text-gray-600 hover:text-gray-700"
               >
                 로그아웃
               </button>
@@ -125,82 +139,70 @@ function MissionList() {
           ) : (
             <button
               onClick={handleKakaoLogin}
-              className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
+              className="text-sm bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold py-2 px-4 rounded-lg transition-all duration-200"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 3C6.477 3 2 6.477 2 10.5c0 2.546 1.725 4.77 4.312 6.052l-.878 3.241c-.063.233.182.425.39.306l3.816-2.186C10.416 18.063 11.19 18 12 18c5.523 0 10-3.477 10-7.5S17.523 3 12 3z"/>
-              </svg>
-              카카오 로그인
+              로그인
             </button>
           )}
         </div>
+      </header>
 
-        {/* 미션 카드 그리드 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {missions.map((mission) => (
-            <div
-              key={mission.id}
-              onClick={() => handleSelectMission(mission.id)}
-              className="relative h-48 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden cursor-pointer group"
-              style={{
-                backgroundImage: mission.imageUrl
-                  ? `url(${mission.imageUrl})`
-                  : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-              }}
-            >
-              {/* 어두운 오버레이 */}
-              <div className="absolute inset-0 bg-black/50 group-hover:bg-black/40 transition-all duration-300" />
-
-              {/* 호버 시 스케일 효과 */}
-              <div className="absolute inset-0 group-hover:scale-105 transition-transform duration-300">
-                {/* 컨텐츠 */}
-                <div className="absolute inset-0 flex flex-col justify-center items-center p-6 text-white">
-                  {/* 카테고리 & 난이도 뱃지 */}
-                  <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
-                    <span className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold">
-                      {mission.category}
-                    </span>
-                    <span className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-semibold">
-                      {mission.difficultyLevel}
-                    </span>
-                  </div>
-
-                  {/* 미션 제목 (중앙) */}
-                  <h2 className="text-2xl font-bold text-center drop-shadow-lg mb-3 px-4">
-                    {mission.title}
-                  </h2>
-
-                  {/* 설명 */}
-                  <p className="text-sm text-center text-gray-200 drop-shadow-md line-clamp-2 px-6 mb-4">
-                    {mission.description}
-                  </p>
-
-                  {/* 선택 버튼 (호버 시 표시) */}
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <button
-                      disabled={creatingAppointment === mission.id}
-                      className="bg-white/90 hover:bg-white text-gray-900 font-bold py-2 px-6 rounded-lg shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSelectMission(mission.id);
-                      }}
-                    >
-                      {creatingAppointment === mission.id ? '처리 중...' : '이 일탈 선택하기 ✨'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {missions.length === 0 && (
-          <div className="text-center text-gray-500 mt-12 py-20">
-            <p className="text-xl">등록된 미션이 없습니다.</p>
+      {/* 메인 컨텐츠 */}
+      <main className="flex-1 flex flex-col items-center justify-center px-6 pb-32">
+        <div className="max-w-md w-full space-y-8">
+          {/* 감성적인 헤드라인 */}
+          <div className="text-center space-y-3">
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">
+              이번 주, 나를 위해<br />
+              잠시 시간을 비워둘까요?
+            </h1>
+            <p className="text-base md:text-lg text-gray-600">
+              작은 일탈을 위한 시간을 먼저 확보하세요.
+            </p>
           </div>
-        )}
+
+          {/* 시간 선택 카드 */}
+          <div className="bg-white rounded-3xl shadow-xl p-8 space-y-6">
+            <div className="space-y-3">
+              <label htmlFor="datetime" className="block text-sm font-semibold text-gray-700">
+                언제 시간을 내시겠어요?
+              </label>
+              <input
+                id="datetime"
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                className="w-full px-4 py-4 text-lg border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 outline-none"
+              />
+            </div>
+
+            {/* 설명 텍스트 */}
+            <div className="bg-indigo-50 rounded-xl p-4">
+              <p className="text-sm text-indigo-900 leading-relaxed">
+                💡 시간을 먼저 정하시면, 그 시간이 다가올 때 알림으로 어떤 일탈을 할지 선택할 수 있어요.
+              </p>
+            </div>
+          </div>
+
+          {/* 추가 안내 */}
+          <div className="text-center text-sm text-gray-500 space-y-2">
+            <p>약속 시간이 되면 알림을 보내드릴게요.</p>
+            <p>그때 하고 싶은 미션을 골라보세요 ✨</p>
+          </div>
+        </div>
+      </main>
+
+      {/* 하단 고정 버튼 */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg">
+        <div className="max-w-md mx-auto">
+          <button
+            onClick={handleCreateTimeCommitment}
+            disabled={isCreating || !scheduledAt}
+            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-lg py-4 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
+          >
+            {isCreating ? '처리 중...' : '이 시간에 약속 잡기'}
+          </button>
+        </div>
       </div>
     </div>
   );

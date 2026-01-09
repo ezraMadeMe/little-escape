@@ -28,5 +28,14 @@ export async function apiFetch<T>(
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 
+  // Check if response has content before parsing JSON
+  const contentType = response.headers.get('content-type');
+  const contentLength = response.headers.get('content-length');
+
+  // If no content or content-length is 0, return undefined (void)
+  if (contentLength === '0' || !contentType?.includes('application/json')) {
+    return undefined as T;
+  }
+
   return response.json();
 }

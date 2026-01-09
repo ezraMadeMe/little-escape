@@ -41,4 +41,17 @@ public class Appointment extends BaseTimeEntity {
 
     @Column(name = "proof_image_url", length = 500)
     private String proofImageUrl;
+
+    // 비즈니스 로직 메서드
+    public void cancel() {
+        this.status = AppointmentStatus.CANCELLED;
+    }
+
+    public void updateMission(MissionTemplate missionTemplate) {
+        this.missionTemplate = missionTemplate;
+    }
+
+    public void updatePlace(Place place) {
+        this.place = place;
+    }
 }
