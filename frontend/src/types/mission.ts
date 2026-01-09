@@ -5,6 +5,7 @@ export interface Mission {
   category: string;
   difficultyLevel: string;
   condition?: string;
+  imageUrl?: string;
   createdAt?: string;
   updatedAt?: string;
 }

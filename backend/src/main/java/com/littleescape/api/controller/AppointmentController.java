@@ -2,7 +2,10 @@ package com.littleescape.api.controller;
 
 import com.littleescape.api.domain.Appointment;
 import com.littleescape.api.domain.User;
+import com.littleescape.api.dto.AppointmentCompleteRequest;
+import com.littleescape.api.dto.AppointmentCreateRequest;
 import com.littleescape.api.dto.AppointmentDto;
+import com.littleescape.api.dto.AppointmentMissionUpdateRequest;
 import com.littleescape.api.dto.AppointmentRequest;
 import com.littleescape.api.dto.AppointmentResponse;
 import com.littleescape.api.repository.UserRepository;
@@ -27,7 +30,7 @@ public class AppointmentController {
     @PostMapping
     public ResponseEntity<AppointmentDto> createAppointment(
             @AuthenticationPrincipal String oauthId,
-            @Valid @RequestBody AppointmentRequest request) {
+            @Valid @RequestBody AppointmentCreateRequest request) {
 
         if (oauthId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -36,11 +39,29 @@ public class AppointmentController {
         User user = userRepository.findByOauthId(oauthId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        Appointment appointment = appointmentService.createAppointment(user.getId(), request.missionId());
+        Appointment appointment = appointmentService.createAppointment(user.getId(), request.scheduledAt());
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(AppointmentDto.from(appointment));
+    }
+
+    @PatchMapping("/{id}/mission")
+    public ResponseEntity<Void> updateAppointmentMission(
+            @AuthenticationPrincipal String oauthId,
+            @PathVariable Long id,
+            @Valid @RequestBody AppointmentMissionUpdateRequest request) {
+
+        if (oauthId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        User user = userRepository.findByOauthId(oauthId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        appointmentService.updateAppointmentMission(user.getId(), id, request.missionId());
+
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/me")
@@ -72,6 +93,24 @@ public class AppointmentController {
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
         appointmentService.cancelAppointment(user.getId(), id);
+
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<Void> completeAppointment(
+            @AuthenticationPrincipal String oauthId,
+            @PathVariable Long id,
+            @Valid @RequestBody AppointmentCompleteRequest request) {
+
+        if (oauthId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        User user = userRepository.findByOauthId(oauthId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        appointmentService.completeAppointment(user.getId(), id, request.comment());
 
         return ResponseEntity.ok().build();
     }
