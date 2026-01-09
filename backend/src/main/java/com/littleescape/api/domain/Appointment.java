@@ -25,10 +25,20 @@ public class Appointment extends BaseTimeEntity {
     @JoinColumn(name = "mission_template_id", nullable = true)
     private MissionTemplate missionTemplate;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "place_id", nullable = true)
+    private Place place;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private AppointmentStatus status;
 
     @Column(name = "scheduled_at", nullable = false)
     private LocalDateTime scheduledAt;
+
+    @Column(name = "proof_comment", columnDefinition = "TEXT")
+    private String proofComment;
+
+    @Column(name = "proof_image_url", length = 500)
+    private String proofImageUrl;
 }

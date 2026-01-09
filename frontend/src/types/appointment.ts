@@ -6,4 +6,12 @@ export interface Appointment {
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
   scheduledAt: string;
   createdAt: string;
+  placeName?: string;
+  placeAddress?: string;
+  placeUrl?: string;
+  latitude?: number;
+  longitude?: number;
+  missionImageUrl?: string;
+  placeImageUrl?: string;
+  proofComment?: string;
 }

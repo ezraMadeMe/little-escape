@@ -17,3 +17,10 @@ export async function cancelAppointment(id: number): Promise<void> {
     method: 'PATCH',
   });
 }
+
+export async function completeAppointment(id: number, comment: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/appointments/${id}/complete`, {
+    method: 'POST',
+    body: JSON.stringify({ comment }),
+  });
+}
