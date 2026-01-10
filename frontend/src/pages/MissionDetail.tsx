@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getAppointmentDetail, completeAppointment } from '../api/appointmentApi';
 import { Appointment } from '../types/appointment';
+import { supabase } from '../lib/supabaseClient';
 
 type Tab = 'info' | 'map' | 'record';
 
@@ -12,8 +13,11 @@ function MissionDetail() {
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<Tab>('info');
-  const [memo, setMemo] = useState<string>('');
-  const [completing, setCompleting] = useState<boolean>(false);
+  const [proofComment, setProofComment] = useState<string>('');
+  const [proofImageFile, setProofImageFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadAppointment = async () => {
@@ -59,21 +63,88 @@ function MissionDetail() {
     return now >= scheduled;
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('이미지 파일만 업로드 가능합니다.');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('이미지 크기는 5MB 이하여야 합니다.');
+      return;
+    }
+
+    setProofImageFile(file);
+
+    // Create preview URL
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    setProofImageFile(null);
+    setPreviewUrl('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleComplete = async () => {
     if (!appointment) return;
 
-    const comment = memo.trim() || '일탈 완료!';
+    // Validate that image is selected
+    if (!proofImageFile) {
+      alert('인증 사진을 업로드해주세요!');
+      return;
+    }
 
     try {
-      setCompleting(true);
-      await completeAppointment(appointment.id, comment);
-      alert('인증되었습니다!');
+      setIsUploading(true);
+
+      // Upload image to Supabase Storage
+      const userId = appointment.userId || 'unknown';
+      const timestamp = Date.now();
+      const fileExtension = proofImageFile.name.split('.').pop();
+      const filePath = `proofs/${userId}_${appointmentId}_${timestamp}.${fileExtension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('mission-proofs')
+        .upload(filePath, proofImageFile);
+
+      if (uploadError) {
+        console.error('Image upload error:', uploadError);
+        alert('이미지 업로드에 실패했습니다. 다시 시도해주세요.');
+        return;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('mission-proofs')
+        .getPublicUrl(filePath);
+
+      const proofImageUrl = urlData.publicUrl;
+
+      // Complete appointment with both image URL and comment
+      await completeAppointment(appointment.id, {
+        proofComment: proofComment.trim() || '',
+        proofImageUrl
+      });
+
+      alert('수고하셨습니다!');
       navigate('/mypage');
     } catch (err) {
       console.error('완료 처리 실패:', err);
       alert('완료 처리에 실패했습니다. 다시 시도해주세요.');
     } finally {
-      setCompleting(false);
+      setIsUploading(false);
     }
   };
 
@@ -289,42 +360,113 @@ function MissionDetail() {
           {/* Tab 3: 기록 */}
           {activeTab === 'record' && (
             <div className="space-y-8">
+              {/* Image Upload Section - Instagram Story Style */}
               <div>
-                <h3 className="text-white font-bold text-xl mb-4">생각 끄적이기</h3>
+                <h3 className="text-white font-bold text-xl mb-4">📸 인증샷 올리기</h3>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+
+                {!previewUrl ? (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED'}
+                    className="relative w-full h-72 bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-2 border-dashed border-white/30 rounded-3xl hover:border-white/50 hover:from-purple-500/30 hover:to-pink-500/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden group"
+                  >
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+                      <div className="relative">
+                        <div className="absolute inset-0 bg-white/20 rounded-full blur-xl group-hover:blur-2xl transition-all" />
+                        <div className="relative w-20 h-20 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform">
+                          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-white font-bold text-lg">인증 사진을 추가해주세요</p>
+                        <p className="text-white/60 text-sm">탭하여 갤러리에서 선택</p>
+                      </div>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="relative w-full h-96 rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl group">
+                    <img
+                      src={previewUrl}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+                      <button
+                        onClick={handleRemoveImage}
+                        className="absolute top-4 right-4 w-10 h-10 bg-black/50 backdrop-blur-sm hover:bg-black/70 rounded-full flex items-center justify-center transition-all border border-white/20 opacity-0 group-hover:opacity-100"
+                      >
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Memo Section */}
+              <div>
+                <h3 className="text-white font-bold text-xl mb-4">✍️ 오늘의 기록</h3>
                 <textarea
-                  value={memo}
-                  onChange={(e) => setMemo(e.target.value)}
-                  placeholder="오늘의 일탈은 어떠셨나요? 자유롭게 적어보세요..."
-                  className="w-full h-40 px-5 py-4 bg-white/10 border border-white/20 rounded-2xl text-white text-lg placeholder-white/40 focus:bg-white/20 focus:border-white/40 transition-all outline-none resize-none"
+                  value={proofComment}
+                  onChange={(e) => setProofComment(e.target.value)}
+                  placeholder="오늘의 작은 일탈은 어땠나요?"
+                  disabled={appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED'}
+                  className="w-full h-40 px-5 py-4 bg-white/10 border border-white/20 rounded-2xl text-white text-lg placeholder-white/40 focus:bg-white/20 focus:border-white/40 transition-all outline-none resize-none disabled:opacity-50"
                 />
               </div>
 
-              <div>
-                <h3 className="text-white font-bold text-xl mb-4">사진 인증</h3>
-                <button
-                  disabled
-                  className="w-full h-24 bg-white/10 border-2 border-dashed border-white/30 rounded-2xl text-white/50 hover:bg-white/20 transition-all cursor-not-allowed flex flex-col items-center justify-center gap-2"
-                >
-                  <span className="text-2xl">📷</span>
-                  <span className="text-base font-medium">사진 업로드 (준비 중)</span>
-                </button>
-              </div>
-
+              {/* Complete Button */}
               {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && unlocked && (
                 <button
                   onClick={handleComplete}
-                  disabled={completing}
-                  className="w-full h-16 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl rounded-2xl shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  disabled={isUploading || !proofImageFile}
+                  className="w-full h-16 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl rounded-2xl shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 relative overflow-hidden group"
                 >
-                  {completing ? '처리 중...' : '✅ 일탈 완료 도장 찍기'}
+                  {isUploading ? (
+                    <>
+                      <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>업로드 중...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>✅ 일탈 완료 도장 찍기</span>
+                      <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                    </>
+                  )}
                 </button>
               )}
 
+              {/* Completed Status */}
               {appointment.status === 'COMPLETED' && (
-                <div className="bg-green-500/20 border border-green-500/30 rounded-2xl p-6 text-center shadow-lg">
-                  <p className="text-green-200 font-bold text-xl mb-2">✅ 완료된 미션입니다</p>
-                  {appointment.proofComment && (
-                    <p className="text-green-100 text-lg italic">"{appointment.proofComment}"</p>
+                <div className="space-y-4">
+                  <div className="bg-green-500/20 border border-green-500/30 rounded-2xl p-6 text-center shadow-lg">
+                    <p className="text-green-200 font-bold text-xl mb-2">✅ 완료된 미션입니다</p>
+                    {appointment.proofComment && (
+                      <p className="text-green-100 text-lg italic mt-3">"{appointment.proofComment}"</p>
+                    )}
+                  </div>
+                  {appointment.proofImageUrl && (
+                    <div className="rounded-2xl overflow-hidden border border-white/20 shadow-lg">
+                      <img
+                        src={appointment.proofImageUrl}
+                        alt="Proof"
+                        className="w-full h-64 object-cover"
+                      />
+                    </div>
                   )}
                 </div>
               )}

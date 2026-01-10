@@ -1,4 +1,4 @@
-const API_BASE_URL = `http://${window.location.hostname}:8080`;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 interface FetchOptions extends RequestInit {
   headers?: Record<string, string>;
@@ -8,10 +8,11 @@ export async function apiFetch<T>(
   endpoint: string,
   options: FetchOptions = {}
 ): Promise<T> {
-  const token = localStorage.getItem('accessToken');
+  const token = localStorage.getItem('token');
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',  // ngrok 경고 페이지 우회
     ...options.headers,
   };
 
@@ -25,17 +26,33 @@ export async function apiFetch<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    const errorText = await response.text();
+    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
   }
 
   // Check if response has content before parsing JSON
   const contentType = response.headers.get('content-type');
   const contentLength = response.headers.get('content-length');
 
+  console.log('API Response - URL:', `${API_BASE_URL}${endpoint}`);
+  console.log('API Response - Content-Type:', contentType);
+  console.log('API Response - Content-Length:', contentLength);
+  console.log('API Response - Status:', response.status);
+
   // If no content or content-length is 0, return undefined (void)
   if (contentLength === '0' || !contentType?.includes('application/json')) {
+    const text = await response.text();
+    console.log('API Response - Non-JSON content (first 500 chars):', text.substring(0, 500));
+
+    // If we get HTML instead of JSON, it's likely an authentication error
+    if (contentType?.includes('text/html')) {
+      throw new Error('Authentication failed - received HTML instead of JSON. Backend may have redirected to login.');
+    }
+
     return undefined as T;
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log('API Response - Parsed JSON:', data);
+  return data;
 }

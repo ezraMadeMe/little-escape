@@ -1,31 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createAppointment, getMyAppointments } from '../api/appointmentApi';
-import { getCurrentUser } from '../api/userApi';
-import { User } from '../types/user';
+import { getMyInfo } from '../api/userApi';
 import { AppointmentStatus } from '../types/appointment';
 
 function MissionList() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [scheduledAt, setScheduledAt] = useState<string>('');
   const [isCreating, setIsCreating] = useState<boolean>(false);
 
-  const isLoggedIn = !!localStorage.getItem('accessToken');
-
-  const handleKakaoLogin = () => {
-    window.location.href = `http://${window.location.hostname}:8080/oauth2/authorization/kakao`;
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    window.location.reload();
-  };
-
-  const handleGoToMyPage = () => {
-    navigate('/mypage');
-  };
+  // 토큰 존재 여부로 로그인 상태 확인
+  const isLoggedIn = !!localStorage.getItem('token');
 
   const getDefaultDateTime = () => {
     const tomorrow = new Date();
@@ -44,7 +30,7 @@ function MissionList() {
   const handleCreateTimeCommitment = async () => {
     if (!isLoggedIn) {
       alert('로그인이 필요합니다.');
-      handleKakaoLogin();
+      navigate('/login');
       return;
     }
 
@@ -62,10 +48,10 @@ function MissionList() {
       const appointment = await createAppointment({ scheduledAt: isoString });
 
       navigate(`/pick-mission/${appointment.id}`);
-    } catch (err: any) {
+    } catch (err) {
       console.error('약속 생성 실패:', err);
 
-      if (err.message && err.message.includes('이미 진행 중인 약속')) {
+      if (err instanceof Error && err.message.includes('이미 진행 중인 약속')) {
         alert('이미 진행 중인 약속이 있습니다. 기존 약속을 완료하거나 취소해주세요.');
         navigate('/mypage');
       } else {
@@ -83,24 +69,28 @@ function MissionList() {
 
         if (isLoggedIn) {
           try {
-            const userData = await getCurrentUser();
-            setUser(userData);
+            // 유저 정보 확인 (유효성 검증용)
+            await getMyInfo();
 
             const appointments = await getMyAppointments();
-            const activeAppointment = appointments.find(
-              (apt) =>
-                (apt.status === AppointmentStatus.PENDING || apt.status === AppointmentStatus.ACCEPTED) &&
-                apt.missionTitle
-            );
 
-            if (activeAppointment) {
-              navigate(`/mission/${activeAppointment.id}`, { replace: true });
-              return;
+            // appointments가 배열인지 확인
+            if (Array.isArray(appointments)) {
+              const activeAppointment = appointments.find(
+                (apt) =>
+                  (apt.status === AppointmentStatus.PENDING || apt.status === AppointmentStatus.ACCEPTED) &&
+                  apt.missionTitle
+              );
+
+              if (activeAppointment) {
+                navigate(`/mission/${activeAppointment.id}`, { replace: true });
+                return;
+              }
             }
 
           } catch (userErr) {
             console.error('초기 데이터 로딩 실패:', userErr);
-            localStorage.removeItem('accessToken');
+            localStorage.removeItem('token');
           }
         }
       } catch (err) {
@@ -123,95 +113,32 @@ function MissionList() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 flex flex-col">
-      {/* 헤더 */}
-      <header className="pt-8 px-6 pb-4">
-        <div className="max-w-md mx-auto flex justify-between items-center">
-          <h2 className="text-xl font-bold text-gray-800">Little Escape</h2>
-          {isLoggedIn && user ? (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleGoToMyPage}
-                className="text-base text-indigo-600 hover:text-indigo-700 font-medium p-2"
-              >
-                나의 여정
-              </button>
-              <span className="text-gray-400">|</span>
-              <button
-                onClick={handleLogout}
-                className="text-base text-gray-600 hover:text-gray-700 p-2"
-              >
-                로그아웃
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleKakaoLogin}
-              className="h-10 px-5 bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-bold rounded-lg transition-all duration-200 text-base shadow-sm"
-            >
-              로그인
-            </button>
-          )}
-        </div>
-      </header>
+    <div className="min-h-screen flex flex-col justify-center items-center px-6 bg-gray-50">
 
-      {/* 메인 컨텐츠 */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 pb-40">
-        <div className="max-w-md w-full space-y-10">
-          {/* 감성적인 헤드라인 */}
-          <div className="text-center space-y-4">
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">
-              이번 주, 나를 위해<br />
-              잠시 시간을 비워둘까요?
-            </h1>
-            <p className="text-lg text-gray-600 leading-relaxed">
-              작은 일탈을 위한 시간을 먼저 확보하세요.
-            </p>
-          </div>
+      {/* 날짜/시간 선택 영역 */}
+      <div className="w-full max-w-sm mb-8">
+        <label className="block text-center text-gray-500 mb-4 text-sm font-medium">
+          언제 떠나시겠어요?
+        </label>
 
-          {/* 시간 선택 카드 */}
-          <div className="bg-white rounded-3xl shadow-xl p-8 space-y-8">
-            <div className="space-y-4">
-              <label htmlFor="datetime" className="block text-base font-bold text-gray-700">
-                언제 시간을 내시겠어요?
-              </label>
-              <input
-                id="datetime"
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                className="w-full h-16 px-5 text-xl border-2 border-gray-200 rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 outline-none bg-gray-50"
-              />
-            </div>
-
-            {/* 설명 텍스트 */}
-            <div className="bg-indigo-50 rounded-xl p-5">
-              <p className="text-base text-indigo-900 leading-relaxed">
-                💡 시간을 먼저 정하시면, 그 시간이 다가올 때 알림으로 어떤 일탈을 할지 선택할 수 있어요.
-              </p>
-            </div>
-          </div>
-
-          {/* 추가 안내 */}
-          <div className="text-center text-base text-gray-500 space-y-2">
-            <p>약속한 시간이 되면 알림을 보내드릴게요.</p>
-            <p>그때 하고 싶은 미션을 골라보세요 ✨</p>
-          </div>
-        </div>
-      </main>
-
-      {/* 하단 고정 버튼 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 pt-4 pb-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        <div className="max-w-md mx-auto">
-          <button
-            onClick={handleCreateTimeCommitment}
-            disabled={isCreating || !scheduledAt}
-            className="w-full h-16 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg flex items-center justify-center"
-          >
-            {isCreating ? '처리 중...' : '나를 위한 시간 비워두기'}
-          </button>
-        </div>
+        <input
+          id="datetime"
+          type="datetime-local"
+          value={scheduledAt}
+          onChange={(e) => setScheduledAt(e.target.value)}
+          className="w-full p-4 text-lg bg-transparent border-b-2 border-purple-300 focus:border-purple-600 outline-none text-center font-bold text-gray-800 transition-colors"
+        />
       </div>
+
+      {/* 하단 버튼 */}
+      <button
+        onClick={handleCreateTimeCommitment}
+        disabled={isCreating || !scheduledAt}
+        className="w-full max-w-sm py-4 bg-purple-600 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-purple-700 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+      >
+        {isCreating ? '처리 중...' : '나를 위한 시간 비워두기'}
+      </button>
+
     </div>
   );
 }
