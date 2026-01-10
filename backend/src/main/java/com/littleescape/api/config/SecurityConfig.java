@@ -1,5 +1,6 @@
 package com.littleescape.api.config;
 
+import com.littleescape.api.auth.CustomOAuth2UserService;
 import com.littleescape.api.auth.JwtAuthenticationFilter;
 import com.littleescape.api.auth.OAuth2LoginSuccessHandler;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import java.util.Arrays;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
@@ -32,16 +34,24 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/v1/missions", "/api/v1/missions/**").permitAll()
-                .requestMatchers("/oauth2/**", "/login/**").permitAll()
+                .requestMatchers("/oauth2/**", "/login/**", "/api/v1/auth/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 .requestMatchers("/api/v1/users/**").authenticated()
                 .requestMatchers("/api/v1/appointments/**").authenticated()
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2
+                .userInfoEndpoint(userInfo -> userInfo
+                    .userService(customOAuth2UserService)
+                )
                 .successHandler(oAuth2LoginSuccessHandler)
             )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .httpBasic(httpBasic -> httpBasic.disable())
+            .formLogin(formLogin -> formLogin.disable());
 
         return http.build();
     }
@@ -49,7 +59,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://172.30.1.23:5173", "http://172.30.1.85:5173"));
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://172.30.1.23:5173", "http://172.30.1.95:5173"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);

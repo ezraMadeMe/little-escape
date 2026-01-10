@@ -37,9 +37,19 @@ export async function cancelAppointment(id: number): Promise<void> {
   });
 }
 
-export async function completeAppointment(id: number, comment: string): Promise<void> {
+export async function completeAppointment(
+  id: number,
+  data: { proofComment: string; proofImageUrl?: string }
+): Promise<void> {
   return apiFetch<void>(`/api/v1/appointments/${id}/complete`, {
     method: 'POST',
-    body: JSON.stringify({ comment }),
+    body: JSON.stringify(data),
   });
+}
+
+export async function cloneAppointment(appointmentId: number): Promise<number> {
+  const response = await apiFetch<Appointment>(`/api/v1/appointments/${appointmentId}/clone`, {
+    method: 'POST',
+  });
+  return response.id;
 }

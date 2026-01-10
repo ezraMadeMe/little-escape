@@ -22,6 +22,7 @@ public record AppointmentResponse(
     String placeImageUrl,
     // 완료 인증 필드
     String proofComment,
+    String proofImageUrl,
     // 방문 횟수
     Long visitCount
 ) {
@@ -47,6 +48,7 @@ public record AppointmentResponse(
             hasPlace ? appointment.getPlace().getImageUrl() : null,
             // 완료 인증 정보
             appointment.getProofComment(),
+            appointment.getProofImageUrl(),
             // 방문 횟수 (계산된 값)
             visitCount
         );

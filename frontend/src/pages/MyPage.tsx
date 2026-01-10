@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getMyAppointments, cancelAppointment, completeAppointment, createAppointment } from '../api/appointmentApi';
 import { Appointment, AppointmentStatus } from '../types/appointment';
+import MissionCard from '../components/MissionCard';
 
 function MyPage() {
   const navigate = useNavigate();
@@ -11,11 +12,68 @@ function MyPage() {
   const [cancelling, setCancelling] = useState<number | null>(null);
   const [completing, setCompleting] = useState<number | null>(null);
 
+  // 친구 초대 관련 상태
+  const [invitePhoneNumber, setInvitePhoneNumber] = useState<string>('');
+  const [isSendingInvite, setIsSendingInvite] = useState<boolean>(false);
+
   // 재예약 모달 관련 상태
   const [showRescheduleModal, setShowRescheduleModal] = useState<boolean>(false);
   const [rescheduleMissionId, setRescheduleMissionId] = useState<number | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState<string>('');
   const [isRescheduling, setIsRescheduling] = useState<boolean>(false);
+
+  const sendMagicLink = async () => {
+    const token = localStorage.getItem('token');
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/users/send-magic-link`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (res.ok) alert('매직 링크 전송 완료!');
+      else alert('전송 실패');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const sendInvite = async () => {
+    if (!invitePhoneNumber.trim()) {
+      alert('전화번호를 입력해주세요.');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+    try {
+      setIsSendingInvite(true);
+      const res = await fetch(`${API_BASE_URL}/api/v1/users/invite`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ targetPhoneNumber: invitePhoneNumber }),
+      });
+
+      if (res.ok) {
+        alert('초대장이 발송되었습니다!');
+        setInvitePhoneNumber('');
+      } else {
+        const data = await res.json();
+        alert(data.error || '초대장 발송에 실패했습니다.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('초대장 발송 중 오류가 발생했습니다.');
+    } finally {
+      setIsSendingInvite(false);
+    }
+  };
 
   const loadAppointments = async () => {
     try {
@@ -58,7 +116,9 @@ function MyPage() {
 
     try {
       setCompleting(id);
-      await completeAppointment(id, comment);
+      await completeAppointment(id, {
+        proofComment: comment.trim()
+      });
       alert('인증되었습니다!');
       await loadAppointments();
     } catch (err) {
@@ -169,6 +229,43 @@ function MyPage() {
           </button>
         </div>
 
+        <button
+          onClick={sendMagicLink}
+          className="bg-green-500 text-white px-4 py-2 rounded mt-4"
+        >
+          매직 링크 나에게 보내기 (돈나감주의)
+        </button>
+
+        {/* 친구 초대하기 섹션 */}
+        <div className="bg-white rounded-2xl shadow-md p-8 mt-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            좋은 건 같이 해요 💌
+          </h2>
+          <p className="text-gray-600 mb-6">
+            친구의 번호를 입력하고 초대장을 보내보세요.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <input
+              type="tel"
+              value={invitePhoneNumber}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^0-9]/g, '');
+                setInvitePhoneNumber(value);
+              }}
+              placeholder="전화번호 (숫자만 입력)"
+              className="flex-1 h-14 px-5 text-lg border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 outline-none"
+              disabled={isSendingInvite}
+            />
+            <button
+              onClick={sendInvite}
+              disabled={isSendingInvite || !invitePhoneNumber.trim()}
+              className="h-14 px-8 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {isSendingInvite ? '전송 중...' : '초대장 보내기'}
+            </button>
+          </div>
+        </div>
+
         {appointments.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-md p-12 text-center">
             <p className="text-xl text-gray-500 font-medium">아직 예정된 일탈이 없습니다.</p>
@@ -177,57 +274,8 @@ function MyPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div>
             {appointments.map((appointment) => {
-              // Case A: 취소된 약속
-              if (appointment.status === AppointmentStatus.CANCELLED) {
-                return (
-                  <div
-                    key={appointment.id}
-                    className="relative w-full h-28 overflow-hidden rounded-2xl shadow-md bg-gray-100 border border-gray-300"
-                  >
-                    {/* 흑백 처리된 미션 이미지 (있을 경우) */}
-                    {appointment.missionImageUrl && (
-                      <div
-                        className="absolute inset-0 bg-cover bg-center"
-                        style={{
-                          backgroundImage: `url(${appointment.missionImageUrl})`,
-                          filter: 'grayscale(100%) brightness(0.8)',
-                        }}
-                      />
-                    )}
-
-                    {/* 오버레이 */}
-                    <div className="absolute inset-0 bg-gray-900/40" />
-
-                    {/* 콘텐츠 */}
-                    <div className="relative z-10 h-full flex items-center justify-between px-6">
-                      <div className="flex items-center gap-5">
-                        <span className="text-3xl opacity-70">❌</span>
-                        <div>
-                          <h3 className="text-xl font-bold text-white drop-shadow-md">
-                            {appointment.missionTitle || '미션 미선택'}
-                          </h3>
-                          <p className="text-base text-gray-300">
-                            {new Date(appointment.scheduledAt).toLocaleDateString()} - 취소됨
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* 재예약 버튼 */}
-                      {appointment.missionId && (
-                        <button
-                          onClick={() => openRescheduleModal(appointment.missionId)}
-                          className="bg-white/90 hover:bg-white text-gray-800 font-bold h-10 px-5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-                        >
-                          <span>↻</span> 이 추억 다시 한 번
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
               // 미션이 선택되지 않은 경우
               if (!appointment.missionTitle) {
                 return (
@@ -268,150 +316,13 @@ function MyPage() {
                 );
               }
 
-              // Case B: 일반 약속 (미션이 선택된 경우)
-              const scheduledDate = new Date(appointment.scheduledAt);
-              const now = new Date();
-              scheduledDate.setHours(0, 0, 0, 0);
-              now.setHours(0, 0, 0, 0);
-              const isLocked = scheduledDate > now;
-
-              const displayImage = isLocked
-                ? appointment.missionImageUrl
-                : appointment.placeImageUrl || appointment.missionImageUrl;
-
-              const displayPlaceName = isLocked
-                ? "🔒 D-Day에 공개됩니다"
-                : appointment.placeName;
-
+              // 모든 미션이 선택된 약속 - MissionCard 사용
               return (
-                <div
+                <MissionCard
                   key={appointment.id}
-                  onClick={() => navigate(`/mission/${appointment.id}`)}
-                  className="relative w-full overflow-hidden rounded-3xl shadow-lg mb-6 group cursor-pointer hover:scale-[1.01] transition-transform duration-200"
-                >
-                  {/* 방문 횟수 뱃지 (visitCount > 1일 때만) */}
-                  {appointment.visitCount && appointment.visitCount > 1 && (
-                    <div className="absolute top-5 right-5 z-20 bg-gradient-to-r from-amber-400 to-orange-500 text-white px-5 py-2 rounded-full shadow-lg font-bold text-base flex items-center gap-1">
-                      <span>🏅</span>
-                      <span>{appointment.visitCount}번째 만남</span>
-                    </div>
-                  )}
-
-                  {/* 배경 이미지 */}
-                  <div
-                    className="absolute inset-0 h-full w-full bg-cover bg-center transition-all duration-500"
-                    style={{
-                      backgroundImage: `url(${displayImage || "https://via.placeholder.com/400"})`,
-                      filter: isLocked ? "blur(8px) brightness(0.7)" : "none",
-                      transform: isLocked ? "scale(1.1)" : "scale(1)",
-                    }}
-                  />
-
-                  {/* 검은색 딤 오버레이 */}
-                  <div className="absolute inset-0 h-full w-full bg-black/40" />
-
-                  {/* 컨텐츠 레이어 */}
-                  <div className="relative z-10 flex flex-col justify-between p-8 text-white min-h-[18rem]">
-                    {/* 상단: 날짜 및 상태 */}
-                    <div className="flex justify-between items-start">
-                      <span className="bg-white/20 px-4 py-1.5 rounded-full text-base backdrop-blur-sm shadow-sm font-medium">
-                        {new Date(appointment.scheduledAt).toLocaleDateString()}
-                      </span>
-                      <span
-                        className={`px-4 py-1.5 rounded-full text-base font-bold shadow-sm ${
-                          appointment.status === AppointmentStatus.COMPLETED
-                            ? 'bg-green-500/90'
-                            : 'bg-yellow-500/90'
-                        }`}
-                      >
-                        {getStatusText(appointment.status)}
-                      </span>
-                    </div>
-
-                    {/* 중앙/하단: 미션 제목 및 장소 정보 */}
-                    <div className="mt-6">
-                      <h3 className="text-3xl font-bold mb-3 drop-shadow-lg leading-tight">
-                        {appointment.missionTitle}
-                      </h3>
-
-                      <div
-                        className={`flex items-center text-xl font-bold drop-shadow-md ${
-                          isLocked ? 'text-yellow-300' : 'text-gray-100'
-                        }`}
-                      >
-                        {isLocked && <span className="mr-2 text-2xl">🔒</span>}
-                        {displayPlaceName}
-                      </div>
-
-                      {/* 공개되었고, 장소 주소가 있을 때만 주소 표시 */}
-                      {!isLocked && appointment.placeAddress && (
-                        <p className="text-base text-gray-300 mt-2 truncate">
-                          {appointment.placeAddress}
-                        </p>
-                      )}
-
-                      {/* 완료된 경우 소감 표시 */}
-                      {!isLocked &&
-                        appointment.status === AppointmentStatus.COMPLETED &&
-                        appointment.proofComment && (
-                          <div className="mt-6 bg-white/10 rounded-xl p-5 backdrop-blur-md border border-white/10 shadow-inner">
-                            <p className="text-xs text-green-300 font-bold mb-2 uppercase tracking-wider">
-                              My Comment
-                            </p>
-                            <p className="text-base italic text-white leading-relaxed">
-                              "{appointment.proofComment}"
-                            </p>
-                          </div>
-                        )}
-
-                      {/* 하단 버튼 영역 */}
-                      <div className="mt-8 flex gap-4">
-                        {/* 지도 보기 버튼 */}
-                        {!isLocked && appointment.placeUrl && (
-                          <a
-                            href={appointment.placeUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex-1 h-14 bg-blue-600/90 hover:bg-blue-700 text-white rounded-2xl text-center text-base font-bold transition-all shadow-md hover:shadow-lg backdrop-blur-sm flex items-center justify-center gap-2"
-                          >
-                            <span>🗺️</span> 비밀 장소 확인하기
-                          </a>
-                        )}
-
-                        {/* 완료하기 버튼 */}
-                        {!isLocked &&
-                          appointment.status !== AppointmentStatus.COMPLETED &&
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleComplete(appointment.id);
-                              }}
-                              disabled={completing === appointment.id}
-                              className="flex-1 h-14 bg-green-600/90 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-2xl text-base font-bold transition-all shadow-md hover:shadow-lg backdrop-blur-sm disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                              {completing === appointment.id ? '처리 중...' : '✅ 일탈 완료 도장 찍기'}
-                            </button>
-                          }
-
-                        {/* 취소 버튼 */}
-                        {isLocked &&
-                          appointment.status !== AppointmentStatus.COMPLETED &&
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCancel(appointment.id);
-                              }}
-                              disabled={cancelling === appointment.id}
-                              className="flex-1 h-14 bg-white/20 hover:bg-red-600/80 disabled:bg-gray-600 text-white rounded-2xl text-base font-bold transition-all backdrop-blur-md border border-white/20 hover:border-transparent flex items-center justify-center gap-2"
-                            >
-                              {cancelling === appointment.id ? '취소 중...' : '다음에 다시 올게요'}
-                            </button>
-                          }
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  appointment={appointment}
+                  count={appointment.visitCount}
+                />
               );
             })}
           </div>

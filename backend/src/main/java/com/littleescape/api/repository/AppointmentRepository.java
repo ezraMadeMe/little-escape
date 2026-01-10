@@ -4,6 +4,7 @@ import com.littleescape.api.domain.Appointment;
 import com.littleescape.api.domain.type.AppointmentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
@@ -14,4 +15,13 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     
     Long countByUserIdAndMissionTemplateId(Long userId, Long missionTemplateId);
     boolean existsByUserIdAndStatusIn(Long userId, List<AppointmentStatus> statuses);
+
+    // 특정 시간 범위 사이에 있는 약속 조회
+    List<Appointment> findAllByScheduledAtBetween(LocalDateTime start, LocalDateTime end);
+
+    List<Appointment> findAllByStatusAndScheduledAtBetween(
+        AppointmentStatus status, 
+        LocalDateTime start, 
+        LocalDateTime end
+    );
 }

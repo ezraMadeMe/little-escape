@@ -82,6 +82,14 @@ public class AppointmentService {
         Appointment savedAppointment = appointmentRepository.save(appointment);
         log.info("=== 약속 생성 완료 (ID: {}) ===", savedAppointment.getId());
 
+        // 약속 생성 후 매직 토큰 만료 처리
+        if (user.getMagicToken() != null) {
+            log.info("매직 토큰 만료 처리 - User: {} ({})", user.getNickname(), user.getEmail());
+            user.setMagicToken(null);
+            user.setMagicTokenExpiry(null);
+            userRepository.save(user);
+        }
+
         return savedAppointment;
     }
 
@@ -148,22 +156,7 @@ public class AppointmentService {
 
         log.info("=== 약속 상세 조회 완료 (ID: {}) ===", appointmentId);
 
-        return new AppointmentResponse(
-            appointment.getId(),
-            (mission != null) ? mission.getTitle() : null,
-            appointment.getStatus(),
-            appointment.getScheduledAt(),
-            appointment.getCreatedAt(),
-            (place != null) ? place.getName() : null,
-            (place != null) ? place.getAddress() : null,
-            (place != null) ? place.getUrl() : null,
-            (place != null) ? place.getLatitude() : null,
-            (place != null) ? place.getLongitude() : null,
-            (mission != null) ? mission.getImageUrl() : null,
-            (place != null) ? place.getImageUrl() : null,
-            appointment.getProofComment(),
-            visitCount
-        );
+        return AppointmentResponse.from(appointment, visitCount);
     }
 
     @Transactional(readOnly = true)
@@ -197,26 +190,7 @@ public class AppointmentService {
                         }
 
                         // AppointmentResponse 생성 (모든 필드 null-safe)
-                        return new AppointmentResponse(
-                            appointment.getId(),
-                            (mission != null) ? mission.getTitle() : null,
-                            appointment.getStatus(),
-                            appointment.getScheduledAt(),
-                            appointment.getCreatedAt(),
-                            // 장소 정보 (null-safe)
-                            (place != null) ? place.getName() : null,
-                            (place != null) ? place.getAddress() : null,
-                            (place != null) ? place.getUrl() : null,
-                            (place != null) ? place.getLatitude() : null,
-                            (place != null) ? place.getLongitude() : null,
-                            // 이미지 URL (null-safe)
-                            (mission != null) ? mission.getImageUrl() : null,
-                            (place != null) ? place.getImageUrl() : null,
-                            // 완료 인증 정보
-                            appointment.getProofComment(),
-                            // 방문 횟수
-                            visitCount
-                        );
+                        return AppointmentResponse.from(appointment, visitCount);
                     } catch (Exception e) {
                         log.error("약속 정보 변환 중 오류 발생 (약속 ID: {}): {}",
                             appointment.getId(), e.getMessage(), e);
@@ -230,6 +204,7 @@ public class AppointmentService {
                             null, null, null, null, null, // place info
                             null, null, // images
                             appointment.getProofComment(),
+                            null, // proofImageUrl
                             0L // visitCount
                         );
                     }
@@ -256,7 +231,7 @@ public class AppointmentService {
     }
 
     @Transactional
-    public void completeAppointment(Long userId, Long appointmentId, String comment) {
+    public void completeAppointment(Long userId, Long appointmentId, String comment, String proofImageUrl) {
         log.info("=== 약속 완료 처리 시작 ===");
         log.info("사용자 ID: {}, 약속 ID: {}", userId, appointmentId);
 
@@ -278,12 +253,59 @@ public class AppointmentService {
         String missionTitle = mission.getTitle();
         String placeName = (place != null) ? place.getName() : "장소 미정";
 
-        log.info("완료할 약속 정보 - 미션: {}, 장소: {}", missionTitle, placeName);
+        log.info("완료할 약속 정보 - 미션: {}, 장소: {}, 증명 이미지: {}", missionTitle, placeName, proofImageUrl);
 
         appointment.setStatus(AppointmentStatus.COMPLETED);
         appointment.setProofComment(comment);
-        appointment.setProofImageUrl(null);
+        appointment.setProofImageUrl(proofImageUrl);
 
         log.info("=== 약속 완료 처리 완료 (ID: {}) ===", appointmentId);
+    }
+
+    @Transactional
+    public Appointment cloneAppointment(Long oldAppointmentId, User user) {
+        log.info("=== 약속 복제 시작 ===");
+        log.info("기존 약속 ID: {}, 사용자 ID: {}", oldAppointmentId, user.getId());
+
+        // 기존 약속 조회
+        Appointment oldAppointment = appointmentRepository.findById(oldAppointmentId)
+                .orElseThrow(() -> new IllegalArgumentException("약속을 찾을 수 없습니다."));
+
+        // 본인의 약속인지 확인
+        if (!oldAppointment.getUser().getId().equals(user.getId())) {
+            throw new IllegalArgumentException("본인의 약속만 복제할 수 있습니다.");
+        }
+
+        // 진행 중인 약속이 있는지 검증
+        List<AppointmentStatus> activeStatuses = List.of(AppointmentStatus.PENDING, AppointmentStatus.ACCEPTED);
+        boolean hasActiveAppointment = appointmentRepository.existsByUserIdAndStatusIn(user.getId(), activeStatuses);
+
+        if (hasActiveAppointment) {
+            log.warn("이미 진행 중인 약속이 존재함 - 사용자 ID: {}", user.getId());
+            throw new IllegalStateException("이미 진행 중인 약속이 있습니다. 기존 약속을 완료하거나 취소해주세요.");
+        }
+
+        // 새로운 약속 생성
+        Appointment newAppointment = new Appointment();
+        newAppointment.setUser(user);
+        newAppointment.setStatus(AppointmentStatus.PENDING);
+
+        // 기존 약속의 미션과 장소 정보 복사
+        if (oldAppointment.getMissionTemplate() != null) {
+            newAppointment.updateMission(oldAppointment.getMissionTemplate());
+        }
+        if (oldAppointment.getPlace() != null) {
+            newAppointment.updatePlace(oldAppointment.getPlace());
+        }
+
+        // scheduledAt, proofImageUrl, proofComment는 null로 초기화 (기본값)
+        newAppointment.setScheduledAt(null);
+        newAppointment.setProofComment(null);
+        newAppointment.setProofImageUrl(null);
+
+        Appointment savedAppointment = appointmentRepository.save(newAppointment);
+        log.info("=== 약속 복제 완료 (새 약속 ID: {}) ===", savedAppointment.getId());
+
+        return savedAppointment;
     }
 }

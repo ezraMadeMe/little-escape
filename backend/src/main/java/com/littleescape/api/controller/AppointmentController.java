@@ -127,8 +127,27 @@ public class AppointmentController {
         User user = userRepository.findByOauthId(oauthId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        appointmentService.completeAppointment(user.getId(), id, request.comment());
+        appointmentService.completeAppointment(user.getId(), id, request.comment(), request.proofImageUrl());
 
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/clone")
+    public ResponseEntity<AppointmentDto> cloneAppointment(
+            @AuthenticationPrincipal String oauthId,
+            @PathVariable Long id) {
+
+        if (oauthId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        User user = userRepository.findByOauthId(oauthId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        Appointment newAppointment = appointmentService.cloneAppointment(id, user);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(AppointmentDto.from(newAppointment));
     }
 }

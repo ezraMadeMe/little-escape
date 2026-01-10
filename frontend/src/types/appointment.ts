@@ -11,7 +11,7 @@ export interface Appointment {
   id: number;
   userId?: number;
   missionId?: number;
-  missionTitle: string;
+  missionTitle?: string;
   status: AppointmentStatus;
   scheduledAt: string;
   createdAt: string;
@@ -23,5 +23,6 @@ export interface Appointment {
   missionImageUrl?: string;
   placeImageUrl?: string;
   proofComment?: string;
+  proofImageUrl?: string;
   visitCount?: number;
 }
