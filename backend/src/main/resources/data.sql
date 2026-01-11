@@ -52,3 +52,44 @@ WHERE NOT EXISTS (SELECT 1 FROM places WHERE name = '예술의전당');
 INSERT INTO places (name, address, url, latitude, longitude, category, created_at, updated_at)
 SELECT '인디 영화관 씨네큐브', '서울시 종로구 돈화문로 25', 'https://map.kakao.com', 37.5753, 127.0012, 'CULTURE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM places WHERE name = '인디 영화관 씨네큐브');
+
+-- Sample Mission Templates Data
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '공원 산책', '근처 공원에서 30분 이상 산책하기', 'ACTIVITY', 'EASY', '30분 이상 산책', NULL, 'OUTDOOR', 'ANY', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '공원 산책');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '심야 서점 방문', '밤늦게 서점에서 책 구경하기', 'CULTURE', 'MEDIUM', '22시 이후 방문', NULL, 'INDOOR', 'NIGHT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '심야 서점 방문');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '모닝 커피', '아침 일찍 카페에서 커피 한 잔', 'RELAX', 'EASY', '오전 6~9시 방문', NULL, 'INDOOR', 'MORNING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '모닝 커피');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '한강 자전거 타기', '한강공원에서 자전거 타기', 'ACTIVITY', 'MEDIUM', '30분 이상 자전거', NULL, 'OUTDOOR', 'AFTERNOON', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '한강 자전거 타기');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '박물관 탐방', '박물관에서 전시 관람하기', 'CULTURE', 'EASY', '1시간 이상 관람', NULL, 'INDOOR', 'ANY', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '박물관 탐방');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '새벽 운동', '새벽에 운동하기', 'ACTIVITY', 'HARD', '오전 5~7시 운동', NULL, 'ANY', 'MORNING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '새벽 운동');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '실내 클라이밍', '실내 클라이밍 체험하기', 'ACTIVITY', 'HARD', '1시간 이상 클라이밍', NULL, 'INDOOR', 'ANY', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '실내 클라이밍');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '야외 피크닉', '공원에서 피크닉 즐기기', 'RELAX', 'EASY', '1시간 이상 피크닉', NULL, 'OUTDOOR', 'AFTERNOON', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '야외 피크닉');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '심야 맛집 탐방', '밤늦게 맛집 방문하기', 'FOOD', 'MEDIUM', '21시 이후 방문', NULL, 'INDOOR', 'NIGHT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '심야 맛집 탐방');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
+SELECT '브런치 카페', '여유로운 브런치 즐기기', 'FOOD', 'EASY', '오전 10시~오후 2시', NULL, 'INDOOR', 'AFTERNOON', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '브런치 카페');

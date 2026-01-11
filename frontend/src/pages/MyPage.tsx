@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { getMyAppointments, cancelAppointment, completeAppointment, createAppointment } from '../api/appointmentApi';
 import { Appointment, AppointmentStatus } from '../types/appointment';
 import MissionCard from '../components/MissionCard';
+import { formatDateLocale, formatTimeLocale } from '../utils/dateUtils';
+import { format } from 'date-fns';
 
 function MyPage() {
   const navigate = useNavigate();
@@ -168,9 +170,11 @@ function MyPage() {
     try {
       setIsRescheduling(true);
       const dateTime = new Date(rescheduleDate);
-      const isoString = dateTime.toISOString();
+      const scheduledAt = format(dateTime, "yyyy-MM-dd'T'HH:mm:ss");
 
-      await createAppointment({ scheduledAt: isoString, missionId: rescheduleMissionId });
+      console.log("서버로 보내는 시간:", scheduledAt); // 확인용 로그
+
+      await createAppointment({ scheduledAt: scheduledAt, missionId: rescheduleMissionId });
       alert('약속이 다시 잡혔습니다!');
       closeRescheduleModal();
       await loadAppointments();
@@ -198,6 +202,42 @@ function MyPage() {
     loadAppointments();
   }, []);
 
+  // 약속 리스트 정렬 로직
+  const sortedAppointments = [...appointments].sort((a, b) => {
+    const aInProgress = a.status === AppointmentStatus.ACCEPTED || a.status === AppointmentStatus.PENDING;
+    const bInProgress = b.status === AppointmentStatus.ACCEPTED || b.status === AppointmentStatus.PENDING;
+    const aCompleted = a.status === AppointmentStatus.COMPLETED;
+    const bCompleted = b.status === AppointmentStatus.COMPLETED;
+    const aCancelled = a.status === AppointmentStatus.CANCELLED;
+    const bCancelled = b.status === AppointmentStatus.CANCELLED;
+
+    // 우선순위 1: 진행 중인 약속 (ACCEPTED or PENDING) -> 최상단
+    if (aInProgress && !bInProgress) return -1;
+    if (!aInProgress && bInProgress) return 1;
+
+    // 우선순위 2: COMPLETED -> 최신 날짜 순
+    if (aCompleted && bCompleted) {
+      return new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime();
+    }
+    if (aCompleted && !bCompleted && !bInProgress) return -1;
+    if (!aCompleted && bCompleted && !aInProgress) return 1;
+
+    // 우선순위 3: CANCELLED -> 최신 날짜 순
+    if (aCancelled && bCancelled) {
+      return new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime();
+    }
+    if (aCancelled && !bCancelled && !bInProgress && !bCompleted) return -1;
+    if (!aCancelled && bCancelled && !aInProgress && !aCompleted) return 1;
+
+    // 같은 우선순위 내에서는 날짜 순
+    return new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime();
+  });
+
+  // 진행 중인 약속이 있는지 확인
+  const hasInProgressAppointment = appointments.some(
+    appointment => appointment.status === AppointmentStatus.ACCEPTED || appointment.status === AppointmentStatus.PENDING
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -215,29 +255,41 @@ function MyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-6 pb-32">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-10">
-          <h1 className="text-3xl font-bold text-gray-900">
-            나의 일탈 기록
-          </h1>
+    <div className="min-h-screen bg-white pb-32">
+      {/* 헤더 섹션 - 좌우 패딩 유지 */}
+      <div className="bg-white border-b border-gray-200 py-6 px-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex justify-between items-center">
+            <h1 className="text-3xl font-bold text-gray-900">
+              나의 일탈 기록
+            </h1>
+            {!hasInProgressAppointment && (
+              <button
+                onClick={() => navigate('/')}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 px-6 transition-all duration-200"
+              >
+                새로운 일탈 찾기
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 매직 링크 버튼 - 좌우 패딩 유지 */}
+      <div className="px-6 py-4 border-b border-gray-200">
+        <div className="max-w-4xl mx-auto">
           <button
-            onClick={() => navigate('/')}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 px-6 rounded-xl shadow-md hover:shadow-lg transition-all duration-200"
+            onClick={sendMagicLink}
+            className="bg-green-500 text-white px-4 py-2"
           >
-            새로운 일탈 찾기
+            매직 링크 나에게 보내기 (돈나감주의)
           </button>
         </div>
+      </div>
 
-        <button
-          onClick={sendMagicLink}
-          className="bg-green-500 text-white px-4 py-2 rounded mt-4"
-        >
-          매직 링크 나에게 보내기 (돈나감주의)
-        </button>
-
-        {/* 친구 초대하기 섹션 */}
-        <div className="bg-white rounded-2xl shadow-md p-8 mt-8">
+      {/* 친구 초대하기 섹션 - 좌우 패딩 유지 */}
+      <div className="bg-white border-b border-gray-200 p-6">
+        <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
             좋은 건 같이 해요 💌
           </h2>
@@ -253,21 +305,24 @@ function MyPage() {
                 setInvitePhoneNumber(value);
               }}
               placeholder="전화번호 (숫자만 입력)"
-              className="flex-1 h-14 px-5 text-lg border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 outline-none"
+              className="flex-1 h-14 px-5 text-lg border-2 border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all duration-200 outline-none"
               disabled={isSendingInvite}
             />
             <button
               onClick={sendInvite}
               disabled={isSendingInvite || !invitePhoneNumber.trim()}
-              className="h-14 px-8 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              className="h-14 px-8 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
             >
               {isSendingInvite ? '전송 중...' : '초대장 보내기'}
             </button>
           </div>
         </div>
+      </div>
 
+      {/* 약속 리스트 - 패딩과 간격 완전히 제거 (인스타 피드 스타일) */}
+      <div className="max-w-4xl mx-auto">
         {appointments.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-md p-12 text-center">
+          <div className="bg-white p-12 text-center border-b border-gray-200">
             <p className="text-xl text-gray-500 font-medium">아직 예정된 일탈이 없습니다.</p>
             <p className="text-base text-gray-400 mt-2">
               홈에서 시간을 먼저 확보해보세요!
@@ -275,28 +330,39 @@ function MyPage() {
           </div>
         ) : (
           <div>
-            {appointments.map((appointment) => {
-              // 미션이 선택되지 않은 경우
+            {sortedAppointments.map((appointment) => {
+              // 우선순위 1: 취소된 약속은 미션 선택 여부와 관계없이 MissionCard로 렌더링
+              if (appointment.status === AppointmentStatus.CANCELLED) {
+                return (
+                  <MissionCard
+                    key={appointment.id}
+                    appointment={appointment}
+                    count={appointment.visitCount}
+                  />
+                );
+              }
+
+              // 우선순위 2: 미션이 선택되지 않은 경우 (PENDING/ACCEPTED만 해당)
               if (!appointment.missionTitle) {
                 return (
                   <div
                     key={appointment.id}
-                    className="relative w-full overflow-hidden rounded-3xl shadow-lg bg-gradient-to-br from-purple-100 to-indigo-100 border-2 border-dashed border-purple-300"
+                    className="w-full bg-gradient-to-br from-purple-100 to-indigo-100 border-b-2 border-dashed border-purple-300"
                   >
-                    <div className="relative z-10 flex flex-col items-center justify-center p-8 text-center min-h-[18rem]">
+                    <div className="flex flex-col items-center justify-center p-8 text-center min-h-[18rem]">
                       <div className="text-6xl mb-4">❓</div>
                       <h3 className="text-2xl font-bold text-gray-800 mb-3">
                         아직 할 일이 정해지지 않았어요
                       </h3>
                       <p className="text-gray-600 mb-2 text-lg">
-                        {new Date(appointment.scheduledAt).toLocaleDateString()} {new Date(appointment.scheduledAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                        {formatDateLocale(appointment.scheduledAt)} {formatTimeLocale(appointment.scheduledAt)}
                       </p>
                       <p className="text-base text-gray-500 mb-8">
                         지금 바로 미션을 골라보세요!
                       </p>
                       <button
                         onClick={() => navigate(`/pick-mission/${appointment.id}`)}
-                        className="h-14 px-10 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xl rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200"
+                        className="h-14 px-10 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xl transition-all duration-200"
                       >
                         오늘의 일탈 고르기
                       </button>
@@ -316,7 +382,7 @@ function MyPage() {
                 );
               }
 
-              // 모든 미션이 선택된 약속 - MissionCard 사용
+              // 우선순위 3: 미션이 선택된 약속 - MissionCard 사용
               return (
                 <MissionCard
                   key={appointment.id}

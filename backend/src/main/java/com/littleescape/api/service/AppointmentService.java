@@ -205,6 +205,8 @@ public class AppointmentService {
                             null, null, // images
                             appointment.getProofComment(),
                             null, // proofImageUrl
+                            null, 
+                            null, 
                             0L // visitCount
                         );
                     }
@@ -231,7 +233,9 @@ public class AppointmentService {
     }
 
     @Transactional
-    public void completeAppointment(Long userId, Long appointmentId, String comment, String proofImageUrl) {
+    public void completeAppointment(Long userId, Long appointmentId,
+                                    java.util.List<org.springframework.web.multipart.MultipartFile> files,
+                                    com.littleescape.api.dto.AppointmentCompleteRequest request) {
         log.info("=== 약속 완료 처리 시작 ===");
         log.info("사용자 ID: {}, 약속 ID: {}", userId, appointmentId);
 
@@ -247,17 +251,94 @@ public class AppointmentService {
             throw new RuntimeException("미션을 먼저 선택해주세요.");
         }
 
+        // 이미지 파일 처리 - 로컬 uploads/ 폴더에 저장
+        java.util.List<String> imageUrls = new java.util.ArrayList<>();
+        if (files != null && !files.isEmpty()) {
+            log.info("업로드된 파일 개수: {}", files.size());
+
+            // 1. 저장할 기본 경로 설정 (프로젝트 루트/uploads)
+            String projectPath = System.getProperty("user.dir");
+            String uploadDirPath = projectPath + java.io.File.separator + "uploads";
+            java.io.File directory = new java.io.File(uploadDirPath);
+
+            log.info("프로젝트 경로: {}", projectPath);
+            log.info("업로드 디렉토리 경로: {}", uploadDirPath);
+
+            // 2. ⭐ 핵심: 폴더가 없으면 생성
+            if (!directory.exists()) {
+                boolean created = directory.mkdirs();
+                if (!created) {
+                    log.error("디렉토리 생성 실패: {}", uploadDirPath);
+                    throw new RuntimeException("파일 저장 디렉토리 생성에 실패했습니다.");
+                }
+                log.info("uploads 디렉토리 생성 완료: {}", directory.getAbsolutePath());
+            } else {
+                log.info("uploads 디렉토리 이미 존재함: {}", directory.getAbsolutePath());
+            }
+
+            // 3. 각 파일 저장
+            for (org.springframework.web.multipart.MultipartFile file : files) {
+                if (file.isEmpty()) {
+                    log.warn("빈 파일 건너뜀");
+                    continue;
+                }
+
+                try {
+                    // 원본 파일명 및 확장자 추출
+                    String originalFilename = file.getOriginalFilename();
+                    String extension = (originalFilename != null && originalFilename.contains("."))
+                            ? originalFilename.substring(originalFilename.lastIndexOf("."))
+                            : ".jpg";
+
+                    // UUID로 고유 파일명 생성
+                    String savedFileName = java.util.UUID.randomUUID().toString() + extension;
+                    java.io.File dest = new java.io.File(directory, savedFileName);
+
+                    log.info("파일 저장 시도: {} -> {}", originalFilename, dest.getAbsolutePath());
+
+                    // 4. 파일 저장
+                    file.transferTo(dest);
+
+                    // 5. DB에 저장할 접근 URL 생성 (예: /uploads/uuid.jpg)
+                    // (WebConfig에서 /uploads/** 경로를 이 폴더로 매핑해줘야 함)
+                    String fileUrl = "/uploads/" + savedFileName;
+                    imageUrls.add(fileUrl);
+
+                    log.info("파일 저장 완료: {} -> {}", originalFilename, fileUrl);
+                } catch (java.io.IOException e) {
+                    log.error("파일 저장 중 오류 발생: {}", file.getOriginalFilename(), e);
+                    throw new RuntimeException("파일 저장에 실패했습니다: " + file.getOriginalFilename(), e);
+                }
+            }
+
+            log.info("총 {}개 파일 저장 완료", imageUrls.size());
+        }
+
         // null-safe 로깅
         MissionTemplate mission = appointment.getMissionTemplate();
         Place place = appointment.getPlace();
         String missionTitle = mission.getTitle();
         String placeName = (place != null) ? place.getName() : "장소 미정";
 
-        log.info("완료할 약속 정보 - 미션: {}, 장소: {}, 증명 이미지: {}", missionTitle, placeName, proofImageUrl);
+        log.info("완료할 약속 정보 - 미션: {}, 장소: {}, 키워드: {}, 이미지 개수: {}",
+                 missionTitle, placeName, request.reviewKeywords(), imageUrls.size());
 
+        // 약속 완료 처리
         appointment.setStatus(AppointmentStatus.COMPLETED);
-        appointment.setProofComment(comment);
-        appointment.setProofImageUrl(proofImageUrl);
+        appointment.setProofComment(request.proofComment());
+
+        // 다중 이미지 URL 저장
+        appointment.getProofImageUrls().clear();
+        appointment.getProofImageUrls().addAll(imageUrls);
+
+        // 하위 호환성을 위해 첫 번째 이미지를 기존 필드에도 저장
+        if (!imageUrls.isEmpty()) {
+            appointment.setProofImageUrl(imageUrls.get(0));
+        }
+
+        // 키워드 저장
+        appointment.getReviewKeywords().clear();
+        appointment.getReviewKeywords().addAll(request.reviewKeywords());
 
         log.info("=== 약속 완료 처리 완료 (ID: {}) ===", appointmentId);
     }
@@ -290,7 +371,7 @@ public class AppointmentService {
         newAppointment.setUser(user);
         newAppointment.setStatus(AppointmentStatus.PENDING);
 
-        // 기존 약속의 미션과 장소 정보 복사
+        // 기존 약속의 미션, 장소, 시간 정보 복사
         if (oldAppointment.getMissionTemplate() != null) {
             newAppointment.updateMission(oldAppointment.getMissionTemplate());
         }
@@ -298,8 +379,10 @@ public class AppointmentService {
             newAppointment.updatePlace(oldAppointment.getPlace());
         }
 
-        // scheduledAt, proofImageUrl, proofComment는 null로 초기화 (기본값)
-        newAppointment.setScheduledAt(null);
+        // scheduledAt은 기존 약속의 시간을 복사 (NOT NULL 제약조건)
+        newAppointment.setScheduledAt(oldAppointment.getScheduledAt());
+
+        // proofImageUrl, proofComment는 null로 초기화 (새로운 인증을 위해)
         newAppointment.setProofComment(null);
         newAppointment.setProofImageUrl(null);
 

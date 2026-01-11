@@ -1,13 +1,14 @@
 package com.littleescape.api.dto;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
-public record AppointmentCompleteRequest(
-    @NotBlank(message = "증명 이미지 URL은 필수입니다")
-    @Size(max = 500, message = "증명 이미지 URL은 500자 이하여야 합니다")
-    String proofImageUrl,
+import java.util.List;
 
-    String comment
+public record AppointmentCompleteRequest(
+    String proofComment,
+
+    @NotEmpty(message = "최소 1개 이상의 감성 키워드를 선택해주세요")
+    List<String> reviewKeywords
 ) {
 }

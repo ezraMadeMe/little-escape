@@ -1,6 +1,8 @@
 package com.littleescape.api.domain;
 
+import com.littleescape.api.domain.type.LocationType;
 import com.littleescape.api.domain.type.MissionCategory;
+import com.littleescape.api.domain.type.TimeOfDay;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -33,4 +35,12 @@ public class MissionTemplate extends BaseTimeEntity {
 
     @Column(name = "image_url", length = 500)
     private String imageUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_type", nullable = false)
+    private LocationType locationType = LocationType.ANY;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "time_of_day", nullable = false)
+    private TimeOfDay timeOfDay = TimeOfDay.ANY;
 }

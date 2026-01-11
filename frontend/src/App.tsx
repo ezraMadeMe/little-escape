@@ -5,6 +5,7 @@ import OAuthCallback from './pages/OAuthCallback';
 import MyPage from './pages/MyPage';
 import PickMission from './pages/PickMission';
 import MissionDetail from './pages/MissionDetail';
+import MissionProof from './pages/MissionProof';
 import LoginPage from './pages/LoginPage';
 import Header from './components/Header';
 import MagicLogin from './pages/MagicLogin';
@@ -54,6 +55,11 @@ const AppContent = () => {
           <Route path="/mission/:appointmentId" element={
             <ProtectedRoute>
               <MissionDetail />
+            </ProtectedRoute>
+          } />
+          <Route path="/mission-proof/:appointmentId" element={
+            <ProtectedRoute>
+              <MissionProof />
             </ProtectedRoute>
           } />
         </Routes>

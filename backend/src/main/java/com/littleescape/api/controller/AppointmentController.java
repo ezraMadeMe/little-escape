@@ -12,13 +12,16 @@ import com.littleescape.api.repository.UserRepository;
 import com.littleescape.api.service.AppointmentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/appointments")
 @RequiredArgsConstructor
@@ -114,11 +117,21 @@ public class AppointmentController {
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/{id}/complete")
+    @PostMapping(value = "/{id}/complete", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> completeAppointment(
             @AuthenticationPrincipal String oauthId,
             @PathVariable Long id,
-            @Valid @RequestBody AppointmentCompleteRequest request) {
+            @RequestPart(value = "files", required = false) List<org.springframework.web.multipart.MultipartFile> files,
+            @Valid @RequestPart("request") AppointmentCompleteRequest request) {
+
+        log.info("요청 수신됨: ID = {}", id);
+        log.info("수신된 DTO 객체: {}", request);
+        if (files != null) {
+            log.info("수신된 파일 개수: {}", files.size());
+            files.forEach(file -> log.info("파일 원본 이름: {}", file.getOriginalFilename()));
+        } else {
+            log.info("수신된 파일 리스트가 null입니다.");
+        }
 
         if (oauthId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -127,7 +140,7 @@ public class AppointmentController {
         User user = userRepository.findByOauthId(oauthId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
-        appointmentService.completeAppointment(user.getId(), id, request.comment(), request.proofImageUrl());
+        appointmentService.completeAppointment(user.getId(), id, files, request);
 
         return ResponseEntity.ok().build();
     }
