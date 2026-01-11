@@ -4,6 +4,7 @@ import com.littleescape.api.domain.Appointment;
 import com.littleescape.api.domain.type.AppointmentStatus;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record AppointmentResponse(
     Long id,
@@ -22,7 +23,10 @@ public record AppointmentResponse(
     String placeImageUrl,
     // 완료 인증 필드
     String proofComment,
-    String proofImageUrl,
+    @Deprecated
+    String proofImageUrl,  // 하위 호환성을 위해 유지
+    List<String> proofImageUrls,  // 다중 이미지 URL
+    List<String> reviewKeywords,  // 감성 키워드
     // 방문 횟수
     Long visitCount
 ) {
@@ -48,7 +52,9 @@ public record AppointmentResponse(
             hasPlace ? appointment.getPlace().getImageUrl() : null,
             // 완료 인증 정보
             appointment.getProofComment(),
-            appointment.getProofImageUrl(),
+            appointment.getProofImageUrl(),  // 하위 호환성
+            appointment.getProofImageUrls() != null ? appointment.getProofImageUrls() : List.of(),  // 다중 이미지
+            appointment.getReviewKeywords() != null ? appointment.getReviewKeywords() : List.of(),  // 키워드
             // 방문 횟수 (계산된 값)
             visitCount
         );

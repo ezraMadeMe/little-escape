@@ -39,8 +39,19 @@ public class Appointment extends BaseTimeEntity {
     @Column(name = "proof_comment", columnDefinition = "TEXT")
     private String proofComment;
 
+    @Deprecated
     @Column(name = "proof_image_url", length = 500)
     private String proofImageUrl;
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "appointment_proof_images", joinColumns = @JoinColumn(name = "appointment_id"))
+    @Column(name = "image_url", length = 500)
+    private java.util.List<String> proofImageUrls = new java.util.ArrayList<>();
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "appointment_review_keywords", joinColumns = @JoinColumn(name = "appointment_id"))
+    @Column(name = "keyword")
+    private java.util.List<String> reviewKeywords = new java.util.ArrayList<>();
 
     // 비즈니스 로직 메서드
     public void cancel() {

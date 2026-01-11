@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Slider from 'react-slick';
 import { Appointment, AppointmentStatus } from '../types/appointment';
-import { cloneAppointment } from '../api/appointmentApi';
+import { cloneAppointment, cancelAppointment } from '../api/appointmentApi';
+import { formatDate, formatTime, formatDateTime, calculateDday } from '../utils/dateUtils';
 import 'slick-carousel/slick/slick.css';
 import 'slick-carousel/slick/slick-theme.css';
 
@@ -11,9 +12,19 @@ interface MissionCardProps {
   count?: number;
 }
 
+// URL 처리 헬퍼 함수
+const getFullImageUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  // 상대 경로인 경우 API Base URL을 붙임
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+  return `${BASE_URL}${url}`;
+};
+
 const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
   const navigate = useNavigate();
   const [isCloning, setIsCloning] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const handleClone = async () => {
     try {
@@ -32,6 +43,39 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
     }
   };
 
+  const handleCancel = async () => {
+    if (!confirm('정말 이 약속을 취소하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      setIsCancelling(true);
+      await cancelAppointment(appointment.id);
+      alert('약속이 취소되었습니다.');
+      window.location.reload();
+    } catch (error) {
+      console.error('약속 취소 실패:', error);
+      alert('약속 취소에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const handleViewDetail = () => {
+    navigate(`/mission/${appointment.id}`);
+  };
+
+  const handleProofSubmit = () => {
+    navigate(`/mission-proof/${appointment.id}`);
+  };
+
+  // 약속 시간이 도래했는지 확인
+  const isAppointmentTimeReached = () => {
+    const now = new Date();
+    const scheduledTime = new Date(appointment.scheduledAt);
+    return now >= scheduledTime;
+  };
+
   const sliderSettings = {
     dots: true,
     infinite: false,
@@ -39,46 +83,6 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
     slidesToShow: 1,
     slidesToScroll: 1,
     arrows: false,
-  };
-
-  // 날짜 포맷팅 함수
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}/${month}/${day}`;
-  };
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
-  };
-
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}년 ${month}월 ${day}일 ${hours}:${minutes}`;
-  };
-
-  // D-Day 계산
-  const calculateDday = (scheduledAt: string) => {
-    const scheduled = new Date(scheduledAt);
-    const today = new Date();
-    scheduled.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
-    const diffTime = scheduled.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'D-Day';
-    if (diffDays > 0) return `D-${diffDays}`;
-    return `D+${Math.abs(diffDays)}`;
   };
 
   // 헤더 우측 렌더링
@@ -117,40 +121,49 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
 
   // 바디(이미지) 영역 렌더링
   const renderCardBody = () => {
-    // 취소된 약속은 이미지 영역을 렌더링하지 않음
-    if (appointment.status === AppointmentStatus.CANCELLED) {
+    // 취소된 약속 또는 미션이 정해지지 않은 약속은 이미지 영역을 렌더링하지 않음
+    if (appointment.status === AppointmentStatus.CANCELLED || !appointment.missionTitle) {
       return null;
     }
 
     if (appointment.status === AppointmentStatus.COMPLETED) {
       // 완료: 인증샷 슬라이더
-      const images = appointment.proofImageUrl ? [appointment.proofImageUrl] : [];
+      // 우선순위: proofImageUrls (다중) > proofImageUrl (단일, 하위 호환)
+      let images: string[] = [];
+
+      if (appointment.proofImageUrls && appointment.proofImageUrls.length > 0) {
+        images = appointment.proofImageUrls;
+      } else if (appointment.proofImageUrl) {
+        images = [appointment.proofImageUrl];
+      }
 
       if (images.length === 0) {
         return (
-          <div className="aspect-square bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
+          <div className="w-full aspect-square bg-gradient-to-br from-purple-100 to-pink-100 flex items-center justify-center">
             <span className="text-6xl">✅</span>
           </div>
         );
       }
 
       return (
-        <div className="aspect-square bg-gray-100">
+        <div className="w-full aspect-square bg-gray-100 overflow-hidden relative">
           {images.length === 1 ? (
             <img
-              src={images[0]}
+              src={getFullImageUrl(images[0])}
               alt="인증 사진"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover block"
             />
           ) : (
-            <Slider {...sliderSettings}>
+            <Slider {...sliderSettings} className="h-full">
               {images.map((image, index) => (
-                <div key={index} className="aspect-square">
-                  <img
-                    src={image}
-                    alt={`인증 사진 ${index + 1}`}
-                    className="w-full h-full object-cover"
-                  />
+                <div key={index} className="w-full h-full">
+                  <div className="aspect-square">
+                    <img
+                      src={getFullImageUrl(image)}
+                      alt={`인증샷-${index + 1}`}
+                      className="w-full h-full object-cover block"
+                    />
+                  </div>
                 </div>
               ))}
             </Slider>
@@ -164,7 +177,7 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
 
     if (displayImage) {
       return (
-        <div className="aspect-square bg-gray-100 relative">
+        <div className="w-full aspect-square bg-gray-100 relative">
           <img
             src={displayImage}
             alt="미션 이미지"
@@ -184,7 +197,7 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
 
     // 이미지가 없는 경우: 그라디언트 배경에 시간 표시
     return (
-      <div className="aspect-square bg-gradient-to-br from-purple-400 via-pink-400 to-orange-400 flex items-center justify-center">
+      <div className="w-full aspect-square bg-gradient-to-br from-purple-400 via-pink-400 to-orange-400 flex items-center justify-center">
         <div className="text-center text-white">
           <div className="text-6xl font-bold drop-shadow-2xl mb-2">
             {formatTime(appointment.scheduledAt)}
@@ -204,10 +217,28 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
         <button
           onClick={handleClone}
           disabled={isCloning}
-          className="w-full py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3 bg-purple-600 text-white font-semibold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isCloning ? '처리 중...' : '이 약속 다시 지키러 가기'}
+          {isCloning ? '처리 중...' : '🔄 이 약속 다시 지키러 가기'}
         </button>
+      );
+    }
+
+    // 미션이 정해지지 않은 약속 (PENDING/ACCEPTED)
+    if (!appointment.missionTitle &&
+        (appointment.status === AppointmentStatus.PENDING || appointment.status === AppointmentStatus.ACCEPTED)) {
+      return (
+        <div>
+          <div className="text-sm text-gray-600 mb-3">
+            {formatDateTime(appointment.scheduledAt)}
+          </div>
+          <button
+            onClick={() => navigate(`/pick-mission/${appointment.id}`)}
+            className="w-full py-3 bg-purple-600 text-white font-semibold hover:bg-purple-700 transition"
+          >
+            미션 선택하러 가기
+          </button>
+        </div>
       );
     }
 
@@ -228,6 +259,20 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
             </button>
           </div>
 
+          {/* 감성 키워드 */}
+          {appointment.reviewKeywords && appointment.reviewKeywords.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {appointment.reviewKeywords.map((keyword, index) => (
+                <span
+                  key={index}
+                  className="px-3 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full"
+                >
+                  {keyword}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* 한줄평 */}
           {appointment.proofComment && (
             <div className="text-sm mb-2">
@@ -247,6 +292,8 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
     }
 
     // ACCEPTED or PENDING
+    const timeReached = isAppointmentTimeReached();
+
     return (
       <div>
         {/* 장소명 */}
@@ -257,14 +304,61 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
         )}
 
         {/* 날짜/시간 */}
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-gray-600 mb-3">
           {formatDateTime(appointment.scheduledAt)}
         </div>
 
         {/* 장소 주소 */}
         {appointment.placeAddress && (
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-gray-500 mb-3">
             {appointment.placeAddress}
+          </div>
+        )}
+
+        {/* 액션 버튼들 */}
+        {timeReached ? (
+          // Case B: 약속 시간 도래/지남 - 버튼 3개
+          <div>
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={handleViewDetail}
+                className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition"
+              >
+                상세보기
+              </button>
+              <button
+                onClick={handleProofSubmit}
+                className="flex-1 py-2.5 bg-blue-600 text-white font-semibold hover:bg-blue-700 transition"
+              >
+                ✨ 미션 인증하기
+              </button>
+            </div>
+            <button
+              onClick={handleCancel}
+              disabled={isCancelling}
+              className="w-full text-xs text-gray-400 hover:text-red-500 underline transition disabled:opacity-50"
+            >
+              {isCancelling ? '취소 중...' : '약속 취소'}
+            </button>
+          </div>
+        ) : (
+          // Case A: 약속 시간 전 - 버튼 2개
+          <div>
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={handleViewDetail}
+                className="flex-1 py-2.5 bg-white border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition"
+              >
+                상세보기
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={isCancelling}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-600 font-semibold hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCancelling ? '취소 중...' : '약속 취소'}
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -277,10 +371,12 @@ const MissionCard = ({ appointment, count = 1 }: MissionCardProps) => {
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-            <span className="text-lg">🎯</span>
+            <span className="text-lg">
+              {appointment.missionTitle ? '🎯' : '❓'}
+            </span>
           </div>
           <span className="font-bold text-gray-900">
-            {appointment.missionTitle || '미션 미선택'}
+            {appointment.missionTitle || (appointment.status === AppointmentStatus.CANCELLED ? '미션 선택 전 취소' : '미션 미선택')}
           </span>
         </div>
 

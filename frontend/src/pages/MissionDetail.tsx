@@ -167,7 +167,7 @@ function MissionDetail() {
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-gray-900">
-      {/* 배경 이미지 */}
+      {/* 배경 이미지 - 화면 가로폭 꽉 채움 */}
       <div
         className="absolute inset-0 bg-cover bg-center transition-all duration-700"
         style={{
@@ -186,7 +186,7 @@ function MissionDetail() {
         <div className="flex items-center justify-between mb-8">
           <button
             onClick={() => navigate('/mypage')}
-            className="text-white/90 hover:text-white transition-colors flex items-center gap-2 p-2 -ml-2 rounded-lg hover:bg-white/10"
+            className="text-white/90 hover:text-white transition-colors flex items-center gap-2 p-2 -ml-2 hover:bg-white/10"
           >
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -194,8 +194,8 @@ function MissionDetail() {
             <span className="text-base font-bold">나의 기록으로</span>
           </button>
 
-          {/* D-Day 카운터 */}
-          <div className="bg-white/10 backdrop-blur-md px-5 py-2 rounded-full border border-white/20 shadow-lg">
+          {/* D-Day 카운터 - 직각 디자인 */}
+          <div className="bg-white/10 backdrop-blur-md px-5 py-2 border border-white/20">
             <span className="text-white font-bold text-lg tracking-wide">
               {getDdayText(appointment.scheduledAt)}
             </span>
@@ -207,11 +207,11 @@ function MissionDetail() {
           <h1 className="text-3xl font-bold text-white mb-4 drop-shadow-xl leading-tight px-4">
             {appointment.missionTitle || '미션 미선택'}
           </h1>
-          
+
           {!unlocked && (
             <button
               onClick={() => navigate(`/pick-mission/${appointmentId}`)}
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2.5 rounded-full text-base text-white/90 transition-colors backdrop-blur-sm border border-white/10 mb-4 shadow-sm"
+              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2.5 text-base text-white/90 transition-colors backdrop-blur-sm border border-white/10 mb-4"
             >
               <span>🔄 다른 일탈 찾아보기</span>
             </button>
@@ -230,8 +230,8 @@ function MissionDetail() {
         </div>
       </div>
 
-      {/* 하단 Glassmorphism 패널 */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white/10 backdrop-blur-xl border-t border-white/20 rounded-t-3xl shadow-[0_-8px_32px_rgba(0,0,0,0.5)]">
+      {/* 하단 패널 - 직각 디자인 */}
+      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white/10 backdrop-blur-xl border-t border-white/20">
         {/* 탭 헤더 */}
         <div className="flex border-b border-white/10">
           <button
@@ -277,7 +277,7 @@ function MissionDetail() {
                 </p>
               </div>
 
-              <div className="bg-white/5 rounded-2xl p-6 border border-white/10 shadow-inner">
+              <div className="bg-white/5 p-6 border-b border-white/10">
                 <h3 className="text-white font-bold text-xl mb-3">미션 설명</h3>
                 <p className="text-white/90 leading-relaxed text-lg">
                   {appointment.missionTitle
@@ -286,7 +286,7 @@ function MissionDetail() {
                 </p>
               </div>
 
-              <div className="bg-white/5 rounded-2xl p-6 border border-white/10 shadow-inner">
+              <div className="bg-white/5 p-6 border-b border-white/10">
                 <h3 className="text-white font-bold text-xl mb-3">수행 조건</h3>
                 <ul className="text-white/90 space-y-3 text-lg">
                   <li>• 약속 시간에 지정된 장소를 방문하세요</li>
@@ -296,7 +296,7 @@ function MissionDetail() {
               </div>
 
               {appointment.visitCount && appointment.visitCount > 1 && (
-                <div className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 rounded-2xl p-5 border border-amber-500/30 text-center">
+                <div className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 p-5 border border-amber-500/30 text-center">
                   <p className="text-amber-200 font-bold text-lg">
                     🏅 {appointment.visitCount}번째 만남입니다!
                   </p>
@@ -315,7 +315,7 @@ function MissionDetail() {
                   <p className="text-white/80 text-lg">
                     당일에 공개됩니다. 조금만 기다려주세요!
                   </p>
-                  <div className="mt-10 bg-white/5 rounded-2xl p-5 border border-white/10">
+                  <div className="mt-10 bg-white/5 p-5 border border-white/10">
                     <p className="text-white/70 text-base">
                       D-Day가 되면 이곳에 장소 정보가 표시됩니다
                     </p>
@@ -323,7 +323,7 @@ function MissionDetail() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="bg-white/10 rounded-2xl p-6 border border-white/20 shadow-lg">
+                  <div className="bg-white/10 p-6 border-b border-white/20">
                     <h3 className="text-white font-bold text-2xl mb-3">
                       {appointment.placeName || '장소 정보 없음'}
                     </h3>
@@ -336,7 +336,7 @@ function MissionDetail() {
                         href={appointment.placeUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center w-full h-14 bg-white/90 hover:bg-white text-gray-900 font-bold text-lg rounded-2xl transition-all shadow-lg"
+                        className="flex items-center justify-center w-full h-14 bg-white/90 hover:bg-white text-gray-900 font-bold text-lg transition-all"
                       >
                         🗺️ 비밀 장소 확인하기
                       </a>
@@ -344,7 +344,7 @@ function MissionDetail() {
                   </div>
 
                   {appointment.placeImageUrl && (
-                    <div className="rounded-2xl overflow-hidden border border-white/20 shadow-lg">
+                    <div className="w-full overflow-hidden border-b border-white/20">
                       <img
                         src={appointment.placeImageUrl}
                         alt={appointment.placeName || '장소'}
@@ -375,12 +375,11 @@ function MissionDetail() {
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED'}
-                    className="relative w-full h-72 bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-2 border-dashed border-white/30 rounded-3xl hover:border-white/50 hover:from-purple-500/30 hover:to-pink-500/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden group"
+                    className="relative w-full h-72 bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-2 border-dashed border-white/30 hover:border-white/50 hover:from-purple-500/30 hover:to-pink-500/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden group"
                   >
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
                       <div className="relative">
-                        <div className="absolute inset-0 bg-white/20 rounded-full blur-xl group-hover:blur-2xl transition-all" />
-                        <div className="relative w-20 h-20 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform">
+                        <div className="relative w-20 h-20 bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform">
                           <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -394,7 +393,7 @@ function MissionDetail() {
                     </div>
                   </button>
                 ) : (
-                  <div className="relative w-full h-96 rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl group">
+                  <div className="relative w-full h-96 overflow-hidden border-2 border-white/20 group">
                     <img
                       src={previewUrl}
                       alt="Preview"
@@ -403,7 +402,7 @@ function MissionDetail() {
                     {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
                       <button
                         onClick={handleRemoveImage}
-                        className="absolute top-4 right-4 w-10 h-10 bg-black/50 backdrop-blur-sm hover:bg-black/70 rounded-full flex items-center justify-center transition-all border border-white/20 opacity-0 group-hover:opacity-100"
+                        className="absolute top-4 right-4 w-10 h-10 bg-black/50 backdrop-blur-sm hover:bg-black/70 flex items-center justify-center transition-all border border-white/20 opacity-0 group-hover:opacity-100"
                       >
                         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -422,7 +421,7 @@ function MissionDetail() {
                   onChange={(e) => setProofComment(e.target.value)}
                   placeholder="오늘의 작은 일탈은 어땠나요?"
                   disabled={appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED'}
-                  className="w-full h-40 px-5 py-4 bg-white/10 border border-white/20 rounded-2xl text-white text-lg placeholder-white/40 focus:bg-white/20 focus:border-white/40 transition-all outline-none resize-none disabled:opacity-50"
+                  className="w-full h-40 px-5 py-4 bg-white/10 border border-white/20 text-white text-lg placeholder-white/40 focus:bg-white/20 focus:border-white/40 transition-all outline-none resize-none disabled:opacity-50"
                 />
               </div>
 
@@ -431,7 +430,7 @@ function MissionDetail() {
                 <button
                   onClick={handleComplete}
                   disabled={isUploading || !proofImageFile}
-                  className="w-full h-16 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl rounded-2xl shadow-2xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 relative overflow-hidden group"
+                  className="w-full h-16 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 relative overflow-hidden group"
                 >
                   {isUploading ? (
                     <>
@@ -453,14 +452,14 @@ function MissionDetail() {
               {/* Completed Status */}
               {appointment.status === 'COMPLETED' && (
                 <div className="space-y-4">
-                  <div className="bg-green-500/20 border border-green-500/30 rounded-2xl p-6 text-center shadow-lg">
+                  <div className="bg-green-500/20 border border-green-500/30 p-6 text-center">
                     <p className="text-green-200 font-bold text-xl mb-2">✅ 완료된 미션입니다</p>
                     {appointment.proofComment && (
                       <p className="text-green-100 text-lg italic mt-3">"{appointment.proofComment}"</p>
                     )}
                   </div>
                   {appointment.proofImageUrl && (
-                    <div className="rounded-2xl overflow-hidden border border-white/20 shadow-lg">
+                    <div className="w-full overflow-hidden border border-white/20">
                       <img
                         src={appointment.proofImageUrl}
                         alt="Proof"

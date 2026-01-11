@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { createAppointment, getMyAppointments } from '../api/appointmentApi';
 import { getMyInfo } from '../api/userApi';
 import { AppointmentStatus } from '../types/appointment';
+import { format } from 'date-fns';
 
 function MissionList() {
   const navigate = useNavigate();
@@ -43,9 +44,11 @@ function MissionList() {
       setIsCreating(true);
 
       const dateTime = new Date(scheduledAt);
-      const isoString = dateTime.toISOString();
+      const scheduledAtString = format(dateTime, "yyyy-MM-dd'T'HH:mm:ss");
 
-      const appointment = await createAppointment({ scheduledAt: isoString });
+      console.log("서버로 보내는 시간:", scheduledAtString); // 확인용 로그
+
+      const appointment = await createAppointment({ scheduledAt: scheduledAtString });
 
       navigate(`/pick-mission/${appointment.id}`);
     } catch (err) {

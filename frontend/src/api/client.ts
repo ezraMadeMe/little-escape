@@ -20,6 +20,15 @@ export async function apiFetch<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // --- Request Logging Start ---
+  console.log('API Request - URL:', `${API_BASE_URL}${endpoint}`);
+  console.log('API Request - Method:', options.method || 'GET');
+  console.log('API Request - Headers:', headers);
+  if (options.body) {
+    console.log('API Request - Body:', options.body);
+  }
+  // --- Request Logging End ---
+
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,

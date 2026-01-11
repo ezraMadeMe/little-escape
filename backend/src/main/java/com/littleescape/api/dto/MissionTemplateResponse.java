@@ -1,7 +1,9 @@
 package com.littleescape.api.dto;
 
 import com.littleescape.api.domain.MissionTemplate;
+import com.littleescape.api.domain.type.LocationType;
 import com.littleescape.api.domain.type.MissionCategory;
+import com.littleescape.api.domain.type.TimeOfDay;
 
 public record MissionTemplateResponse(
     Long id,
@@ -10,7 +12,9 @@ public record MissionTemplateResponse(
     MissionCategory category,
     String difficultyLevel,
     String condition,
-    String imageUrl
+    String imageUrl,
+    LocationType locationType,
+    TimeOfDay timeOfDay
 ) {
     public static MissionTemplateResponse from(MissionTemplate missionTemplate) {
         return new MissionTemplateResponse(
@@ -20,7 +24,9 @@ public record MissionTemplateResponse(
             missionTemplate.getCategory(),
             missionTemplate.getDifficultyLevel(),
             missionTemplate.getCondition(),
-            missionTemplate.getImageUrl()
+            missionTemplate.getImageUrl(),
+            missionTemplate.getLocationType(),
+            missionTemplate.getTimeOfDay()
         );
     }
 }
