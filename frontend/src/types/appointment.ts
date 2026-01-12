@@ -28,4 +28,5 @@ export interface Appointment {
   proofImageUrls?: string[]; // 다중 이미지 URL 리스트
   reviewKeywords?: string[]; // 감성 키워드
   visitCount?: number;
+  isFavorite?: boolean; // 즐겨찾기 여부
 }

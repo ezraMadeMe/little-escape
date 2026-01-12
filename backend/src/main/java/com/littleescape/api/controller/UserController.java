@@ -1,6 +1,8 @@
 package com.littleescape.api.controller;
 
+import com.littleescape.api.auth.JwtProvider;
 import com.littleescape.api.domain.User;
+import com.littleescape.api.dto.OnboardingRequest;
 import com.littleescape.api.dto.UserResponse;
 import com.littleescape.api.repository.UserRepository;
 import com.littleescape.api.service.SmsService;
@@ -10,11 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 
@@ -27,17 +26,18 @@ public class UserController {
     private final UserRepository userRepository;
     private final UserService userService;
     private final SmsService smsService;
+    private final JwtProvider jwtProvider;
 
     @Value("${app.magic-link.base-url}")
     private String magicLinkBaseUrl;
 
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal String oauthId) {
-        if (oauthId == null) {
+    public ResponseEntity<UserResponse> getCurrentUser(@AuthenticationPrincipal String userId) {
+        if (userId == null) {
             return ResponseEntity.status(401).build();
         }
 
-        User user = userRepository.findByOauthId(oauthId)
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         return ResponseEntity.ok(UserResponse.from(user));
@@ -47,19 +47,19 @@ public class UserController {
      * 테스트용 매직 링크 SMS 발송 API
      * 현재 로그인한 유저에게 매직 링크를 SMS로 전송합니다.
      *
-     * @param oauthId 인증된 사용자의 OAuth ID
+     * @param userId 인증된 사용자의 User ID
      * @return 성공 메시지
      */
     @PostMapping("/send-magic-link")
-    public ResponseEntity<Map<String, String>> sendMagicLink(@AuthenticationPrincipal String oauthId) {
+    public ResponseEntity<Map<String, String>> sendMagicLink(@AuthenticationPrincipal String userId) {
         log.info("=== 매직 링크 SMS 발송 요청 ===");
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(401).body(Map.of("error", "인증이 필요합니다."));
         }
 
         // 1. 현재 로그인한 유저 조회
-        User user = userRepository.findByOauthId(oauthId)
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
         // 2. 전화번호 확인
@@ -92,22 +92,22 @@ public class UserController {
      * 친구 초대 SMS 발송 API
      * 현재 로그인한 유저가 친구의 전화번호로 초대 메시지를 전송합니다.
      *
-     * @param oauthId 인증된 사용자의 OAuth ID
+     * @param userId 인증된 사용자의 User ID
      * @param request 대상 전화번호를 담은 Map (키: targetPhoneNumber)
      * @return 성공 메시지
      */
     @PostMapping("/invite")
     public ResponseEntity<Map<String, String>> inviteFriend(
-            @AuthenticationPrincipal String oauthId,
+            @AuthenticationPrincipal String userId,
             @RequestBody Map<String, String> request) {
         log.info("=== 친구 초대 SMS 발송 요청 ===");
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(401).body(Map.of("error", "인증이 필요합니다."));
         }
 
         // 1. 현재 로그인한 유저 조회
-        User user = userRepository.findByOauthId(oauthId)
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
         // 2. 대상 전화번호 확인
@@ -133,5 +133,111 @@ public class UserController {
                 user.getNickname(), user.getEmail(), targetPhoneNumber);
 
         return ResponseEntity.ok(Map.of("message", "초대장 발송 완료"));
+    }
+
+    /**
+     * 닉네임 중복 체크 API
+     */
+    @GetMapping("/check-nickname")
+    public ResponseEntity<Map<String, Boolean>> checkNickname(@RequestParam String nickname) {
+        boolean isAvailable = userService.isNicknameAvailable(nickname);
+        return ResponseEntity.ok(Map.of("available", isAvailable));
+    }
+
+    /**
+     * 랜덤 닉네임 생성 API (형용사 + 기존 이름)
+     */
+    @GetMapping("/random-nickname")
+    public ResponseEntity<Map<String, String>> getRandomNickname(@AuthenticationPrincipal String userId) {
+        if (userId == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        User user = userRepository.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        String randomNickname = userService.generateRandomNickname(user.getNickname());
+        return ResponseEntity.ok(Map.of("nickname", randomNickname));
+    }
+
+    /**
+     * 온보딩 완료 (프로필 업데이트 + isOnboarded = true)
+     * 계정 통합 시 새로운 JWT 토큰 발급
+     */
+    @PostMapping("/onboarding")
+    public ResponseEntity<Map<String, Object>> completeOnboarding(
+            @AuthenticationPrincipal String userId,
+            @RequestPart("data") OnboardingRequest request,
+            @RequestPart(value = "profileImage", required = false) MultipartFile profileImage) {
+
+        if (userId == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        User updatedUser = userService.completeOnboarding(Long.parseLong(userId), request, profileImage);
+
+        // 계정 통합이 발생하면 userId가 변경되므로 새로운 JWT 토큰 발급
+        String newToken = jwtProvider.createToken(String.valueOf(updatedUser.getId()), updatedUser.getRole().name());
+
+        return ResponseEntity.ok(Map.of(
+                "user", UserResponse.from(updatedUser),
+                "token", newToken
+        ));
+    }
+
+    /**
+     * 프로필 수정 API
+     */
+    @PatchMapping("/profile")
+    public ResponseEntity<UserResponse> updateProfile(
+            @AuthenticationPrincipal String userId,
+            @RequestPart("data") OnboardingRequest request,
+            @RequestPart(value = "profileImage", required = false) MultipartFile profileImage) {
+
+        if (userId == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        User updatedUser = userService.updateProfile(Long.parseLong(userId), request, profileImage);
+
+        return ResponseEntity.ok(UserResponse.from(updatedUser));
+    }
+
+    /**
+     * 회원탈퇴 API
+     */
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteUser(@AuthenticationPrincipal String userId) {
+        if (userId == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        userService.deleteUser(Long.parseLong(userId));
+
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * 문의하기 이메일 발송 API
+     */
+    @PostMapping("/contact")
+    public ResponseEntity<Map<String, String>> sendContactEmail(
+            @AuthenticationPrincipal String userId,
+            @RequestPart("data") Map<String, String> data,
+            @RequestPart(value = "images", required = false) MultipartFile[] images) {
+
+        if (userId == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        User user = userRepository.findById(Long.parseLong(userId))
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        String subject = data.get("subject");
+        String content = data.get("content");
+
+        userService.sendContactEmail(user, subject, content, images);
+
+        return ResponseEntity.ok(Map.of("message", "문의가 접수되었습니다."));
     }
 }

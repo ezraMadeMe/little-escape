@@ -109,3 +109,42 @@ export async function cloneAppointment(appointmentId: number): Promise<number> {
   });
   return response.id;
 }
+
+export async function toggleFavorite(appointmentId: number): Promise<void> {
+  return apiFetch<void>(`/api/v1/appointments/${appointmentId}/favorite`, {
+    method: 'PATCH',
+  });
+}
+
+export async function bulkDeleteAppointments(appointmentIds: number[]): Promise<void> {
+  return apiFetch<void>('/api/v1/appointments/bulk', {
+    method: 'DELETE',
+    body: JSON.stringify(appointmentIds),
+  });
+}
+
+// 가장 가까운 예정된 약속 조회 (ACCEPTED 상태, 미션 선택 완료)
+export async function getNextAppointment(): Promise<Appointment | null> {
+  try {
+    const appointments = await getMyAppointments();
+
+    // ACCEPTED 상태이면서 미션이 선택된 약속만 필터링
+    const acceptedWithMission = appointments.filter(
+      (apt) => apt.status === 'ACCEPTED' && apt.missionTitle
+    );
+
+    if (acceptedWithMission.length === 0) {
+      return null;
+    }
+
+    // 예정 시간 기준 오름차순 정렬
+    const sorted = acceptedWithMission.sort((a, b) =>
+      new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+    );
+
+    return sorted[0];
+  } catch (error) {
+    console.error('다음 약속 조회 실패:', error);
+    return null;
+  }
+}

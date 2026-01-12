@@ -1,15 +1,28 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import MissionList from './pages/MissionList';
-import AuthCallback from './pages/AuthCallback'; // 기존 콜백 유지 (혹은 제거 가능)
-import OAuthCallback from './pages/OAuthCallback';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ReactNode } from 'react';
+
+// Layouts
+import MainLayout from './layouts/MainLayout';
+
+// Pages
+import Feed from './pages/Feed';
+import Reviews from './pages/Reviews';
+import Appointments from './pages/Appointments';
 import MyPage from './pages/MyPage';
+import ChatAppointment from './pages/ChatAppointment';
+
+// Legacy Pages (필요시 유지)
+import MissionList from './pages/MissionList';
+import AuthCallback from './pages/AuthCallback';
+import OAuthCallback from './pages/OAuthCallback';
 import PickMission from './pages/PickMission';
 import MissionDetail from './pages/MissionDetail';
 import MissionProof from './pages/MissionProof';
 import LoginPage from './pages/LoginPage';
-import Header from './components/Header';
 import MagicLogin from './pages/MagicLogin';
-import { ReactNode } from 'react';
+import Onboarding from './pages/Onboarding';
+import ProfileEdit from './pages/ProfileEdit';
+import Contact from './pages/Contact';
 
 // 보호된 라우트 컴포넌트
 const ProtectedRoute = ({ children }: { children: ReactNode }) => {
@@ -20,58 +33,107 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   return <>{children}</>;
 };
 
-// 헤더를 포함한 메인 레이아웃 컴포넌트 (조건부 렌더링을 위해 분리)
-const AppContent = () => {
-  const location = useLocation();
-  const showHeader = location.pathname !== '/login' && location.pathname !== '/magic-login';
-
-  return (
-    <>
-      {showHeader && <Header />}
-      <div className={showHeader ? 'pt-16' : ''}>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/oauth/callback" element={<OAuthCallback />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/magic-login" element={<MagicLogin />} />
-
-          {/* Protected Routes */}
-          <Route path="/" element={
-            <ProtectedRoute>
-              <MissionList />
-            </ProtectedRoute>
-          } />
-          <Route path="/mypage" element={
-            <ProtectedRoute>
-              <MyPage />
-            </ProtectedRoute>
-          } />
-          <Route path="/pick-mission/:appointmentId" element={
-            <ProtectedRoute>
-              <PickMission />
-            </ProtectedRoute>
-          } />
-          <Route path="/mission/:appointmentId" element={
-            <ProtectedRoute>
-              <MissionDetail />
-            </ProtectedRoute>
-          } />
-          <Route path="/mission-proof/:appointmentId" element={
-            <ProtectedRoute>
-              <MissionProof />
-            </ProtectedRoute>
-          } />
-        </Routes>
-      </div>
-    </>
-  );
-};
-
 function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/oauth/callback" element={<OAuthCallback />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/magic-login" element={<MagicLogin />} />
+
+        {/* Onboarding Route */}
+        <Route
+          path="/onboarding"
+          element={
+            <ProtectedRoute>
+              <Onboarding />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Main App - With Bottom Navigation */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <MainLayout />
+            </ProtectedRoute>
+          }
+        >
+          {/* Default Route - Feed */}
+          <Route index element={<Navigate to="/feed" replace />} />
+
+          {/* Bottom Nav Routes */}
+          <Route path="feed" element={<Feed />} />
+          <Route path="reviews" element={<Reviews />} />
+          <Route path="appointments" element={<Appointments />} />
+          <Route path="mypage" element={<MyPage />} />
+        </Route>
+
+        {/* Chat Routes - Without Bottom Navigation */}
+        <Route
+          path="/chat/:id"
+          element={
+            <ProtectedRoute>
+              <ChatAppointment />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Profile & Contact Routes */}
+        <Route
+          path="/profile-edit"
+          element={
+            <ProtectedRoute>
+              <ProfileEdit />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/contact"
+          element={
+            <ProtectedRoute>
+              <Contact />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Legacy Routes - 호환성 유지 */}
+        <Route
+          path="/missions"
+          element={
+            <ProtectedRoute>
+              <MissionList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pick-mission/:appointmentId"
+          element={
+            <ProtectedRoute>
+              <PickMission />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mission/:appointmentId"
+          element={
+            <ProtectedRoute>
+              <MissionDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mission-proof/:appointmentId"
+          element={
+            <ProtectedRoute>
+              <MissionProof />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
     </BrowserRouter>
   );
 }

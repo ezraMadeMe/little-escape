@@ -28,7 +28,9 @@ public record AppointmentResponse(
     List<String> proofImageUrls,  // 다중 이미지 URL
     List<String> reviewKeywords,  // 감성 키워드
     // 방문 횟수
-    Long visitCount
+    Long visitCount,
+    // 즐겨찾기 여부
+    boolean isFavorite
 ) {
     public static AppointmentResponse from(Appointment appointment, Long visitCount) {
         // 장소가 매칭되었는지 확인
@@ -56,7 +58,9 @@ public record AppointmentResponse(
             appointment.getProofImageUrls() != null ? appointment.getProofImageUrls() : List.of(),  // 다중 이미지
             appointment.getReviewKeywords() != null ? appointment.getReviewKeywords() : List.of(),  // 키워드
             // 방문 횟수 (계산된 값)
-            visitCount
+            visitCount,
+            // 즐겨찾기 여부
+            appointment.isFavorite()
         );
     }
 }

@@ -41,43 +41,38 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         log.info("=== OAuth2 로그인 성공 핸들러 ===");
         log.info("Provider: {}", registrationId);
 
-        // Extract email and providerId based on provider
-        String email;
+        // Extract providerId based on provider
         String providerId;
 
         if ("google".equalsIgnoreCase(registrationId)) {
-            email = (String) attributes.get("email");
             providerId = (String) attributes.get("sub");
         } else if ("kakao".equalsIgnoreCase(registrationId)) {
             providerId = attributes.get("id").toString();
-            Map<String, Object> kakaoAccount = (Map<String, Object>) attributes.get("kakao_account");
-            email = kakaoAccount != null ? (String) kakaoAccount.get("email") : null;
         } else if ("naver".equalsIgnoreCase(registrationId)) {
-            // Naver has nested structure: response contains actual user data
             Map<String, Object> responseMap = (Map<String, Object>) attributes.get("response");
             if (responseMap == null) {
                 throw new IllegalStateException("네이버 응답 데이터를 찾을 수 없습니다.");
             }
             providerId = (String) responseMap.get("id");
-            email = (String) responseMap.get("email");
         } else {
             throw new IllegalStateException("지원하지 않는 OAuth2 제공자입니다: " + registrationId);
         }
 
-        // Find user by email (CustomOAuth2UserService already created/updated the user)
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalStateException("사용자를 찾을 수 없습니다: " + email));
+        // Find user by social ID (CustomOAuth2UserService already created/updated the user)
+        User user = findBySocialId(registrationId, providerId);
 
-        log.info("사용자 확인: {} (ID: {})", user.getEmail(), user.getId());
+        if (user == null) {
+            throw new IllegalStateException("사용자를 찾을 수 없습니다. Provider: " + registrationId + ", ID: " + providerId);
+        }
 
-        // Generate JWT token using oauthId
-        String role = "USER";
-        String accessToken = jwtProvider.createToken(user.getOauthId(), role);
+        log.info("사용자 확인: {} (ID: {}, Role: {})", user.getNickname(), user.getId(), user.getRole());
 
-        log.info("JWT 토큰 생성 완료");
+        // Generate JWT token with actual user role
+        String accessToken = jwtProvider.createToken(String.valueOf(user.getId()), user.getRole().name());
+
+        log.info("JWT 토큰 생성 완료 (Role: {})", user.getRole());
 
         // Redirect to frontend with token as query parameter
-        // NOTE: application.yml의 app.oauth2.authorized-redirect-uri에서 설정 가능
         String redirectUrl = UriComponentsBuilder.fromUriString(authorizedRedirectUri)
                 .queryParam("token", accessToken)
                 .build()
@@ -86,5 +81,21 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         log.info("리다이렉트 URL: {}", redirectUrl);
 
         getRedirectStrategy().sendRedirect(request, response, redirectUrl);
+    }
+
+    /**
+     * 소셜 ID로 사용자 찾기 (Provider별 분기)
+     */
+    private User findBySocialId(String provider, String socialId) {
+        switch (provider.toLowerCase()) {
+            case "kakao":
+                return userRepository.findByKakaoId(socialId).orElse(null);
+            case "google":
+                return userRepository.findByGoogleId(socialId).orElse(null);
+            case "naver":
+                return userRepository.findByNaverId(socialId).orElse(null);
+            default:
+                return null;
+        }
     }
 }

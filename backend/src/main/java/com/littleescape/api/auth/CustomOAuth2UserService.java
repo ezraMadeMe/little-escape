@@ -1,7 +1,7 @@
 package com.littleescape.api.auth;
 
 import com.littleescape.api.domain.User;
-import com.littleescape.api.domain.type.OAuthProvider;
+import com.littleescape.api.domain.type.Role;
 import com.littleescape.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,17 +36,14 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         String providerId;
         String nickname;
         String profileImageUrl;
-        OAuthProvider provider;
 
         if ("google".equalsIgnoreCase(registrationId)) {
-            provider = OAuthProvider.GOOGLE;
             email = (String) attributes.get("email");
             providerId = (String) attributes.get("sub");
             nickname = (String) attributes.get("name");
             profileImageUrl = (String) attributes.get("picture");
 
         } else if ("kakao".equalsIgnoreCase(registrationId)) {
-            provider = OAuthProvider.KAKAO;
             providerId = attributes.get("id").toString();
 
             // Kakao has nested structure: kakao_account -> email
@@ -59,8 +56,6 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             profileImageUrl = properties != null ? (String) properties.get("profile_image") : null;
 
         } else if ("naver".equalsIgnoreCase(registrationId)) {
-            provider = OAuthProvider.NAVER;
-
             // Naver has nested structure: response contains actual user data
             Map<String, Object> responseMap = (Map<String, Object>) attributes.get("response");
 
@@ -87,39 +82,48 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         log.info("추출된 정보 - Email: {}, ProviderId: {}, Nickname: {}, ProfileImage: {}", email, providerId, nickname, profileImageUrl);
 
-        // Generate oauthId (provider_providerId format for uniqueness)
-        String oauthId = provider.name().toLowerCase() + "_" + providerId;
+        // 1. 소셜 ID로 먼저 찾기
+        User user = findBySocialId(registrationId, providerId);
 
-        // Lambda에서 사용하기 위해 effectively final 변수 생성
-        String finalNickname = nickname;
-        String finalProfileImageUrl = profileImageUrl;
-        String finalEmail = email;
+        // 2. 없으면 신규 GUEST 유저 생성 (온보딩 필요)
+        if (user == null) {
+            log.info("새 GUEST 사용자 생성 - Provider: {}, ProviderId: {}", registrationId, providerId);
+            user = new User();
+            user.setSocialId(registrationId, providerId);
+            user.setNickname(nickname != null ? nickname : "사용자");
+            user.setProfileImageUrl(profileImageUrl);
+            user.setEmail(email);  // null 가능
+            user.setRole(Role.GUEST);  // 임시 회원
+            user.setOnboarded(false);
+            user = userRepository.save(user);
+        } else {
+            // 3. 기존 유저 정보 업데이트
+            log.info("기존 사용자 업데이트 - User ID: {}", user.getId());
+            user.update(nickname, profileImageUrl);
+            if (email != null) {
+                user.setEmail(email);
+            }
+            user = userRepository.save(user);
+        }
 
-        // Find or create user by oauthId (unique key)
-        User user = userRepository.findByOauthId(oauthId)
-                .map(existingUser -> {
-                    // Update existing user info using the update method
-                    log.info("기존 사용자 업데이트 (OAuth ID: {}): {}", oauthId, finalEmail);
-                    existingUser.update(finalNickname, finalProfileImageUrl);
-                    // Also update email in case it changed
-                    existingUser.setEmail(finalEmail);
-                    return userRepository.save(existingUser);
-                })
-                .orElseGet(() -> {
-                    // Create new user
-                    log.info("새 사용자 생성 (OAuth ID: {}): {}", oauthId, finalEmail);
-                    User newUser = new User();
-                    newUser.setEmail(finalEmail);
-                    newUser.setOauthId(oauthId);
-                    newUser.setOauthProvider(provider);
-                    newUser.setProviderId(providerId);
-                    newUser.setNickname(finalNickname);
-                    newUser.setProfileImageUrl(finalProfileImageUrl);
-                    return userRepository.save(newUser);
-                });
-
-        log.info("=== OAuth2 로그인 완료 (User ID: {}, OAuth ID: {}) ===", user.getId(), oauthId);
+        log.info("=== OAuth2 로그인 완료 (User ID: {}, Role: {}) ===", user.getId(), user.getRole());
 
         return oAuth2User;
+    }
+
+    /**
+     * 소셜 ID로 사용자 찾기 (Provider별 분기)
+     */
+    private User findBySocialId(String provider, String socialId) {
+        switch (provider.toLowerCase()) {
+            case "kakao":
+                return userRepository.findByKakaoId(socialId).orElse(null);
+            case "google":
+                return userRepository.findByGoogleId(socialId).orElse(null);
+            case "naver":
+                return userRepository.findByNaverId(socialId).orElse(null);
+            default:
+                return null;
+        }
     }
 }

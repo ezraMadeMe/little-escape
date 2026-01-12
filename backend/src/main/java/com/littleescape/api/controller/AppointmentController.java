@@ -32,17 +32,14 @@ public class AppointmentController {
 
     @PostMapping
     public ResponseEntity<AppointmentDto> createAppointment(
-            @AuthenticationPrincipal String oauthId,
+            @AuthenticationPrincipal String userId,
             @Valid @RequestBody AppointmentCreateRequest request) {
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        User user = userRepository.findByOauthId(oauthId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-
-        Appointment appointment = appointmentService.createAppointment(user.getId(), request.scheduledAt(), request.missionId());
+        Appointment appointment = appointmentService.createAppointment(Long.parseLong(userId), request.scheduledAt(), request.missionId());
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -51,75 +48,63 @@ public class AppointmentController {
 
     @PatchMapping("/{id}/mission")
     public ResponseEntity<Long> updateAppointmentMission(
-            @AuthenticationPrincipal String oauthId,
+            @AuthenticationPrincipal String userId,
             @PathVariable Long id,
             @Valid @RequestBody AppointmentMissionUpdateRequest request) {
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        User user = userRepository.findByOauthId(oauthId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-
-        Long appointmentId = appointmentService.updateAppointmentMission(user.getId(), id, request.missionId());
+        Long appointmentId = appointmentService.updateAppointmentMission(Long.parseLong(userId), id, request.missionId());
 
         return ResponseEntity.ok(appointmentId);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<AppointmentResponse> getAppointmentDetail(
-            @AuthenticationPrincipal String oauthId,
+            @AuthenticationPrincipal String userId,
             @PathVariable Long id) {
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        User user = userRepository.findByOauthId(oauthId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-
-        AppointmentResponse appointment = appointmentService.getAppointmentDetail(user.getId(), id);
+        AppointmentResponse appointment = appointmentService.getAppointmentDetail(Long.parseLong(userId), id);
 
         return ResponseEntity.ok(appointment);
     }
 
     @GetMapping("/me")
     public ResponseEntity<List<AppointmentResponse>> getMyAppointments(
-            @AuthenticationPrincipal String oauthId) {
+            @AuthenticationPrincipal String userId) {
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        User user = userRepository.findByOauthId(oauthId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-
-        List<AppointmentResponse> appointments = appointmentService.getMyAppointments(user.getId());
+        List<AppointmentResponse> appointments = appointmentService.getMyAppointments(Long.parseLong(userId));
 
         return ResponseEntity.ok(appointments);
     }
 
     @PatchMapping("/{id}/cancel")
     public ResponseEntity<Void> cancelAppointment(
-            @AuthenticationPrincipal String oauthId,
+            @AuthenticationPrincipal String userId,
             @PathVariable Long id) {
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        User user = userRepository.findByOauthId(oauthId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-
-        appointmentService.cancelAppointment(user.getId(), id);
+        appointmentService.cancelAppointment(Long.parseLong(userId), id);
 
         return ResponseEntity.ok().build();
     }
 
     @PostMapping(value = "/{id}/complete", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> completeAppointment(
-            @AuthenticationPrincipal String oauthId,
+            @AuthenticationPrincipal String userId,
             @PathVariable Long id,
             @RequestPart(value = "files", required = false) List<org.springframework.web.multipart.MultipartFile> files,
             @Valid @RequestPart("request") AppointmentCompleteRequest request) {
@@ -133,28 +118,25 @@ public class AppointmentController {
             log.info("수신된 파일 리스트가 null입니다.");
         }
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        User user = userRepository.findByOauthId(oauthId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
-
-        appointmentService.completeAppointment(user.getId(), id, files, request);
+        appointmentService.completeAppointment(Long.parseLong(userId), id, files, request);
 
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/{id}/clone")
     public ResponseEntity<AppointmentDto> cloneAppointment(
-            @AuthenticationPrincipal String oauthId,
+            @AuthenticationPrincipal String userId,
             @PathVariable Long id) {
 
-        if (oauthId == null) {
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        User user = userRepository.findByOauthId(oauthId)
+        User user = userRepository.findById(Long.parseLong(userId))
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
         Appointment newAppointment = appointmentService.cloneAppointment(id, user);
@@ -162,5 +144,33 @@ public class AppointmentController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(AppointmentDto.from(newAppointment));
+    }
+
+    @PatchMapping("/{id}/favorite")
+    public ResponseEntity<Void> toggleFavorite(
+            @AuthenticationPrincipal String userId,
+            @PathVariable Long id) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        appointmentService.toggleFavorite(Long.parseLong(userId), id);
+
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/bulk")
+    public ResponseEntity<Void> bulkDeleteAppointments(
+            @AuthenticationPrincipal String userId,
+            @RequestBody List<Long> appointmentIds) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        appointmentService.bulkDeleteAppointments(Long.parseLong(userId), appointmentIds);
+
+        return ResponseEntity.ok().build();
     }
 }

@@ -57,7 +57,7 @@ createdb littleescape
 
 ### 애플리케이션 실행
 ```bash
-./gradlew bootRun
+./gradlew clean bootRun
 ```
 
 또는 빌드된 JAR 실행:
