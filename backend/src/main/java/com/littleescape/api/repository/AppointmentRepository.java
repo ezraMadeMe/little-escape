@@ -20,8 +20,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     List<Appointment> findAllByScheduledAtBetween(LocalDateTime start, LocalDateTime end);
 
     List<Appointment> findAllByStatusAndScheduledAtBetween(
-        AppointmentStatus status, 
-        LocalDateTime start, 
+        AppointmentStatus status,
+        LocalDateTime start,
         LocalDateTime end
     );
+
+    void deleteByUserId(Long userId);
 }

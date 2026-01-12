@@ -207,7 +207,8 @@ public class AppointmentService {
                             null, // proofImageUrl
                             null, 
                             null, 
-                            0L // visitCount
+                            0L, // visitCount
+                            appointment.isFavorite()
                         );
                     }
                 })
@@ -390,5 +391,42 @@ public class AppointmentService {
         log.info("=== 약속 복제 완료 (새 약속 ID: {}) ===", savedAppointment.getId());
 
         return savedAppointment;
+    }
+
+    @Transactional
+    public void toggleFavorite(Long userId, Long appointmentId) {
+        log.info("=== 즐겨찾기 토글 시작 ===");
+        log.info("사용자 ID: {}, 약속 ID: {}", userId, appointmentId);
+
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new RuntimeException("약속을 찾을 수 없습니다."));
+
+        if (!appointment.getUser().getId().equals(userId)) {
+            throw new RuntimeException("권한이 없습니다.");
+        }
+
+        appointment.toggleFavorite();
+        appointmentRepository.save(appointment);
+
+        log.info("=== 즐겨찾기 토글 완료 (현재 상태: {}) ===", appointment.isFavorite());
+    }
+
+    @Transactional
+    public void bulkDeleteAppointments(Long userId, List<Long> appointmentIds) {
+        log.info("=== 다중 약속 삭제 시작 ===");
+        log.info("사용자 ID: {}, 삭제할 약속 개수: {}", userId, appointmentIds.size());
+
+        List<Appointment> appointments = appointmentRepository.findAllById(appointmentIds);
+
+        // 권한 확인
+        for (Appointment appointment : appointments) {
+            if (!appointment.getUser().getId().equals(userId)) {
+                throw new RuntimeException("삭제 권한이 없는 약속이 포함되어 있습니다.");
+            }
+        }
+
+        appointmentRepository.deleteAll(appointments);
+
+        log.info("=== 다중 약속 삭제 완료 ({} 건) ===", appointments.size());
     }
 }

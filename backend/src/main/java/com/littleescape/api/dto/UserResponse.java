@@ -6,14 +6,20 @@ public record UserResponse(
     Long id,
     String nickname,
     String email,
-    String profileImageUrl
+    String profileImageUrl,
+    String phoneNumber,
+    boolean isOnboarded,
+    String role
 ) {
     public static UserResponse from(User user) {
         return new UserResponse(
             user.getId(),
             user.getNickname(),
             user.getEmail(),
-            user.getProfileImageUrl()
+            user.getProfileImageUrl(),
+            user.getPhoneNumber(),
+            user.isOnboarded(),
+            user.getRole().name()
         );
     }
 }

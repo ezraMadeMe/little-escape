@@ -93,3 +93,25 @@ WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '심야 맛집 �
 INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, created_at, updated_at)
 SELECT '브런치 카페', '여유로운 브런치 즐기기', 'FOOD', 'EASY', '오전 10시~오후 2시', NULL, 'INDOOR', 'AFTERNOON', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '브런치 카페');
+
+-- Sample Adjectives Data for Nickname Generation
+INSERT INTO adjectives (word) SELECT '행복한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '행복한');
+INSERT INTO adjectives (word) SELECT '나른한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '나른한');
+INSERT INTO adjectives (word) SELECT '배고픈' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '배고픈');
+INSERT INTO adjectives (word) SELECT '즐거운' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '즐거운');
+INSERT INTO adjectives (word) SELECT '설레는' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '설레는');
+INSERT INTO adjectives (word) SELECT '활기찬' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '활기찬');
+INSERT INTO adjectives (word) SELECT '편안한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '편안한');
+INSERT INTO adjectives (word) SELECT '상쾌한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '상쾌한');
+INSERT INTO adjectives (word) SELECT '신나는' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '신나는');
+INSERT INTO adjectives (word) SELECT '포근한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '포근한');
+INSERT INTO adjectives (word) SELECT '여유로운' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '여유로운');
+INSERT INTO adjectives (word) SELECT '따뜻한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '따뜻한');
+INSERT INTO adjectives (word) SELECT '용감한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '용감한');
+INSERT INTO adjectives (word) SELECT '재미있는' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '재미있는');
+INSERT INTO adjectives (word) SELECT '귀여운' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '귀여운');
+INSERT INTO adjectives (word) SELECT '멋진' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '멋진');
+INSERT INTO adjectives (word) SELECT '활발한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '활발한');
+INSERT INTO adjectives (word) SELECT '사랑스러운' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '사랑스러운');
+INSERT INTO adjectives (word) SELECT '차분한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '차분한');
+INSERT INTO adjectives (word) SELECT '밝은' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '밝은');

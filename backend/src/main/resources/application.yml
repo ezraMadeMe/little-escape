@@ -94,7 +94,8 @@ coolsms:
   sender-number: 01041681419
 
 app:
+  client-base-url: http://10.0.3.48:5173
   magic-link:
-    base-url: http://172.30.1.95:5173
+    base-url: ${app.client-base-url}
   oauth2:
-    authorized-redirect-uri: http://172.30.1.95:5173/oauth/callback
+    authorized-redirect-uri: ${app.client-base-url}/oauth/callback

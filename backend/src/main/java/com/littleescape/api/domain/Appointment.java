@@ -53,6 +53,9 @@ public class Appointment extends BaseTimeEntity {
     @Column(name = "keyword")
     private java.util.List<String> reviewKeywords = new java.util.ArrayList<>();
 
+    @Column(name = "is_favorite", nullable = false)
+    private boolean isFavorite = false;
+
     // 비즈니스 로직 메서드
     public void cancel() {
         this.status = AppointmentStatus.CANCELLED;
@@ -64,5 +67,9 @@ public class Appointment extends BaseTimeEntity {
 
     public void updatePlace(Place place) {
         this.place = place;
+    }
+
+    public void toggleFavorite() {
+        this.isFavorite = !this.isFavorite;
     }
 }
