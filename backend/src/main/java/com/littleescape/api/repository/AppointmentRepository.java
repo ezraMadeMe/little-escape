@@ -25,5 +25,8 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
         LocalDateTime end
     );
 
+    // UUID 토큰으로 조회
+    java.util.Optional<Appointment> findByUnlockToken(String unlockToken);
+
     void deleteByUserId(Long userId);
 }

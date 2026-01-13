@@ -173,4 +173,48 @@ public class AppointmentController {
 
         return ResponseEntity.ok().build();
     }
+
+    // ========================================
+    // 개발용 엔드포인트 (테스트 전용)
+    // ========================================
+
+    /**
+     * 개발용: 약속 날짜를 내일(D-1)로 변경
+     * 미션 공개 알림 테스트용
+     */
+    @PutMapping("/{id}/dev/unlock-tomorrow")
+    public ResponseEntity<AppointmentDto> unlockTomorrow(
+            @AuthenticationPrincipal String userId,
+            @PathVariable Long id) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.warn("⚠️ 개발용 API 호출: 약속 날짜를 내일로 변경 (ID: {})", id);
+
+        Appointment appointment = appointmentService.unlockTomorrow(Long.parseLong(userId), id);
+
+        return ResponseEntity.ok(AppointmentDto.from(appointment));
+    }
+
+    /**
+     * 개발용: 약속 날짜를 현재 시간으로 변경
+     * 인증/완료 기능 테스트용
+     */
+    @PutMapping("/{id}/dev/unlock-now")
+    public ResponseEntity<AppointmentDto> unlockNow(
+            @AuthenticationPrincipal String userId,
+            @PathVariable Long id) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.warn("⚠️ 개발용 API 호출: 약속 날짜를 현재 시간으로 변경 (ID: {})", id);
+
+        Appointment appointment = appointmentService.unlockNow(Long.parseLong(userId), id);
+
+        return ResponseEntity.ok(AppointmentDto.from(appointment));
+    }
 }

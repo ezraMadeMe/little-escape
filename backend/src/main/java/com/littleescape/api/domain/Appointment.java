@@ -13,6 +13,13 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class Appointment extends BaseTimeEntity {
 
+    @PrePersist
+    public void prePersist() {
+        if (this.unlockToken == null) {
+            this.unlockToken = java.util.UUID.randomUUID().toString();
+        }
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -31,10 +38,25 @@ public class Appointment extends BaseTimeEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private AppointmentStatus status;
+    private AppointmentStatus status = AppointmentStatus.CREATED;
 
     @Column(name = "scheduled_at", nullable = false)
-    private LocalDateTime scheduledAt;
+    private LocalDateTime scheduledAt = LocalDateTime.now().plusDays(3);
+
+    // 미션 공개용 UUID 토큰 (보안)
+    @Column(name = "unlock_token", unique = true, length = 36)
+    private String unlockToken;
+
+    // 사용자 출발 위치 (GPS 또는 수동 입력)
+    @Column(name = "departure_latitude")
+    private Double departureLatitude;
+
+    @Column(name = "departure_longitude")
+    private Double departureLongitude;
+
+    // 검색 반경 (km)
+    @Column(name = "search_radius", nullable = false)
+    private Integer searchRadius = 5;
 
     @Column(name = "proof_comment", columnDefinition = "TEXT")
     private String proofComment;

@@ -429,4 +429,80 @@ public class AppointmentService {
 
         log.info("=== 다중 약속 삭제 완료 ({} 건) ===", appointments.size());
     }
+
+    // ========================================
+    // 개발용 메서드 (테스트 전용)
+    // ========================================
+
+    /**
+     * 개발용: 약속 날짜를 내일(D-1)로 변경
+     * 미션 공개 알림 테스트용
+     */
+    @Transactional
+    public Appointment unlockTomorrow(Long userId, Long appointmentId) {
+        log.warn("⚠️ [개발용] 약속 날짜를 내일로 변경 시작");
+        
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new RuntimeException("약속을 찾을 수 없습니다."));
+
+        if (!appointment.getUser().getId().equals(userId)) {
+            throw new RuntimeException("권한이 없습니다.");
+        }
+
+        // 내일 같은 시간으로 변경
+        java.time.LocalDateTime tomorrow = java.time.LocalDateTime.now().plusDays(1);
+        appointment.setScheduledAt(tomorrow);
+
+        // 상태 변경: 미션이 있으면 ACCEPTED, 없으면 CREATED 유지 (DB 제약 조건 준수)
+        if (appointment.getMissionTemplate() != null) {
+            appointment.setStatus(com.littleescape.api.domain.type.AppointmentStatus.ACCEPTED);
+            log.warn("  → 미션이 선택되어 있어 상태를 ACCEPTED로 변경");
+        } else {
+            // 미션이 없으면 CREATED 상태 유지 (UNLOCKED는 미션이 필요함)
+            appointment.setStatus(com.littleescape.api.domain.type.AppointmentStatus.CREATED);
+            log.warn("  → 미션이 없어 상태를 CREATED로 유지");
+        }
+
+        Appointment saved = appointmentRepository.save(appointment);
+        
+        log.warn("⚠️ [개발용] 약속 날짜 변경 완료: {} → {}, 상태: {}", appointmentId, tomorrow, saved.getStatus());
+        
+        return saved;
+    }
+
+    /**
+     * 개발용: 약속 날짜를 현재 시간으로 변경
+     * 인증/완료 기능 테스트용
+     */
+    @Transactional
+    public Appointment unlockNow(Long userId, Long appointmentId) {
+        log.warn("⚠️ [개발용] 약속 날짜를 현재 시간으로 변경 시작");
+        
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new RuntimeException("약속을 찾을 수 없습니다."));
+
+        if (!appointment.getUser().getId().equals(userId)) {
+            throw new RuntimeException("권한이 없습니다.");
+        }
+
+        // 현재 시간으로 변경
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        appointment.setScheduledAt(now);
+
+        // 상태 변경: 미션이 있으면 ACCEPTED, 없으면 CREATED 유지 (DB 제약 조건 준수)
+        if (appointment.getMissionTemplate() != null) {
+            appointment.setStatus(com.littleescape.api.domain.type.AppointmentStatus.ACCEPTED);
+            log.warn("  → 미션이 선택되어 있어 상태를 ACCEPTED로 변경");
+        } else {
+            // 미션이 없으면 CREATED 상태 유지 (UNLOCKED는 미션이 필요함)
+            appointment.setStatus(com.littleescape.api.domain.type.AppointmentStatus.CREATED);
+            log.warn("  → 미션이 없어 상태를 CREATED로 유지");
+        }
+
+        Appointment saved = appointmentRepository.save(appointment);
+        
+        log.warn("⚠️ [개발용] 약속 날짜 변경 완료: {} → {}, 상태: {}", appointmentId, now, saved.getStatus());
+        
+        return saved;
+    }
 }

@@ -43,4 +43,15 @@ public class MissionTemplate extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "time_of_day", nullable = false)
     private TimeOfDay timeOfDay = TimeOfDay.ANY;
+
+    // 미션 장소 위치
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
+    // 지번/도로명 주소
+    @Column(name = "address", length = 500)
+    private String address;
 }

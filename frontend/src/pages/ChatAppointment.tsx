@@ -13,7 +13,9 @@ import {
 } from '../api/appointmentApi';
 import { getRecommendedMissions } from '../api/missionApi';
 import { formatDateTime, formatDate, formatTime, calculateDday } from '../utils/dateUtils';
-import ChatActionArea from '../components/ChatActionArea';
+import ActionChips from '../components/ActionChips';
+import EditActionChips from '../components/EditActionChips';
+import LocationPicker from '../components/LocationPicker';
 import 'slick-carousel/slick/slick.css';
 import 'slick-carousel/slick/slick-theme.css';
 
@@ -21,7 +23,7 @@ import 'slick-carousel/slick/slick-theme.css';
 interface Message {
   id: string;
   sender: 'bot' | 'user';
-  type: 'text' | 'time-picker' | 'mission-slider' | 'action-buttons' | 'action-area' | 'proof-form' | 'typing';
+  type: 'text' | 'time-picker' | 'location-picker' | 'mission-slider' | 'action-buttons' | 'action-chips' | 'edit-chips' | 'action-area' | 'proof-form' | 'typing';
   content?: string;
   timestamp: Date;
 }
@@ -34,9 +36,15 @@ const ChatAppointment = () => {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedDateTime, setSelectedDateTime] = useState<string>('');
+  const [selectedLocation, setSelectedLocation] = useState<{ latitude: number; longitude: number; radius: number } | null>(null);
   const [currentAppointment, setCurrentAppointment] = useState<Appointment | null>(null);
   const [recommendedMissions, setRecommendedMissions] = useState<Mission[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // 타임피커 개별 상태 (월, 일, 시간)
+  const [selectedMonth, setSelectedMonth] = useState<number>(0);
+  const [selectedDay, setSelectedDay] = useState<number>(0);
+  const [selectedHour, setSelectedHour] = useState<number>(0);
 
   // 인증 폼 상태
   const [proofComment, setProofComment] = useState('');
@@ -75,6 +83,15 @@ const ChatAppointment = () => {
   const initNewChat = () => {
     if (isInitialized.current) return;
 
+    // 기본값: 3일 뒤, 오후 2시
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 3);
+    defaultDate.setHours(14, 0, 0, 0);
+
+    setSelectedMonth(defaultDate.getMonth() + 1); // 1-12
+    setSelectedDay(defaultDate.getDate()); // 1-31
+    setSelectedHour(defaultDate.getHours()); // 0-23
+
     addBotMessage('안녕하세요! 일상 속 작은 휴식이 필요하시군요. 🌿\n언제 떠나보실래요?');
     setTimeout(() => {
       addMessage({
@@ -108,6 +125,11 @@ const ChatAppointment = () => {
 
   // 상태별 대화 복원 (Rehydration)
   const rehydrateConversation = (appointment: Appointment) => {
+    console.log('============ rehydrateConversation 시작 ============');
+    console.log('ChatAppointment.tsx - appointment:', appointment);
+    console.log('ChatAppointment.tsx - appointment.status:', appointment.status);
+    console.log('ChatAppointment.tsx - appointment.missionTitle:', appointment.missionTitle);
+    
     const msgs: Message[] = [];
     const baseId = `rehydrate-${appointment.id}-`;
     let msgCounter = 0;
@@ -138,8 +160,11 @@ const ChatAppointment = () => {
       timestamp: new Date(),
     });
 
-    // Step 3: 미션 선택
-    if (appointment.missionTitle) {
+    // Step 3: 미션 선택 여부 확인
+    const hasMission = !!appointment.missionTitle;
+
+    if (hasMission) {
+      // 미션 선택이 이미 완료된 경우
       msgs.push({
         id: `${baseId}${msgCounter++}`,
         sender: 'bot',
@@ -158,7 +183,24 @@ const ChatAppointment = () => {
     }
 
     // Step 4: 상태별 분기
-    if (appointment.status === AppointmentStatus.CANCELLED) {
+    if (appointment.status === AppointmentStatus.CREATED) {
+      // CREATED 상태: 미션은 약속 하루 전에 공개 (Read-only)
+      msgs.push({
+        id: `${baseId}${msgCounter++}`,
+        sender: 'bot',
+        type: 'text',
+        content: '✅ 약속이 생성되었어요!\n🔒 미션은 약속 하루 전에 공개됩니다.\n내일 문자로 알려드릴게요. 😊',
+        timestamp: new Date(),
+      });
+      // Read-only 안내 메시지
+      msgs.push({
+        id: `${baseId}${msgCounter++}`,
+        sender: 'bot',
+        type: 'text',
+        content: '💡 약속 리스트에서 확인하실 수 있어요!',
+        timestamp: new Date(),
+      });
+    } else if (appointment.status === AppointmentStatus.CANCELLED) {
       msgs.push({
         id: `${baseId}${msgCounter++}`,
         sender: 'bot',
@@ -180,59 +222,69 @@ const ChatAppointment = () => {
         content: '완료하셨군요! 멋진 시간 보내셨나요? ✨',
         timestamp: new Date(),
       });
-    } else if (appointment.status === AppointmentStatus.ACCEPTED) {
+    } else if ((appointment.status === AppointmentStatus.ACCEPTED || appointment.status === AppointmentStatus.PENDING) && hasMission) {
+      // ACCEPTED 또는 PENDING 상태이고 미션이 선택된 경우 -> 약속 확정 상태 (Read-only)
+      console.log('ChatAppointment.tsx - 미션 선택된 상태 (ACCEPTED 또는 PENDING)');
+      
+      msgs.push({
+        id: `${baseId}${msgCounter++}`,
+        sender: 'bot',
+        type: 'text',
+        content: `✅ 미션이 확정되었습니다!\n[${appointment.missionTitle}] 하러 가실 준비 되셨나요? 🌿`,
+        timestamp: new Date(),
+      });
+
+      // Read-only 안내 메시지
+      msgs.push({
+        id: `${baseId}${msgCounter++}`,
+        sender: 'bot',
+        type: 'text',
+        content: '💡 미션은 변경할 수 없어요. 약속 리스트에서 자세한 내용을 확인하세요!',
+        timestamp: new Date(),
+      });
+
       const now = new Date();
       const scheduledTime = new Date(appointment.scheduledAt);
       const timeReached = now >= scheduledTime;
 
-      if (appointment.missionTitle) {
-        // 미션이 선택된 경우
-        if (timeReached) {
-          // 시나리오 2: 약속 시간 도래/지남
-          msgs.push({
-            id: `${baseId}${msgCounter++}`,
-            sender: 'bot',
-            type: 'text',
-            content: '약속 시간이 되었어요! 🌿 작은 일탈 즐기셨나요?',
-            timestamp: new Date(),
-          });
-        } else {
-          // 시나리오 1: 미션 선택 완료 & 시간 남음 (D-Day)
-          const dday = calculateDday(appointment.scheduledAt);
-          msgs.push({
-            id: `${baseId}${msgCounter++}`,
-            sender: 'bot',
-            type: 'text',
-            content: `완벽해요! 약속이 확정되었어요. ✨\n${dday === 'D-Day' ? '⏰ 오늘이에요!' : `⏳ ${dday}`}`,
-            timestamp: new Date(),
-          });
-        }
-
-        // ChatActionArea 표시
-        msgs.push({
-          id: `${baseId}${msgCounter++}`,
-          sender: 'bot',
-          type: 'action-area',
-          timestamp: new Date(),
-        });
-      } else {
-        // 미션이 아직 선택되지 않은 경우 (PENDING과 동일 처리)
-        const dday = calculateDday(appointment.scheduledAt);
+      // ActionChips는 시간이 도래했을 때만 렌더링
+      if (timeReached) {
         msgs.push({
           id: `${baseId}${msgCounter++}`,
           sender: 'bot',
           type: 'text',
-          content: `시간 약속은 잡혔어요! ${formatDateTime(appointment.scheduledAt)}\n${dday === 'D-Day' ? '⏰ 오늘이에요!' : `⏳ ${dday}`}`,
+          content: '약속 시간이 되었어요! 🌿 작은 일탈 즐기셨나요?',
           timestamp: new Date(),
         });
+        
+        console.log('ChatAppointment.tsx - action-chips 메시지 추가 (시간 도래)');
         msgs.push({
           id: `${baseId}${msgCounter++}`,
           sender: 'bot',
-          type: 'action-buttons',
+          type: 'action-chips',
           timestamp: new Date(),
         });
       }
-    } else if (appointment.status === AppointmentStatus.PENDING) {
+    } else if (appointment.status === AppointmentStatus.UNLOCKED && !hasMission) {
+      // UNLOCKED 상태: D-1일, 미션 선택 가능
+      msgs.push({
+        id: `${baseId}${msgCounter++}`,
+        sender: 'bot',
+        type: 'text',
+        content: '🎉 드디어 내일이에요! 어떤 일탈을 즐겨볼까요?',
+        timestamp: new Date(),
+      });
+      msgs.push({
+        id: `${baseId}${msgCounter++}`,
+        sender: 'bot',
+        type: 'mission-slider',
+        timestamp: new Date(),
+      });
+
+      // 추천 미션 가져오기
+      fetchRecommendedMissions(appointment.scheduledAt);
+    } else if (!hasMission && (appointment.status === AppointmentStatus.PENDING || appointment.status === AppointmentStatus.ACCEPTED)) {
+      // 미션이 아직 선택되지 않은 경우 -> Step 2: 미션 선택 슬라이더 표시 (기존 호환성)
       msgs.push({
         id: `${baseId}${msgCounter++}`,
         sender: 'bot',
@@ -251,6 +303,9 @@ const ChatAppointment = () => {
       fetchRecommendedMissions(appointment.scheduledAt);
     }
 
+    console.log('ChatAppointment.tsx - 최종 메시지 배열:', msgs);
+    console.log('ChatAppointment.tsx - action-chips 메시지 개수:', msgs.filter(m => m.type === 'action-chips').length);
+    console.log('============================================');
     setMessages(msgs);
   };
 
@@ -284,46 +339,92 @@ const ChatAppointment = () => {
 
   // 시간 선택 완료
   const handleTimeSelect = async () => {
-    if (!selectedDateTime) {
-      alert('날짜와 시간을 선택해주세요.');
+    // 선택된 월/일/시간으로 DateTime 객체 생성
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const selectedDate = new Date(currentYear, selectedMonth - 1, selectedDay, selectedHour, 0, 0, 0);
+
+    // 과거 시간 검증
+    if (selectedDate < now) {
+      alert('⚠️ 과거 시간은 선택할 수 없습니다.\n현재 시간 이후로 선택해주세요.');
       return;
     }
 
+    // ISO 형식으로 변환 (백엔드 전송용)
+    const formattedDateTime = selectedDate.toISOString();
+    setSelectedDateTime(formattedDateTime);
+
+    // 사용자에게 보여줄 메시지 생성
+    const displayMonth = selectedMonth;
+    const displayDay = selectedDay;
+    const displayHour = selectedHour;
+    const displayMessage = `📅 ${displayMonth}월 ${displayDay}일 ${displayHour}시로 할게요.`;
+
+    // 사용자 메시지 추가
+    addMessage({
+      id: Date.now().toString(),
+      sender: 'user',
+      type: 'text',
+      content: displayMessage,
+      timestamp: new Date(),
+    });
+
+    // time-picker 제거
+    setMessages(prev => prev.filter(m => m.type !== 'time-picker'));
+
+    // 봇 응답 - 위치 선택 단계로 이동
+    addBotMessage('좋아요! 그 시간으로 비워둘게요. 🕒');
+
+    setTimeout(() => {
+      addBotMessage('어디서 출발하시나요! 주변 핫플레이스를 찾아드릴게요!', 500);
+      setTimeout(() => {
+        addMessage({
+          id: Date.now().toString(),
+          sender: 'bot',
+          type: 'location-picker',
+          timestamp: new Date(),
+        });
+      }, 1000);
+    }, 1000);
+  };
+
+  // 위치 선택 완료
+  const handleLocationSelect = async (latitude: number, longitude: number, radius: number) => {
     setIsLoading(true);
 
     try {
+      // 위치 정보 저장
+      setSelectedLocation({ latitude, longitude, radius });
+
+      // location-picker 제거
+      setMessages(prev => prev.filter(m => m.type !== 'location-picker'));
+
       // 사용자 메시지 추가
       addMessage({
         id: Date.now().toString(),
         sender: 'user',
         type: 'text',
-        content: `📅 ${formatDateTime(selectedDateTime)}로 할게요.`,
+        content: `📍 반경 ${radius}km 내에서 찾아줘!`,
         timestamp: new Date(),
       });
 
-      // time-picker 제거
-      setMessages(prev => prev.filter(m => m.type !== 'time-picker'));
-
-      // 약속 생성
-      const appointment = await createAppointment({ scheduledAt: selectedDateTime });
+      // 약속 생성 (위치 정보 포함)
+      const appointment = await createAppointment({ 
+        scheduledAt: selectedDateTime,
+        departureLatitude: latitude,
+        departureLongitude: longitude,
+        searchRadius: radius
+      });
       setCurrentAppointment(appointment);
 
       // 봇 응답
-      addBotMessage('좋아요! 그 시간으로 비워둘게요. 🕒');
+      addBotMessage('완벽해요! 약속이 생성되었어요. 🎉\n약속 하루 전에 미션을 공개해드릴게요!');
 
-      // 추천 미션 가져오기
+      // Scenario A: 시간/장소 설정 완료 → /appointments로 강제 리다이렉트
       setTimeout(() => {
-        addBotMessage('그 시간에 딱 맞는 일탈을 찾아봤어요. 이건 어떠세요?', 500);
-        setTimeout(() => {
-          addMessage({
-            id: Date.now().toString(),
-            sender: 'bot',
-            type: 'mission-slider',
-            timestamp: new Date(),
-          });
-          fetchRecommendedMissions(selectedDateTime);
-        }, 1300);
-      }, 1300);
+        console.log('✅ 약속 생성 완료 → /appointments로 리다이렉트');
+        navigate('/appointments');
+      }, 2000);
 
     } catch (error) {
       console.error('약속 생성 실패:', error);
@@ -371,17 +472,14 @@ const ChatAppointment = () => {
       // 봇 최종 응답
       const dday = calculateDday(updatedAppointment.scheduledAt);
       addBotMessage(
-        `완벽해요! ${formatDateTime(updatedAppointment.scheduledAt)}에 [${mission.title}], 잊지 마세요! ✨\n${dday === 'D-Day' ? '⏰ 오늘이에요!' : `⏳ ${dday}`}`
+        `완벽해요! 미션이 확정되었어요! 🎉\n${formatDateTime(updatedAppointment.scheduledAt)}에 [${mission.title}], 잊지 마세요! ✨`
       );
 
+      // Scenario B: 미션 선택 완료 → /appointments로 강제 리다이렉트
       setTimeout(() => {
-        addMessage({
-          id: Date.now().toString(),
-          sender: 'bot',
-          type: 'action-area',
-          timestamp: new Date(),
-        });
-      }, 1500);
+        console.log('✅ 미션 선택 완료 → /appointments로 리다이렉트');
+        navigate('/appointments');
+      }, 2000);
 
     } catch (error) {
       console.error('미션 설정 실패:', error);
@@ -503,20 +601,83 @@ const ChatAppointment = () => {
 
             {message.type === 'time-picker' && (
               <div className="bg-white rounded-2xl px-4 py-4 shadow-sm">
-                <input
-                  type="datetime-local"
-                  value={selectedDateTime}
-                  onChange={(e) => setSelectedDateTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  min={new Date().toISOString().slice(0, 16)}
-                />
+                <div className="flex gap-2 mb-3">
+                  {/* 월 선택 */}
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-600 mb-1">월</label>
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-center font-semibold"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const month = i + 1;
+                        const now = new Date();
+                        const currentMonth = now.getMonth() + 1;
+                        const currentYear = now.getFullYear();
+                        // 현재 월보다 이전 월은 비활성화 (같은 년도일 경우)
+                        const isDisabled = month < currentMonth;
+                        return (
+                          <option key={month} value={month} disabled={isDisabled}>
+                            {month}월
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* 일 선택 */}
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-600 mb-1">일</label>
+                    <select
+                      value={selectedDay}
+                      onChange={(e) => setSelectedDay(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-center font-semibold"
+                    >
+                      {Array.from({ length: 31 }, (_, i) => {
+                        const day = i + 1;
+                        return (
+                          <option key={day} value={day}>
+                            {day}일
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* 시간 선택 */}
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-600 mb-1">시간</label>
+                    <select
+                      value={selectedHour}
+                      onChange={(e) => setSelectedHour(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-center font-semibold"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={i}>
+                          {i}시
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <button
                   onClick={handleTimeSelect}
-                  disabled={!selectedDateTime || isLoading}
+                  disabled={isLoading}
                   className="w-full mt-3 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? '처리 중...' : '이 시간으로 할게요'}
                 </button>
+              </div>
+            )}
+
+            {message.type === 'location-picker' && (
+              <div className="w-full">
+                <LocationPicker
+                  onLocationSelect={handleLocationSelect}
+                  isLoading={isLoading}
+                />
               </div>
             )}
 
@@ -562,23 +723,56 @@ const ChatAppointment = () => {
               </div>
             )}
 
-            {message.type === 'action-area' && (
-              <div className="w-full">
-                <ChatActionArea
-                  appointment={currentAppointment}
-                  onProofFormShow={() => {
-                    // proof-form 추가
-                    setMessages(prev => prev.filter(m => m.type !== 'action-area'));
-                    addMessage({
-                      id: Date.now().toString(),
-                      sender: 'bot',
-                      type: 'proof-form',
-                      timestamp: new Date(),
-                    });
-                  }}
-                />
-              </div>
-            )}
+            {message.type === 'action-chips' && (() => {
+              console.log('ChatAppointment.tsx - action-chips 메시지 렌더링');
+              console.log('ChatAppointment.tsx - currentAppointment:', currentAppointment);
+              console.log('ChatAppointment.tsx - message:', message);
+              
+              return (
+                <div className="w-full">
+                  {currentAppointment ? (
+                    <ActionChips
+                      appointment={currentAppointment}
+                      onProofFormShow={() => {
+                        console.log('ChatAppointment.tsx - onProofFormShow 호출됨');
+                        // proof-form 추가
+                        setMessages(prev => prev.filter(m => m.type !== 'action-chips'));
+                        addMessage({
+                          id: Date.now().toString(),
+                          sender: 'bot',
+                          type: 'proof-form',
+                          timestamp: new Date(),
+                        });
+                      }}
+                      onCancel={handleCancel}
+                      onShowMissionSlider={() => {
+                        console.log('ChatAppointment.tsx - onShowMissionSlider 호출됨');
+                        // 슬라이더 토글 - 다른 미션 구경하기
+                        const hasSlider = messages.some(m => m.type === 'mission-slider');
+                        if (!hasSlider && currentAppointment) {
+                          addBotMessage('다른 미션도 구경해볼까요?', 300);
+                          setTimeout(() => {
+                            addMessage({
+                              id: Date.now().toString(),
+                              sender: 'bot',
+                              type: 'mission-slider',
+                              timestamp: new Date(),
+                            });
+                            fetchRecommendedMissions(currentAppointment.scheduledAt);
+                          }, 800);
+                        }
+                      }}
+                      onNavigateToReview={() => navigate('/reviews')}
+                    />
+                  ) : (
+                    (() => {
+                      console.log('ChatAppointment.tsx - ❌ currentAppointment가 null입니다!');
+                      return <div className="text-red-500 text-sm">약속 정보를 불러오는 중입니다...</div>;
+                    })()
+                  )}
+                </div>
+              );
+            })()}
 
             {message.type === 'action-buttons' && (
               <div className="bg-white rounded-2xl px-4 py-4 shadow-sm space-y-2">
@@ -589,7 +783,45 @@ const ChatAppointment = () => {
                   >
                     🔄 이 약속 다시 잡기
                   </button>
+                ) : currentAppointment?.status === AppointmentStatus.ACCEPTED && currentAppointment?.missionTitle ? (
+                  // 확정된 약속 (미션 선택 완료)
+                  <>
+                    <button
+                      onClick={() => navigate(`/mission/${currentAppointment?.id}`)}
+                      className="w-full py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 transition text-base"
+                    >
+                      🎯 미션 상세 보기
+                    </button>
+                    <button
+                      onClick={() => {
+                        // 슬라이더 토글 - 다른 미션 구경하기
+                        const hasSlider = messages.some(m => m.type === 'mission-slider');
+                        if (!hasSlider) {
+                          addBotMessage('다른 미션도 구경해볼까요?', 300);
+                          setTimeout(() => {
+                            addMessage({
+                              id: Date.now().toString(),
+                              sender: 'bot',
+                              type: 'mission-slider',
+                              timestamp: new Date(),
+                            });
+                            fetchRecommendedMissions(currentAppointment.scheduledAt);
+                          }, 800);
+                        }
+                      }}
+                      className="w-full py-2 text-sm text-gray-600 hover:text-purple-600 transition"
+                    >
+                      🔍 다른 미션 구경하기
+                    </button>
+                    <button
+                      onClick={handleCancel}
+                      className="w-full py-2 text-xs text-red-500 hover:text-red-700"
+                    >
+                      약속 취소하기
+                    </button>
+                  </>
                 ) : (
+                  // 미션 미선택 상태
                   <>
                     <button
                       onClick={() => navigate(`/mission/${currentAppointment?.id}`)}

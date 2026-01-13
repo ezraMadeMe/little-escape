@@ -1,13 +1,31 @@
 import { apiFetch } from './client';
 import { Appointment } from '../types/appointment';
 
-export async function createAppointment(params: { scheduledAt: string; missionId?: number }): Promise<Appointment> {
-  const body: { scheduledAt: string; missionId?: number } = {
+export async function createAppointment(params: { 
+  scheduledAt: string; 
+  missionId?: number;
+  departureLatitude?: number;
+  departureLongitude?: number;
+  searchRadius?: number;
+}): Promise<Appointment> {
+  const body: any = {
     scheduledAt: params.scheduledAt,
   };
 
   if (params.missionId !== undefined) {
     body.missionId = params.missionId;
+  }
+
+  if (params.departureLatitude !== undefined) {
+    body.departureLatitude = params.departureLatitude;
+  }
+
+  if (params.departureLongitude !== undefined) {
+    body.departureLongitude = params.departureLongitude;
+  }
+
+  if (params.searchRadius !== undefined) {
+    body.searchRadius = params.searchRadius;
   }
 
   return apiFetch<Appointment>('/api/v1/appointments', {
@@ -123,28 +141,80 @@ export async function bulkDeleteAppointments(appointmentIds: number[]): Promise<
   });
 }
 
-// 가장 가까운 예정된 약속 조회 (ACCEPTED 상태, 미션 선택 완료)
+// ========================================
+// 개발용 API (테스트 전용)
+// ========================================
+
+// 개발용: 약속 날짜를 내일(D-1)로 변경
+export async function devUnlockTomorrow(appointmentId: number): Promise<Appointment> {
+  console.log('============ [API] devUnlockTomorrow 호출 ============');
+  console.log('요청 URL:', `/api/v1/appointments/${appointmentId}/dev/unlock-tomorrow`);
+  console.log('요청 메서드: PUT');
+  console.log('약속 ID:', appointmentId);
+  
+  const result = await apiFetch<Appointment>(`/api/v1/appointments/${appointmentId}/dev/unlock-tomorrow`, {
+    method: 'PUT',
+  });
+  
+  console.log('✅ API 응답 성공:', result);
+  console.log('============================================');
+  return result;
+}
+
+// 개발용: 약속 날짜를 현재 시간으로 변경
+export async function devUnlockNow(appointmentId: number): Promise<Appointment> {
+  console.log('============ [API] devUnlockNow 호출 ============');
+  console.log('요청 URL:', `/api/v1/appointments/${appointmentId}/dev/unlock-now`);
+  console.log('요청 메서드: PUT');
+  console.log('약속 ID:', appointmentId);
+  
+  const result = await apiFetch<Appointment>(`/api/v1/appointments/${appointmentId}/dev/unlock-now`, {
+    method: 'PUT',
+  });
+  
+  console.log('✅ API 응답 성공:', result);
+  console.log('============================================');
+  return result;
+}
+
+// 가장 가까운 예정된 약속 조회
 export async function getNextAppointment(): Promise<Appointment | null> {
   try {
     const appointments = await getMyAppointments();
+    
+    console.log('📋 전체 약속 목록:', appointments);
+    console.log('📋 약속 개수:', appointments.length);
 
-    // ACCEPTED 상태이면서 미션이 선택된 약속만 필터링
-    const acceptedWithMission = appointments.filter(
-      (apt) => apt.status === 'ACCEPTED' && apt.missionTitle
+    // 완료되지 않은 약속만 필터링 (PENDING, ACCEPTED 포함)
+    const activeAppointments = appointments.filter(
+      (apt) => apt.status !== 'COMPLETED' && 
+               apt.status !== 'CANCELLED' && 
+               apt.status !== 'NO_SHOW' &&
+               apt.status !== 'REJECTED'
     );
+    
+    console.log('🔄 진행 중인 약속:', activeAppointments);
+    console.log('🔄 진행 중인 약속 개수:', activeAppointments.length);
 
-    if (acceptedWithMission.length === 0) {
+    if (activeAppointments.length === 0) {
+      console.log('❌ 진행 중인 약속 없음');
       return null;
     }
 
-    // 예정 시간 기준 오름차순 정렬
-    const sorted = acceptedWithMission.sort((a, b) =>
+    // 예정 시간 기준 오름차순 정렬 (가장 가까운 약속이 먼저)
+    const sorted = activeAppointments.sort((a, b) =>
       new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
     );
+    
+    console.log('✅ 가장 가까운 약속:', sorted[0]);
+    console.log('  - ID:', sorted[0].id);
+    console.log('  - Status:', sorted[0].status);
+    console.log('  - Mission:', sorted[0].missionTitle || '미선택');
+    console.log('  - Scheduled:', sorted[0].scheduledAt);
 
     return sorted[0];
   } catch (error) {
-    console.error('다음 약속 조회 실패:', error);
+    console.error('❌ 다음 약속 조회 실패:', error);
     return null;
   }
 }
