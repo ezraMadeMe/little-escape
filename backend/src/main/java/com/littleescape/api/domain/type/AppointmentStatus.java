@@ -1,7 +1,9 @@
 package com.littleescape.api.domain.type;
 
 public enum AppointmentStatus {
-    PENDING,    // 대기 중
+    CREATED,    // 시간/장소만 정하고, 미션은 아직 모르는 상태 (채팅방 생성 직후)
+    UNLOCKED,   // 약속 D-1일, 사용자가 미션을 선택할 수 있게 된 상태
+    PENDING,    // 대기 중 (기존 호환성 유지)
     ACCEPTED,   // 수락됨
     REJECTED,   // 거절됨
     CANCELLED,  // 취소됨

@@ -11,8 +11,13 @@ const MainLayout = () => {
 
   const handleCenterButtonClick = () => {
     if (appointment) {
-      // 약속이 있으면 해당 채팅방으로 이동
-      navigate(`/chat/${appointment.id}`);
+      // 진행 중인 약속(ACCEPTED)이 있고 미션이 선택된 경우 -> 미션 상세 페이지로 이동
+      if (appointment.status === 'ACCEPTED' && appointment.missionTitle) {
+        navigate(`/mission/${appointment.id}`);
+      } else {
+        // 그 외의 경우 채팅방으로 이동
+        navigate(`/chat/${appointment.id}`);
+      }
     } else {
       // 약속이 없으면 새 약속 생성 채팅방으로 이동
       navigate('/chat/new');

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, PanInfo } from 'framer-motion';
-import { getMyAppointments, toggleFavorite, bulkDeleteAppointments, cloneAppointment, cancelAppointment } from '../api/appointmentApi';
+import { getMyAppointments, toggleFavorite, bulkDeleteAppointments, cloneAppointment, cancelAppointment, devUnlockTomorrow, devUnlockNow } from '../api/appointmentApi';
 import { Appointment, AppointmentStatus } from '../types/appointment';
 import { formatDateTime, calculateDday } from '../utils/dateUtils';
+import FeaturedCard from '../components/FeaturedCard';
 
 const Appointments = () => {
   const navigate = useNavigate();
@@ -26,18 +27,39 @@ const Appointments = () => {
       setAppointments(data);
     } catch (error) {
       console.error('약속 목록 조회 실패:', error);
+      // 인증 에러는 client.ts에서 자동으로 로그인 페이지로 리다이렉트됩니다
+      // 다른 에러의 경우 사용자에게 알림
+      if (error instanceof Error && !error.message.includes('Authentication') && !error.message.includes('Unauthorized')) {
+        alert('약속 목록을 불러오는데 실패했습니다. 다시 시도해주세요.');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
+  // 진행 중인 약속 중 가장 가까운 1개 (Hero Section용)
+  const upcomingAppointment = appointments
+    .filter((apt) => 
+      apt.status === AppointmentStatus.CREATED ||
+      apt.status === AppointmentStatus.UNLOCKED ||
+      apt.status === AppointmentStatus.PENDING || 
+      apt.status === AppointmentStatus.ACCEPTED
+    )
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
+
   const filteredAppointments = appointments.filter((apt) => {
+    // Hero Section에 표시된 약속은 리스트에서 제외
+    if (upcomingAppointment && apt.id === upcomingAppointment.id) return false;
+
     // 즐겨찾기 필터
     if (showFavoritesOnly && !apt.isFavorite) return false;
 
     // 상태 필터
     if (filter === 'active') {
-      return apt.status === AppointmentStatus.PENDING || apt.status === AppointmentStatus.ACCEPTED;
+      return apt.status === AppointmentStatus.CREATED ||
+             apt.status === AppointmentStatus.UNLOCKED ||
+             apt.status === AppointmentStatus.PENDING || 
+             apt.status === AppointmentStatus.ACCEPTED;
     }
     if (filter === 'completed') {
       return apt.status === AppointmentStatus.COMPLETED;
@@ -115,8 +137,78 @@ const Appointments = () => {
     }
   };
 
+  // 개발용: 약속 날짜를 내일로 변경
+  const handleDevUnlockTomorrow = async (appointmentId: number) => {
+    console.log('============ [개발용] D-1로 변경 버튼 클릭 ============');
+    console.log('약속 ID:', appointmentId);
+    console.log('현재 시간:', new Date().toISOString());
+    
+    if (!confirm('⚠️ [개발용] 약속 날짜를 내일(D-1)로 변경하시겠습니까?')) {
+      console.log('❌ 사용자가 취소함');
+      return;
+    }
+
+    try {
+      console.log('📡 API 호출 시작: devUnlockTomorrow');
+      const result = await devUnlockTomorrow(appointmentId);
+      console.log('✅ API 호출 성공:', result);
+      console.log('  - 변경된 약속 시간:', result.scheduledAt);
+      console.log('  - 변경된 상태:', result.status);
+      
+      alert('✅ 약속 날짜가 내일로 변경되었습니다!');
+      
+      console.log('🔄 약속 목록 새로고침 시작');
+      await loadAppointments();
+      console.log('✅ 약속 목록 새로고침 완료');
+    } catch (error) {
+      console.error('❌ 날짜 변경 실패:', error);
+      alert('날짜 변경에 실패했습니다.');
+    }
+    console.log('============================================');
+  };
+
+  // 개발용: 약속 날짜를 현재 시간으로 변경
+  const handleDevUnlockNow = async (appointmentId: number) => {
+    console.log('============ [개발용] Now로 변경 버튼 클릭 ============');
+    console.log('약속 ID:', appointmentId);
+    console.log('현재 시간:', new Date().toISOString());
+    
+    if (!confirm('⚠️ [개발용] 약속 날짜를 현재 시간으로 변경하시겠습니까?')) {
+      console.log('❌ 사용자가 취소함');
+      return;
+    }
+
+    try {
+      console.log('📡 API 호출 시작: devUnlockNow');
+      const result = await devUnlockNow(appointmentId);
+      console.log('✅ API 호출 성공:', result);
+      console.log('  - 변경된 약속 시간:', result.scheduledAt);
+      console.log('  - 변경된 상태:', result.status);
+      
+      alert('✅ 약속 날짜가 현재 시간으로 변경되었습니다!');
+      
+      console.log('🔄 약속 목록 새로고침 시작');
+      await loadAppointments();
+      console.log('✅ 약속 목록 새로고침 완료');
+    } catch (error) {
+      console.error('❌ 날짜 변경 실패:', error);
+      alert('날짜 변경에 실패했습니다.');
+    }
+    console.log('============================================');
+  };
+
   const getStatusBadge = (status: AppointmentStatus) => {
     switch (status) {
+      case AppointmentStatus.CREATED:
+        return <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center gap-1">
+          <span>🔒</span>
+          <span>미션 D-1 공개</span>
+        </span>;
+      case AppointmentStatus.UNLOCKED:
+        return <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full flex items-center gap-1">
+          <span>🎉</span>
+          <span>미션 선택 가능</span>
+        </span>;
       case AppointmentStatus.PENDING:
         return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full">미션 선택 필요</span>;
       case AppointmentStatus.ACCEPTED:
@@ -240,31 +332,56 @@ const Appointments = () => {
           </div>
         )}
 
+        {/* Hero Section: 진행 중인 가장 가까운 약속 */}
+        {upcomingAppointment && !isSelectionMode && (
+          <div className="px-4 pt-4">
+            <FeaturedCard 
+              appointment={upcomingAppointment}
+              onDevUnlockTomorrow={handleDevUnlockTomorrow}
+              onDevUnlockNow={handleDevUnlockNow}
+            />
+          </div>
+        )}
+
         {/* 약속 리스트 */}
         <div>
-          {filteredAppointments.length === 0 ? (
+          {appointments.length === 0 ? (
             <div className="text-center py-20 px-4">
               <div className="text-6xl mb-4">📅</div>
-              <p className="text-gray-600">
-                {showFavoritesOnly ? '즐겨찾기한 약속이 없어요' : '약속이 없어요'}
-              </p>
+              <p className="text-gray-600">약속이 없어요</p>
               <p className="text-sm text-gray-400 mt-2">새로운 약속을 잡아보세요!</p>
             </div>
+          ) : filteredAppointments.length === 0 && !upcomingAppointment ? (
+            <div className="text-center py-20 px-4">
+              <div className="text-6xl mb-4">🔍</div>
+              <p className="text-gray-600">
+                {showFavoritesOnly ? '즐겨찾기한 약속이 없어요' : '해당하는 약속이 없어요'}
+              </p>
+            </div>
           ) : (
-            filteredAppointments.map((appointment) => (
-              <SwipeableAppointmentItem
-                key={appointment.id}
-                appointment={appointment}
-                isSelectionMode={isSelectionMode}
-                isSelected={selectedIds.has(appointment.id)}
-                onToggleSelection={() => handleToggleSelection(appointment.id)}
-                onToggleFavorite={handleToggleFavorite}
-                onSwipeRight={() => handleSwipeRight(appointment.id)}
+            <>
+              {filteredAppointments.length > 0 && (
+                <div className="px-4 pt-2 pb-1">
+                  <h2 className="text-sm font-semibold text-gray-500">지난 약속</h2>
+                </div>
+              )}
+              {filteredAppointments.map((appointment) => (
+                <SwipeableAppointmentItem
+                  key={appointment.id}
+                  appointment={appointment}
+                  isSelectionMode={isSelectionMode}
+                  isSelected={selectedIds.has(appointment.id)}
+                  onToggleSelection={() => handleToggleSelection(appointment.id)}
+                  onToggleFavorite={handleToggleFavorite}
+                  onSwipeRight={() => handleSwipeRight(appointment.id)}
                 onSwipeLeft={() => handleSwipeLeft(appointment.id)}
                 onClick={() => !isSelectionMode && navigate(`/chat/${appointment.id}`)}
                 getStatusBadge={getStatusBadge}
+                onDevUnlockTomorrow={handleDevUnlockTomorrow}
+                onDevUnlockNow={handleDevUnlockNow}
               />
-            ))
+              ))}
+            </>
           )}
         </div>
       </div>
@@ -283,6 +400,8 @@ interface SwipeableAppointmentItemProps {
   onSwipeLeft: () => void;
   onClick: () => void;
   getStatusBadge: (status: AppointmentStatus) => JSX.Element | null;
+  onDevUnlockTomorrow?: (id: number) => void;
+  onDevUnlockNow?: (id: number) => void;
 }
 
 const SwipeableAppointmentItem = ({
@@ -295,8 +414,27 @@ const SwipeableAppointmentItem = ({
   onSwipeLeft,
   onClick,
   getStatusBadge,
+  onDevUnlockTomorrow,
+  onDevUnlockNow,
 }: SwipeableAppointmentItemProps) => {
   const [dragX, setDragX] = useState(0);
+  const isDev = import.meta.env.DEV; // 개발 환경 체크
+  
+  // 개발용 버튼 표시 조건 로그
+  // 개발 환경에서는 COMPLETED를 제외한 모든 상태에서 버튼 표시 (테스트 용이성 향상)
+  const showDevButtons = isDev && !isSelectionMode && appointment.status !== AppointmentStatus.COMPLETED;
+  
+  if (isDev && appointment.id) {
+    console.log(`[개발용 버튼 체크] 약속 ID: ${appointment.id}`);
+    console.log(`  - isDev: ${isDev}`);
+    console.log(`  - isSelectionMode: ${isSelectionMode}`);
+    console.log(`  - appointment.status: ${appointment.status}`);
+    console.log(`  - showDevButtons: ${showDevButtons}`);
+    
+    if (!showDevButtons && appointment.status === AppointmentStatus.COMPLETED) {
+      console.log(`  ⚠️ COMPLETED 상태는 개발용 버튼을 지원하지 않습니다.`);
+    }
+  }
 
   const handleDragEnd = (event: any, info: PanInfo) => {
     const threshold = 100;
@@ -394,6 +532,32 @@ const SwipeableAppointmentItem = ({
               <p className="text-xs text-gray-500 mt-1">
                 📍 {appointment.placeName}
               </p>
+            )}
+
+            {/* 개발용 버튼 (개발 환경에서만 표시) */}
+            {showDevButtons && (
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={(e) => {
+                    console.log('🔓 D-1로 변경 버튼 클릭됨!');
+                    e.stopPropagation();
+                    onDevUnlockTomorrow?.(appointment.id);
+                  }}
+                  className="px-2 py-1 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 transition"
+                >
+                  🔓 D-1로 변경
+                </button>
+                <button
+                  onClick={(e) => {
+                    console.log('⏰ Now로 변경 버튼 클릭됨!');
+                    e.stopPropagation();
+                    onDevUnlockNow?.(appointment.id);
+                  }}
+                  className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition"
+                >
+                  ⏰ Now로 변경
+                </button>
+              </div>
             )}
           </div>
         </div>

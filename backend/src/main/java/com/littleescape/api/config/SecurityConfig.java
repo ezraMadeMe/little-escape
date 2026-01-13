@@ -4,6 +4,7 @@ import com.littleescape.api.auth.CustomOAuth2UserService;
 import com.littleescape.api.auth.JwtAuthenticationFilter;
 import com.littleescape.api.auth.OAuth2LoginSuccessHandler;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,6 +18,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.http.HttpMethod;
 
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -26,6 +28,7 @@ public class SecurityConfig {
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CorsProperties corsProperties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -62,7 +65,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://172.30.1.23:5173", "http://172.30.1.95:5173", "http://10.10.0.150:5173", "http://10.0.3.48:5173"));
+        configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);

@@ -94,6 +94,96 @@ INSERT INTO mission_templates (title, description, category, difficulty_level, c
 SELECT '브런치 카페', '여유로운 브런치 즐기기', 'FOOD', 'EASY', '오전 10시~오후 2시', NULL, 'INDOOR', 'AFTERNOON', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '브런치 카페');
 
+-- ========================================
+-- 위치 기반 미션 데이터 (가산디지털단지역 주변)
+-- 중심 좌표: (37.481, 126.882)
+-- ========================================
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '가산 포장마차 거리 가기', '가산디지털단지 포장마차 거리에서 저녁 한 잔', 'FOOD', 'EASY', '저녁 시간 추천', 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=800', 'OUTDOOR', 'NIGHT', 37.4815, 126.8825, '서울시 금천구 가산디지털1로 168', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '가산 포장마차 거리 가기');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '독산동 맛집 탐방', '독산동 숨은 맛집에서 점심 먹기', 'FOOD', 'EASY', '점심 시간 추천', 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=800', 'INDOOR', 'AFTERNOON', 37.4790, 126.8870, '서울시 금천구 독산동 271-5', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '독산동 맛집 탐방');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '가산 카페거리 산책', '가산디지털단지 카페거리에서 커피 한 잔', 'RELAX', 'EASY', '오후 시간 추천', 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=800', 'INDOOR', 'AFTERNOON', 37.4805, 126.8810, '서울시 금천구 가산디지털2로 98', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '가산 카페거리 산책');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '가산 PC방 게임 한판', '가산디지털단지 PC방에서 게임 한 판', 'ACTIVITY', 'EASY', '언제나 가능', 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=800', 'INDOOR', 'ANY', 37.4820, 126.8835, '서울시 금천구 가산디지털1로 171', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '가산 PC방 게임 한판');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '독산역 노래방 가기', '독산역 근처 노래방에서 스트레스 해소', 'ACTIVITY', 'EASY', '저녁 시간 추천', 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?q=80&w=800', 'INDOOR', 'NIGHT', 37.4726, 126.8927, '서울시 금천구 시흥대로 398', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '독산역 노래방 가기');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '가산 헬스장 운동', '가산디지털단지 헬스장에서 운동하기', 'ACTIVITY', 'MEDIUM', '평일 저녁 추천', 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=800', 'INDOOR', 'ANY', 37.4800, 126.8800, '서울시 금천구 디지털로9길 46', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '가산 헬스장 운동');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '가산 영화관 관람', '가산디지털단지 영화관에서 영화 보기', 'CULTURE', 'EASY', '저녁 시간 추천', 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=800', 'INDOOR', 'NIGHT', 37.4812, 126.8818, '서울시 금천구 디지털로10길 9', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '가산 영화관 관람');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '가산 도서관 독서', '가산디지털단지 도서관에서 책 읽기', 'CULTURE', 'EASY', '주말 오후 추천', 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?q=80&w=800', 'INDOOR', 'AFTERNOON', 37.4795, 126.8845, '서울시 금천구 가산디지털1로 145', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '가산 도서관 독서');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '가산 베이커리 투어', '가산디지털단지 베이커리에서 빵 사먹기', 'FOOD', 'EASY', '오전 시간 추천', 'https://images.unsplash.com/photo-1509440159596-0249088772ff?q=80&w=800', 'INDOOR', 'MORNING', 37.4808, 126.8822, '서울시 금천구 가산디지털2로 115', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '가산 베이커리 투어');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '가산 공원 산책', '가산디지털단지 근처 공원에서 산책하기', 'RELAX', 'EASY', '아침/저녁 추천', 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=800', 'OUTDOOR', 'ANY', 37.4785, 126.8795, '서울시 금천구 가산동 60-31', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '가산 공원 산책');
+
+-- ========================================
+-- 위치 기반 미션 데이터 (장한평역 주변)
+-- 중심 좌표: (37.561, 127.064)
+-- ========================================
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '장안동 벚꽃길 걷기', '장안동 벚꽃길을 따라 여유롭게 산책하기', 'RELAX', 'EASY', '봄철 추천', 'https://images.unsplash.com/photo-1522383225653-ed111181a951?q=80&w=800', 'OUTDOOR', 'AFTERNOON', 37.5625, 127.0655, '서울시 동대문구 장안동 산1-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '장안동 벚꽃길 걷기');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '장한평 중고차 시장 구경', '장한평 중고차 시장에서 차 구경하기', 'ACTIVITY', 'EASY', '주말 오후 추천', 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?q=80&w=800', 'OUTDOOR', 'AFTERNOON', 37.5605, 127.0635, '서울시 동대문구 천호대로 506', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '장한평 중고차 시장 구경');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '장한평 맛집 탐방', '장한평역 근처 숨은 맛집에서 식사하기', 'FOOD', 'EASY', '점심/저녁 추천', 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=800', 'INDOOR', 'ANY', 37.5610, 127.0640, '서울시 동대문구 답십리로 지하 650', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '장한평 맛집 탐방');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT 'LP 바에서 음악 듣기', '장한평 LP 바에서 아날로그 음악 감상', 'CULTURE', 'MEDIUM', '저녁 시간 추천', 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?q=80&w=800', 'INDOOR', 'NIGHT', 37.5615, 127.0645, '서울시 동대문구 장한로 272', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = 'LP 바에서 음악 듣기');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '장한평 카페 투어', '장한평역 근처 감성 카페에서 커피 마시기', 'RELAX', 'EASY', '오후 시간 추천', 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800', 'INDOOR', 'AFTERNOON', 37.5608, 127.0638, '서울시 동대문구 답십리로 668', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '장한평 카페 투어');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '답십리 공원 조깅', '답십리 공원에서 조깅하기', 'ACTIVITY', 'MEDIUM', '아침/저녁 추천', 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?q=80&w=800', 'OUTDOOR', 'MORNING', 37.5630, 127.0660, '서울시 동대문구 답십리동 산1-5', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '답십리 공원 조깅');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '장한평 볼링장 가기', '장한평 볼링장에서 볼링 한 게임', 'ACTIVITY', 'EASY', '저녁 시간 추천', 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?q=80&w=800', 'INDOOR', 'NIGHT', 37.5600, 127.0630, '서울시 동대문구 천호대로 512', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '장한평 볼링장 가기');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '장한평 서점 방문', '장한평역 근처 서점에서 책 구경하기', 'CULTURE', 'EASY', '주말 오후 추천', 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?q=80&w=800', 'INDOOR', 'AFTERNOON', 37.5612, 127.0642, '서울시 동대문구 답십리로 670', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '장한평 서점 방문');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '장한평 분식집 탐방', '장한평 분식집에서 떡볶이 먹기', 'FOOD', 'EASY', '점심/간식 시간', 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?q=80&w=800', 'INDOOR', 'AFTERNOON', 37.5607, 127.0637, '서울시 동대문구 장한로 268', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '장한평 분식집 탐방');
+
+INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, created_at, updated_at)
+SELECT '장한평 야시장 구경', '장한평 야시장에서 야식 먹기', 'FOOD', 'EASY', '저녁 시간 추천', 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=800', 'OUTDOOR', 'NIGHT', 37.5618, 127.0648, '서울시 동대문구 답십리로 675', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '장한평 야시장 구경');
+
 -- Sample Adjectives Data for Nickname Generation
 INSERT INTO adjectives (word) SELECT '행복한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '행복한');
 INSERT INTO adjectives (word) SELECT '나른한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '나른한');

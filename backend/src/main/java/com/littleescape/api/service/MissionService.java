@@ -58,6 +58,57 @@ public class MissionService {
     }
 
     /**
+     * 위치 기반 미션 추천 (거리 필터링 포함)
+     *
+     * @param scheduledAt 약속 예정 시간
+     * @param latitude 사용자 위도
+     * @param longitude 사용자 경도
+     * @param radiusKm 검색 반경 (km)
+     * @return 추천 미션 리스트 (최대 4개, 거리순 정렬)
+     */
+    public List<MissionTemplate> getRecommendationsWithLocation(
+            LocalDateTime scheduledAt,
+            Double latitude,
+            Double longitude,
+            Integer radiusKm
+    ) {
+        // 위치 정보가 없으면 기존 로직 사용
+        if (latitude == null || longitude == null) {
+            return getRecommendations(scheduledAt);
+        }
+
+        // 1. 시간대 분석
+        List<TimeOfDay> targetTimes = analyzeTimeOfDay(scheduledAt);
+
+        // 2. 날씨/장소 분석
+        List<LocationType> targetLocations = analyzeLocation();
+
+        log.info("=== 위치 기반 미션 추천 === 시간: {} 위치: ({}, {}) 반경: {}km",
+                scheduledAt, latitude, longitude, radiusKm);
+
+        // 3. 시간대 + 위치 타입 + 거리 기반 조회
+        List<String> timeStrings = targetTimes.stream()
+                .map(Enum::name)
+                .collect(Collectors.toList());
+        
+        List<String> locationStrings = targetLocations.stream()
+                .map(Enum::name)
+                .collect(Collectors.toList());
+
+        List<MissionTemplate> candidates = missionTemplateRepository
+                .findByTimeOfDayAndLocationTypeWithinRadius(
+                        latitude, longitude, radiusKm,
+                        timeStrings, locationStrings
+                );
+
+        // 4. 거리순으로 이미 정렬되어 있으므로 섞지 않음
+        // 5. 최대 4개 선정
+        return candidates.stream()
+                .limit(4)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * 시간대 분석 로직
      *
      * @param scheduledAt 약속 예정 시간

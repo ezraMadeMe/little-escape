@@ -94,7 +94,7 @@ coolsms:
   sender-number: 01041681419
 
 app:
-  client-base-url: http://10.0.3.48:5173
+  client-base-url: http://localhost:5173
   magic-link:
     base-url: ${app.client-base-url}
   oauth2:
@@ -107,4 +107,3 @@ app:
       - http://172.30.1.95:5173
       - http://10.10.0.150:5173
       - http://10.0.3.48:5173
-      - http://10.67.61.157:5173

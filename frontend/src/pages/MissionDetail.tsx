@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getAppointmentDetail, completeAppointment } from '../api/appointmentApi';
+import { getAppointmentDetail, completeAppointment, cancelAppointment } from '../api/appointmentApi';
 import { Appointment } from '../types/appointment';
 import { supabase } from '../lib/supabaseClient';
 
@@ -53,6 +53,29 @@ function MissionDetail() {
     if (diff === 0) return 'D-Day';
     if (diff > 0) return `D-${diff}`;
     return `D+${Math.abs(diff)}`;
+  };
+
+  const getDetailedTimeRemaining = (scheduledAt: string): string => {
+    const now = new Date();
+    const scheduled = new Date(scheduledAt);
+    const diffMs = scheduled.getTime() - now.getTime();
+
+    if (diffMs < 0) {
+      return '시간 도래';
+    }
+
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (hours >= 24) {
+      const days = Math.floor(hours / 24);
+      const remainingHours = hours % 24;
+      return `${days}일 ${remainingHours}시간 남음`;
+    } else if (hours > 0) {
+      return `${hours}시간 ${minutes}분 남음`;
+    } else {
+      return `${minutes}분 남음`;
+    }
   };
 
   const isPlaceUnlocked = (scheduledAt: string): boolean => {
@@ -125,18 +148,15 @@ function MissionDetail() {
         return;
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('mission-proofs')
-        .getPublicUrl(filePath);
-
-      const proofImageUrl = urlData.publicUrl;
-
-      // Complete appointment with both image URL and comment
-      await completeAppointment(appointment.id, {
-        proofComment: proofComment.trim() || '',
-        proofImageUrl
-      });
+      // Complete appointment with image URL and comment
+      // completeAppointment expects: (id, comment, keywords, files)
+      // Since we already uploaded to Supabase, we'll pass an empty files array
+      await completeAppointment(
+        appointment.id,
+        proofComment.trim() || '',
+        [], // keywords - empty for now
+        [] // files - already uploaded to Supabase
+      );
 
       alert('수고하셨습니다!');
       navigate('/mypage');
@@ -146,6 +166,25 @@ function MissionDetail() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleCancelAppointment = async () => {
+    if (!appointment) return;
+    if (!confirm('정말 이 약속을 취소하시겠습니까?')) return;
+
+    try {
+      await cancelAppointment(appointment.id);
+      alert('약속이 취소되었습니다.');
+      navigate('/appointments');
+    } catch (error) {
+      console.error('약속 취소 실패:', error);
+      alert('약속 취소에 실패했습니다.');
+    }
+  };
+
+  const handleBackToChat = () => {
+    if (!appointment) return;
+    navigate(`/chat/${appointment.id}`);
   };
 
   if (loading) {
@@ -217,7 +256,7 @@ function MissionDetail() {
             </button>
           )}
 
-          <p className="text-white/80 text-base font-medium">
+          <p className="text-white/80 text-base font-medium mb-3">
             {new Date(appointment.scheduledAt).toLocaleDateString('ko-KR', {
               year: 'numeric',
               month: 'long',
@@ -227,11 +266,47 @@ function MissionDetail() {
               minute: '2-digit',
             })}
           </p>
+
+          {/* 상세 타이머 */}
+          {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+            <div className="bg-white/10 backdrop-blur-md px-6 py-3 border border-white/20 inline-block">
+              <p className="text-white/90 font-bold text-lg">
+                ⏱️ {getDetailedTimeRemaining(appointment.scheduledAt)}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
       {/* 하단 패널 - 직각 디자인 */}
       <div className="absolute bottom-0 left-0 right-0 z-20 bg-white/10 backdrop-blur-xl border-t border-white/20">
+        {/* 빠른 액션 버튼 영역 (상단에 배치) */}
+        {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+          <div className="flex gap-2 p-4 border-b border-white/10">
+            {unlocked && (
+              <button
+                onClick={() => setActiveTab('record')}
+                className="flex-1 h-12 bg-green-500/90 hover:bg-green-600 text-white font-bold transition-all flex items-center justify-center gap-2"
+              >
+                <span>📸</span>
+                <span>인증하고 완료하기</span>
+              </button>
+            )}
+            <button
+              onClick={handleCancelAppointment}
+              className="px-4 h-12 bg-red-500/80 hover:bg-red-600 text-white font-semibold transition-all"
+            >
+              ❌
+            </button>
+            <button
+              onClick={handleBackToChat}
+              className="px-4 h-12 bg-white/20 hover:bg-white/30 text-white font-semibold transition-all"
+            >
+              💬
+            </button>
+          </div>
+        )}
+
         {/* 탭 헤더 */}
         <div className="flex border-b border-white/10">
           <button

@@ -1,4 +1,6 @@
 export enum AppointmentStatus {
+  CREATED = 'CREATED',     // 시간/장소만 정하고, 미션은 아직 모르는 상태
+  UNLOCKED = 'UNLOCKED',   // D-1일, 미션 선택 가능
   PENDING = 'PENDING',
   ACCEPTED = 'ACCEPTED',
   REJECTED = 'REJECTED',
@@ -29,4 +31,5 @@ export interface Appointment {
   reviewKeywords?: string[]; // 감성 키워드
   visitCount?: number;
   isFavorite?: boolean; // 즐겨찾기 여부
+  unlockToken?: string; // 미션 공개용 UUID 토큰
 }
