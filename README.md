@@ -107,6 +107,55 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 
 ---
 
+## 🚀 v2.0 주요 업데이트 (2026.01.13)
+
+### 1. 💬 채팅형 약속 시스템 (Chat-based Appointment)
+- **대화형 UX:** 봇과의 자연스러운 대화를 통해 약속을 생성합니다.
+  - Step 1: 시간 선택 (월/일/시간 드롭다운)
+  - Step 2: 위치 및 검색 반경 설정 (GPS 연동)
+  - Step 3: 미션 추천 및 선택
+- **타임피커 개선:** 년도/분 단위 제거, 기본값 3일 뒤 설정, 과거 시간 선택 차단
+- **엄격한 리다이렉트:** 약속 생성 완료 시 자동으로 약속 리스트로 이동
+
+### 2. 📍 위치 기반 추천 시스템 (Location-based Recommendation)
+- **GPS 연동:** `LocationPicker` 컴포넌트를 통해 현재 위치 자동 감지
+- **검색 반경 설정:** 1km~10km 슬라이더로 추천 범위 조절
+- **Haversine 공식:** 위경도 기반 거리 계산 쿼리로 주변 미션 필터링
+- **테스트 데이터:** 가산디지털단지역/장한평역 주변 미션 20개 추가
+
+### 3. 🔒 Blind Mission 시스템 (D-1 Mission Unlock)
+- **약속 상태 재정의:**
+  - `CREATED`: 시간/장소 설정 완료, 미션 비공개
+  - `UNLOCKED`: D-1 자동 공개, 미션 선택 가능
+  - `ACCEPTED`: 미션 선택 완료
+  - `COMPLETED`: 인증 완료
+- **자동 스케줄러:**
+  - D-1 매직링크 발송 (매시간 cron 실행)
+  - D-3h 리마인더 알림
+- **UUID 토큰:** 보안을 위한 고유 링크 생성
+
+### 4. 🎯 Smart FAB & Hero Section
+- **Smart FAB (중앙 버튼):**
+  - 다가오는 약속의 남은 시간을 실시간 표시 (예: `09h`, `30m`)
+  - 긴급도에 따라 색상 변경 (1시간 미만 빨강)
+  - 클릭 시 해당 약속 채팅방으로 이동
+- **Hero Section:**
+  - 약속 리스트 최상단에 Featured Card 배치
+  - 인스타그램 피드 스타일의 강조 레이아웃
+  - 개발용 언락 버튼 (D-1, Now) 탑재
+
+### 5. 📱 실디바이스 테스트 환경 구축
+- **네트워크 접근:** Vite `--host` 옵션으로 로컬 IP 접근 허용
+- **CORS 중앙화:** `@ConfigurationProperties`로 allowed-origins 관리
+- **OAuth 콜백 수정:** 모바일 환경에서도 소셜 로그인 정상 작동
+
+### 6. 🔧 개발 편의성 개선
+- **개발용 버튼:** 약속 일자를 D-1 또는 현재 시간으로 강제 변경
+- **자동 인증 처리:** 토큰 만료 시 자동 로그아웃 및 로그인 페이지 리다이렉트
+- **컴포넌트 분리:** ActionChips, EditActionChips, FeaturedCard, LocationPicker 모듈화
+
+---
+
 ## 🛠 기술적 해결 사례 (Technical Challenges)
 
 ### 🔐 OAuth2 & Data Integrity
@@ -116,3 +165,12 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 ### 🖼️ UI/UX Optimization
 - **Swipe Interactions:** 모바일 웹에서도 네이티브 앱처럼 부드러운 스와이프 경험을 제공하기 위해 터치 이벤트 핸들링을 최적화했습니다.
 - **Dynamic Routing:** 사용자의 `Role`(Guest vs User)에 따라 온보딩 페이지와 메인 페이지로 자동 분기되는 스마트 라우팅을 구현했습니다.
+
+### 🌍 Location-based Filtering
+- **GPS Fallback:** Geolocation API 실패 시 기본 좌표(서울 시청)로 자동 설정하여 서비스 중단 없이 사용 가능하도록 구현했습니다.
+- **Haversine Query:** 순수 SQL 기반 거리 계산으로 별도 GIS 라이브러리 없이 위치 필터링을 구현했습니다.
+- **DB Constraint Handling:** 상태 전환 시 DB 제약 조건을 준수하도록 로직을 세밀하게 제어하여 무결성을 보장했습니다.
+
+### ⏰ Scheduler & Notification
+- **Cron-based Scheduler:** Spring `@Scheduled`를 활용하여 매시간 자동으로 D-1 약속을 `UNLOCKED` 상태로 전환하고 매직링크를 발송합니다.
+- **UUID Token:** 약속 ID 노출 방지를 위해 UUID 기반 보안 토큰을 생성하여 매직링크에 사용합니다.
