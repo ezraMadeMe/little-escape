@@ -5,7 +5,7 @@ import { ReactNode } from 'react';
 import MainLayout from './layouts/MainLayout';
 
 // Pages
-import Feed from './pages/Feed';
+import FeedPage from './pages/FeedPage';
 import Reviews from './pages/Reviews';
 import Appointments from './pages/Appointments';
 import MyPage from './pages/MyPage';
@@ -66,7 +66,7 @@ function App() {
           <Route index element={<Navigate to="/feed" replace />} />
 
           {/* Bottom Nav Routes */}
-          <Route path="feed" element={<Feed />} />
+          <Route path="feed" element={<FeedPage />} />
           <Route path="reviews" element={<Reviews />} />
           <Route path="appointments" element={<Appointments />} />
           <Route path="mypage" element={<MyPage />} />
