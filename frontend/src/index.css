@@ -96,6 +96,32 @@
            focus:ring-2 focus:ring-electric-lime/30
            transition-all duration-200;
   }
+
+  /* 표준 미션 카드 스타일 */
+  .mission-card {
+    @apply bg-charcoal-soft rounded-2xl shadow-lg overflow-hidden
+           border border-charcoal-lighter
+           hover:border-electric-lime/40 hover:shadow-neon-lime/20
+           transition-all duration-300;
+  }
+
+  /* CTA 버튼 표준 스타일 (각진 둥근 모서리) */
+  .btn-cta {
+    @apply bg-brand-neon text-black font-bold rounded-xl px-6 py-4
+           hover:bg-electric-lime-dark hover:scale-105
+           active:scale-95 transition-all duration-200
+           shadow-lg shadow-brand-neon/20;
+  }
+
+  /* 글래스모피즘 네비게이션 바 */
+  .nav-glass {
+    @apply bg-charcoal-soft/95 backdrop-blur-lg border-t border-charcoal-lighter;
+  }
+
+  /* 액션 가능 아이템 (클릭 가능 영역) */
+  .clickable {
+    @apply cursor-pointer hover:scale-105 active:scale-95 transition-transform duration-200;
+  }
 }
 
 @layer utilities {

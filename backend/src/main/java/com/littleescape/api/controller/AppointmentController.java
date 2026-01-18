@@ -39,7 +39,13 @@ public class AppointmentController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        Appointment appointment = appointmentService.createAppointment(Long.parseLong(userId), request.scheduledAt(), request.missionId());
+        Appointment appointment = appointmentService.createAppointment(
+            Long.parseLong(userId),
+            request.scheduledAt(),
+            request.missionId(),
+            request.getUserLatitude(),
+            request.getUserLongitude()
+        );
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -158,6 +164,20 @@ public class AppointmentController {
         appointmentService.toggleFavorite(Long.parseLong(userId), id);
 
         return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/{id}/arrive")
+    public ResponseEntity<AppointmentDto> markAsArrived(
+            @AuthenticationPrincipal String userId,
+            @PathVariable Long id) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Appointment updatedAppointment = appointmentService.markAsArrived(Long.parseLong(userId), id);
+
+        return ResponseEntity.ok(AppointmentDto.from(updatedAppointment));
     }
 
     @DeleteMapping("/bulk")

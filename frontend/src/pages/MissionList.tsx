@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { createAppointment, getMyAppointments } from '../api/appointmentApi';
 import { getMyInfo } from '../api/userApi';
 import { getTodayMission } from '../api/missionApi';
-import { AppointmentStatus } from '../types/appointment';
+import { AppointmentStatus, Appointment } from '../types/appointment';
 import { Mission } from '../types/mission';
 import { format } from 'date-fns';
 
@@ -14,6 +14,7 @@ function MissionList() {
   const [userName, setUserName] = useState<string>('');
   const [todayMission, setTodayMission] = useState<Mission | null>(null);
   const [isCreating, setIsCreating] = useState<boolean>(false);
+  const [activeAppointment, setActiveAppointment] = useState<Appointment | null>(null);
 
   // 토큰 존재 여부로 로그인 상태 확인
   const isLoggedIn = !!localStorage.getItem('token');
@@ -33,7 +34,19 @@ function MissionList() {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
-  const handleAcceptMission = async () => {
+  const handlePrimaryAction = async () => {
+    // Case A: 로딩 중이면 아무것도 안 함 (버튼이 disabled 상태)
+    if (isCreating || loading) {
+      return;
+    }
+
+    // Case B: 이미 약속이 있으면 -> 약속 상세 페이지로 이동 (API 호출 X)
+    if (activeAppointment) {
+      navigate(`/mission/${activeAppointment.id}`);
+      return;
+    }
+
+    // Case C: 약속 없음 -> 새로운 약속 생성
     if (!isLoggedIn) {
       alert('로그인이 필요해.');
       navigate('/login');
@@ -43,14 +56,61 @@ function MissionList() {
     try {
       setIsCreating(true);
 
+      // 1. 사용자 위치 가져오기 (옵션)
+      let userLat: number | null = null;
+      let userLon: number | null = null;
+
+      if ('geolocation' in navigator) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+              reject(new Error('위치 확인 시간 초과'));
+            }, 3000);
+
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                clearTimeout(timeoutId);
+                resolve(pos);
+              },
+              (err) => {
+                clearTimeout(timeoutId);
+                reject(err);
+              },
+              {
+                enableHighAccuracy: false,
+                timeout: 3000,
+                maximumAge: 300000, // 5분 이내 캐시 사용
+              }
+            );
+          });
+
+          userLat = position.coords.latitude;
+          userLon = position.coords.longitude;
+          console.log('✅ 사용자 위치 확인 성공:', { userLat, userLon });
+        } catch (geoError) {
+          console.warn('⚠️ 위치 확인 실패 (서울 성수동 기본값 사용):', geoError);
+        }
+      } else {
+        console.warn('⚠️ 브라우저가 위치 정보를 지원하지 않음');
+      }
+
+      // 2. API 호출 (약속 생성)
       const scheduledAt = getDefaultDateTime();
       const dateTime = new Date(scheduledAt);
       const scheduledAtString = format(dateTime, "yyyy-MM-dd'T'HH:mm:ss");
 
-      const appointment = await createAppointment({ scheduledAt: scheduledAtString });
+      const appointment = await createAppointment({
+        scheduledAt: scheduledAtString,
+        userLatitude: userLat,
+        userLongitude: userLon,
+      });
 
+      // 3. 성공 직후 상세 페이지로 이동 (window.location.reload 사용 X)
+      console.log('✅ 약속 생성 성공:', appointment);
       navigate(`/mission/${appointment.id}`);
     } catch (err) {
+      console.error('❌ 약속 생성 실패:', err);
+
       if (err instanceof Error && err.message.includes('이미 진행 중인 약속')) {
         alert('이미 진행 중인 약속이 있어. 기존 약속부터 완료해봐.');
         navigate('/mypage');
@@ -91,19 +151,15 @@ function MissionList() {
               setUserName('친구');
             }
 
-            // 진행 중인 약속 확인
+            // 진행 중인 약속 확인 (리다이렉트 없이 state에만 저장)
             if (Array.isArray(appointments)) {
-              const activeAppointment = appointments.find(
+              const foundAppointment = appointments.find(
                 (apt) =>
                   (apt.status === AppointmentStatus.PENDING || apt.status === AppointmentStatus.ACCEPTED) &&
                   apt.missionTitle
               );
 
-              // 진행 중인 약속이 있으면 해당 미션 상세 페이지로 리다이렉트
-              if (activeAppointment) {
-                navigate(`/mission/${activeAppointment.id}`, { replace: true });
-                return;
-              }
+              setActiveAppointment(foundAppointment || null);
             }
 
             // 오늘의 미션 설정
@@ -279,29 +335,37 @@ function MissionList() {
         </AnimatePresence>
       </main>
 
-      {/* ===== Fixed Bottom CTA ===== */}
+      {/* ===== Fixed Bottom CTA (Always Visible) ===== */}
       <footer className="fixed bottom-0 left-0 right-0 bg-charcoal-soft/95 backdrop-blur-lg border-t border-charcoal-lighter p-6 pb-8">
+        {/* Primary Action Button */}
         <motion.button
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7, duration: 0.5 }}
-          onClick={handleAcceptMission}
-          disabled={isCreating}
+          onClick={handlePrimaryAction}
+          disabled={isCreating || loading}
           className="btn-primary w-full text-xl sm:text-2xl py-4 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isCreating ? '준비 중...' : '좋아, 나갈게'}
+          {isCreating || loading
+            ? '준비 중...'
+            : activeAppointment
+            ? '약속 확인하러 가기 🚀'
+            : '좋아, 나갈게'}
         </motion.button>
 
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8, duration: 0.5 }}
-          onClick={handleRejectMission}
-          disabled={isCreating}
-          className="btn-ghost w-full text-base mt-3"
-        >
-          오늘은 쉴래
-        </motion.button>
+        {/* Secondary Action Button (Only show if no active appointment) */}
+        {!activeAppointment && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.8, duration: 0.5 }}
+            onClick={handleRejectMission}
+            disabled={isCreating}
+            className="btn-ghost w-full text-base mt-3"
+          >
+            오늘은 쉴래
+          </motion.button>
+        )}
 
         {/* Dev Reset Button */}
         <motion.button

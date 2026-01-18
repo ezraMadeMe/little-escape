@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAppointmentDetail, completeAppointment } from '../api/appointmentApi';
+import { getAppointmentDetail, completeAppointment, markAsArrived } from '../api/appointmentApi';
 import { Appointment } from '../types/appointment';
 import { PlanB } from '../types/mission';
 import { supabase } from '../lib/supabaseClient';
@@ -39,8 +39,8 @@ function MissionDetail() {
     '편안했어', '뿌듯했어', '감동적이었어', '즐거웠어'
   ];
 
-  // Progressive Disclosure: 도착 인증 상태 (실제로는 위치 기반 인증 필요)
-  const [isArrived, setIsArrived] = useState<boolean>(false);
+  // 도착 인증 로딩 상태
+  const [isArrivingLoading, setIsArrivingLoading] = useState<boolean>(false);
 
   // Plan B 모달 상태
   const [showPlanBModal, setShowPlanBModal] = useState<boolean>(false);
@@ -115,11 +115,28 @@ function MissionDetail() {
     return now >= scheduled;
   };
 
-  // 도착 인증 (실제로는 위치 기반 인증)
-  const handleArrivalCheck = () => {
-    // 실제 구현에서는 Geolocation API 사용
-    setIsArrived(true);
-    alert('도착 인증 완료! 🎉\n이제 상세 코스를 볼 수 있어.');
+  // 도착 인증 (백엔드 API 호출)
+  const handleArrivalCheck = async () => {
+    if (!appointment) return;
+
+    try {
+      setIsArrivingLoading(true);
+
+      // 1. 백엔드 API 호출
+      await markAsArrived(appointment.id);
+
+      // 2. 성공 후 약속 데이터 다시 불러오기 (Re-fetch)
+      const updatedAppointment = await getAppointmentDetail(appointment.id);
+      setAppointment(updatedAppointment);
+
+      // 3. 성공 토스트 메시지
+      alert('도착 인증 완료! 🎉\n이제 상세 코스를 볼 수 있어.');
+    } catch (err) {
+      console.error('도착 인증 실패:', err);
+      alert('도착 인증에 실패했어. 다시 시도해봐.');
+    } finally {
+      setIsArrivingLoading(false);
+    }
   };
 
   // 이미지 선택
@@ -231,6 +248,11 @@ function MissionDetail() {
   const backgroundImage = unlocked
     ? appointment.placeImageUrl || appointment.missionImageUrl
     : appointment.missionImageUrl;
+
+  // 서버 데이터 기반으로 도착 여부 판단
+  const isArrived = appointment.status === 'ARRIVED' ||
+                    appointment.status === 'COMPLETED' ||
+                    appointment.status === 'IN_PROGRESS';
 
   return (
     <div className="min-h-screen bg-deep-charcoal flex flex-col">
@@ -365,10 +387,26 @@ function MissionDetail() {
               {!isArrived && (
                 <button
                   onClick={handleArrivalCheck}
-                  className="btn-outline w-full mt-4"
+                  disabled={isArrivingLoading}
+                  className="btn-outline w-full mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  📍 도착 인증하기
+                  {isArrivingLoading ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>인증 중...</span>
+                    </>
+                  ) : (
+                    <>📍 도착 인증하기</>
+                  )}
                 </button>
+              )}
+              {isArrived && (
+                <div className="bg-electric-lime/10 border border-electric-lime/30 rounded-solotion p-3 mt-4 text-center">
+                  <p className="text-electric-lime font-bold">✅ 도착 인증 완료!</p>
+                </div>
               )}
             </>
           ) : (

@@ -4,7 +4,12 @@
       "Bash(npm run build:*)",
       "Bash(find:*)",
       "Bash(npm install:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(./gradlew bootRun:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(python scripts/import_seoul_restaurants.py:*)"
     ]
   }
 }
