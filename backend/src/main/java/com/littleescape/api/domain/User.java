@@ -70,6 +70,13 @@ public class User extends BaseTimeEntity {
     @Column(name = "magic_token_expiry")
     private LocalDateTime magicTokenExpiry;
 
+    // 사용자 선호도 정보 (채팅 온보딩)
+    @Column(name = "mbti", length = 1)
+    private String mbti;  // I 또는 E
+
+    @Column(name = "solo_level")
+    private Integer soloLevel;  // 1~10 (혼밥 레벨)
+
     /**
      * 소셜 ID 기반으로 사용자 검색 (Kakao, Google, Naver 통합)
      */

@@ -13,3 +13,6 @@ backend/.gradle
 # IDE settings
 .idea/
 .vscode/
+
+/uploads/*
+/data/*

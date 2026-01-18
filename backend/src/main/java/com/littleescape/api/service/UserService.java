@@ -117,8 +117,14 @@ public class UserService {
                 existingUser.setNickname(request.nickname());
             }
 
-            if (request.email() != null) {
-                existingUser.setEmail(request.email());
+            // 이메일 업데이트 (이미 같은 이메일이 아닌 경우에만)
+            if (request.email() != null && !request.email().equals(existingUser.getEmail())) {
+                // 이메일 중복 체크
+                if (userRepository.findByEmail(request.email()).isPresent()) {
+                    log.warn("이메일 중복으로 인한 업데이트 스킵: {}", request.email());
+                } else {
+                    existingUser.setEmail(request.email());
+                }
             }
 
             if (profileImage != null && !profileImage.isEmpty()) {
@@ -152,9 +158,13 @@ public class UserService {
             currentUser.setNickname(request.nickname());
         }
 
-        // 이메일 업데이트
-        if (request.email() != null) {
-            currentUser.setEmail(request.email());
+        // 이메일 업데이트 (중복 체크)
+        if (request.email() != null && !request.email().equals(currentUser.getEmail())) {
+            if (userRepository.findByEmail(request.email()).isPresent()) {
+                log.warn("이메일 중복으로 인한 업데이트 스킵: {}", request.email());
+            } else {
+                currentUser.setEmail(request.email());
+            }
         }
 
         // 휴대폰 번호 업데이트
@@ -212,8 +222,11 @@ public class UserService {
             user.setNickname(request.nickname());
         }
 
-        // 이메일 업데이트
-        if (request.email() != null) {
+        // 이메일 업데이트 (중복 체크)
+        if (request.email() != null && !request.email().equals(user.getEmail())) {
+            if (userRepository.findByEmail(request.email()).isPresent()) {
+                throw new RuntimeException("이미 사용 중인 이메일입니다.");
+            }
             user.setEmail(request.email());
         }
 
@@ -224,6 +237,43 @@ public class UserService {
         }
 
         return userRepository.save(user);
+    }
+
+    /**
+     * 채팅 온보딩 사용자 선호도 업데이트 (nickname, MBTI, 혼밥 레벨)
+     */
+    @Transactional
+    public User updateUserPreferences(Long userId, String nickname, String mbti, Integer soloLevel) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        log.info("=== 사용자 선호도 업데이트 - User ID: {} ===", userId);
+
+        // 닉네임 업데이트 (중복 체크)
+        if (nickname != null && !nickname.equals(user.getNickname())) {
+            if (!isNicknameAvailable(nickname)) {
+                throw new RuntimeException("이미 사용 중인 닉네임입니다.");
+            }
+            user.setNickname(nickname);
+            log.info("닉네임 업데이트: {}", nickname);
+        }
+
+        // MBTI 업데이트 (I 또는 E만 허용)
+        if (mbti != null && (mbti.equals("I") || mbti.equals("E"))) {
+            user.setMbti(mbti);
+            log.info("MBTI 업데이트: {}", mbti);
+        }
+
+        // 혼밥 레벨 업데이트 (1~10)
+        if (soloLevel != null && soloLevel >= 1 && soloLevel <= 10) {
+            user.setSoloLevel(soloLevel);
+            log.info("혼밥 레벨 업데이트: {}", soloLevel);
+        }
+
+        User savedUser = userRepository.save(user);
+        log.info("=== 사용자 선호도 업데이트 완료 ===");
+
+        return savedUser;
     }
 
     /**

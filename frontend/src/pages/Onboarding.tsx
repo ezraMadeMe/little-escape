@@ -95,9 +95,10 @@ const Onboarding = () => {
       alert('환영합니다! 온보딩이 완료되었습니다.');
       navigate('/feed');
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('온보딩 실패:', error);
-      alert(error.message || '온보딩에 실패했습니다.');
+      const errorMessage = error instanceof Error ? error.message : '온보딩에 실패했습니다.';
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }

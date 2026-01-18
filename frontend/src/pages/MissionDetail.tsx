@@ -1,10 +1,24 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getAppointmentDetail, completeAppointment, cancelAppointment } from '../api/appointmentApi';
+import { motion, AnimatePresence } from 'framer-motion';
+import { getAppointmentDetail, completeAppointment } from '../api/appointmentApi';
 import { Appointment } from '../types/appointment';
+import { PlanB } from '../types/mission';
 import { supabase } from '../lib/supabaseClient';
 
-type Tab = 'info' | 'map' | 'record';
+// Mock 데이터 - 실제로는 API에서 가져와야 함
+const MOCK_PREPARATIONS = ['편한 신발', '물', '여유로운 마음'];
+const MOCK_DETAILED_COURSE = '1. 성수역 3번 출구에서 도보 5분\n2. 골목길을 따라 왼쪽으로 돌아\n3. 빨간 간판이 보이면 2층으로 올라가면 돼';
+const MOCK_TASKS = ['창가 자리에 앉아보기', '메뉴판 없이 주인장에게 추천받기', '30분 이상 머물러보기'];
+const MOCK_PLAN_B: PlanB = {
+  title: '대형 서점에서 책 구경하기',
+  description: '혼자만의 조용한 시간을 보낼 수 있는 실내 공간이에요.',
+  placeName: '교보문고 강남점',
+  placeAddress: '서울특별시 강남구 역삼동 테헤란로',
+  placeUrl: 'https://map.kakao.com',
+  imageUrl: 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=800&q=80',
+  reason: '이 코스 별로야? ...뭐, 그럴 줄 알았어. 이건 어때?',
+};
 
 function MissionDetail() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
@@ -12,17 +26,29 @@ function MissionDetail() {
 
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<Tab>('info');
   const [proofComment, setProofComment] = useState<string>('');
   const [proofImageFile, setProofImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 감성 키워드 옵션
+  const EMOTION_KEYWORDS = [
+    '힐링됐어', '재밌었어', '새로웠어', '설렜어', 
+    '편안했어', '뿌듯했어', '감동적이었어', '즐거웠어'
+  ];
+
+  // Progressive Disclosure: 도착 인증 상태 (실제로는 위치 기반 인증 필요)
+  const [isArrived, setIsArrived] = useState<boolean>(false);
+
+  // Plan B 모달 상태
+  const [showPlanBModal, setShowPlanBModal] = useState<boolean>(false);
 
   useEffect(() => {
     const loadAppointment = async () => {
       if (!appointmentId) {
-        alert('약속 ID가 없습니다.');
+        alert('약속 ID가 없어.');
         navigate('/mypage');
         return;
       }
@@ -32,7 +58,7 @@ function MissionDetail() {
         setAppointment(data);
       } catch (err) {
         console.error('약속 로딩 실패:', err);
-        alert('약속 정보를 불러오는데 실패했습니다.');
+        alert('약속 정보를 불러오는데 실패했어.');
         navigate('/mypage');
       } finally {
         setLoading(false);
@@ -42,6 +68,7 @@ function MissionDetail() {
     loadAppointment();
   }, [appointmentId, navigate]);
 
+  // D-Day 계산
   const getDdayText = (scheduledAt: string): string => {
     const now = new Date();
     const scheduled = new Date(scheduledAt);
@@ -55,13 +82,14 @@ function MissionDetail() {
     return `D+${Math.abs(diff)}`;
   };
 
+  // 상세 시간 카운트다운
   const getDetailedTimeRemaining = (scheduledAt: string): string => {
     const now = new Date();
     const scheduled = new Date(scheduledAt);
     const diffMs = scheduled.getTime() - now.getTime();
 
     if (diffMs < 0) {
-      return '시간 도래';
+      return '시간이 됐어';
     }
 
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -78,6 +106,7 @@ function MissionDetail() {
     }
   };
 
+  // D-Day 여부 체크
   const isPlaceUnlocked = (scheduledAt: string): boolean => {
     const now = new Date();
     const scheduled = new Date(scheduledAt);
@@ -86,25 +115,30 @@ function MissionDetail() {
     return now >= scheduled;
   };
 
+  // 도착 인증 (실제로는 위치 기반 인증)
+  const handleArrivalCheck = () => {
+    // 실제 구현에서는 Geolocation API 사용
+    setIsArrived(true);
+    alert('도착 인증 완료! 🎉\n이제 상세 코스를 볼 수 있어.');
+  };
+
+  // 이미지 선택
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 업로드 가능합니다.');
+      alert('이미지 파일만 업로드 가능해.');
       return;
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('이미지 크기는 5MB 이하여야 합니다.');
+      alert('이미지 크기는 5MB 이하여야 해.');
       return;
     }
 
     setProofImageFile(file);
 
-    // Create preview URL
     const reader = new FileReader();
     reader.onloadend = () => {
       setPreviewUrl(reader.result as string);
@@ -120,19 +154,18 @@ function MissionDetail() {
     }
   };
 
+  // 미션 완료
   const handleComplete = async () => {
     if (!appointment) return;
 
-    // Validate that image is selected
     if (!proofImageFile) {
-      alert('인증 사진을 업로드해주세요!');
+      alert('인증 사진을 업로드해줘!');
       return;
     }
 
     try {
       setIsUploading(true);
 
-      // Upload image to Supabase Storage
       const userId = appointment.userId || 'unknown';
       const timestamp = Date.now();
       const fileExtension = proofImageFile.name.split('.').pop();
@@ -143,54 +176,49 @@ function MissionDetail() {
         .upload(filePath, proofImageFile);
 
       if (uploadError) {
-        console.error('Image upload error:', uploadError);
-        alert('이미지 업로드에 실패했습니다. 다시 시도해주세요.');
+        alert('이미지 업로드에 실패했어. 다시 시도해봐.');
         return;
       }
 
-      // Complete appointment with image URL and comment
-      // completeAppointment expects: (id, comment, keywords, files)
-      // Since we already uploaded to Supabase, we'll pass an empty files array
+      const keywords = selectedKeywords.length > 0 
+        ? selectedKeywords 
+        : ['완료했어'];
+
       await completeAppointment(
         appointment.id,
         proofComment.trim() || '',
-        [], // keywords - empty for now
-        [] // files - already uploaded to Supabase
+        keywords,
+        []
       );
 
-      alert('수고하셨습니다!');
+      alert('수고했어!');
       navigate('/mypage');
     } catch (err) {
-      console.error('완료 처리 실패:', err);
-      alert('완료 처리에 실패했습니다. 다시 시도해주세요.');
+      alert('완료 처리에 실패했어. 다시 시도해봐.');
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleCancelAppointment = async () => {
-    if (!appointment) return;
-    if (!confirm('정말 이 약속을 취소하시겠습니까?')) return;
+  // 약속 취소 (향후 취소 버튼 추가 시 사용)
+  // const handleCancelAppointment = async () => {
+  //   if (!appointment) return;
+  //   if (!confirm('정말 이 약속을 취소할 거야?')) return;
 
-    try {
-      await cancelAppointment(appointment.id);
-      alert('약속이 취소되었습니다.');
-      navigate('/appointments');
-    } catch (error) {
-      console.error('약속 취소 실패:', error);
-      alert('약속 취소에 실패했습니다.');
-    }
-  };
-
-  const handleBackToChat = () => {
-    if (!appointment) return;
-    navigate(`/chat/${appointment.id}`);
-  };
+  //   try {
+  //     await cancelAppointment(appointment.id);
+  //     alert('약속이 취소됐어.');
+  //     navigate('/appointments');
+  //   } catch (error) {
+  //     console.error('약속 취소 실패:', error);
+  //     alert('약속 취소에 실패했어.');
+  //   }
+  // };
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-xl text-white">로딩 중...</div>
+      <div className="min-h-screen flex items-center justify-center bg-deep-charcoal">
+        <div className="text-xl text-off-white">잠깐만...</div>
       </div>
     );
   }
@@ -205,58 +233,40 @@ function MissionDetail() {
     : appointment.missionImageUrl;
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-gray-900">
-      {/* 배경 이미지 - 화면 가로폭 꽉 채움 */}
-      <div
-        className="absolute inset-0 bg-cover bg-center transition-all duration-700"
-        style={{
-          backgroundImage: backgroundImage
-            ? `url(${backgroundImage})`
-            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          filter: 'brightness(0.4)',
-        }}
-      />
+    <div className="min-h-screen bg-deep-charcoal flex flex-col">
+      {/* ===== Header ===== */}
+      <header className="container-solotion py-6 flex items-center justify-between border-b border-charcoal-lighter">
+        <button
+          onClick={() => navigate('/mypage')}
+          className="flex items-center gap-2 text-text-gray hover:text-off-white transition-colors"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          <span className="font-semibold">뒤로</span>
+        </button>
 
-      {/* 어두운 오버레이 */}
-      <div className="absolute inset-0 bg-black/50" />
-
-      {/* 상단 헤더 (Safe Area 고려) */}
-      <div className="absolute top-0 left-0 right-0 z-20 px-6 pt-10 pb-6">
-        <div className="flex items-center justify-between mb-8">
-          <button
-            onClick={() => navigate('/mypage')}
-            className="text-white/90 hover:text-white transition-colors flex items-center gap-2 p-2 -ml-2 hover:bg-white/10"
-          >
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="text-base font-bold">나의 기록으로</span>
-          </button>
-
-          {/* D-Day 카운터 - 직각 디자인 */}
-          <div className="bg-white/10 backdrop-blur-md px-5 py-2 border border-white/20">
-            <span className="text-white font-bold text-lg tracking-wide">
-              {getDdayText(appointment.scheduledAt)}
-            </span>
-          </div>
+        {/* D-Day 카운터 */}
+        <div className="bg-electric-lime text-deep-charcoal px-4 py-2 rounded-solotion font-extra-bold text-lg">
+          {getDdayText(appointment.scheduledAt)}
         </div>
 
-        {/* 미션 제목 및 변경 버튼 */}
-        <div className="text-center relative">
-          <h1 className="text-3xl font-bold text-white mb-4 drop-shadow-xl leading-tight px-4">
+        {/* 빈 공간 (레이아웃 유지) */}
+        <div className="w-20"></div>
+      </header>
+
+      {/* ===== Main Content ===== */}
+      <main className="flex-1 container-solotion py-8 space-y-6 overflow-y-auto scrollbar-solotion pb-24">
+        {/* 미션 헤더 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+        >
+          <h1 className="text-off-white text-3xl sm:text-4xl font-extra-bold tracking-tight">
             {appointment.missionTitle || '미션 미선택'}
           </h1>
-
-          {!unlocked && (
-            <button
-              onClick={() => navigate(`/pick-mission/${appointmentId}`)}
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-5 py-2.5 text-base text-white/90 transition-colors backdrop-blur-sm border border-white/10 mb-4"
-            >
-              <span>🔄 다른 일탈 찾아보기</span>
-            </button>
-          )}
-
-          <p className="text-white/80 text-base font-medium mb-3">
+          <p className="text-text-gray text-lg">
             {new Date(appointment.scheduledAt).toLocaleDateString('ko-KR', {
               year: 'numeric',
               month: 'long',
@@ -266,288 +276,422 @@ function MissionDetail() {
               minute: '2-digit',
             })}
           </p>
-
-          {/* 상세 타이머 */}
           {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
-            <div className="bg-white/10 backdrop-blur-md px-6 py-3 border border-white/20 inline-block">
-              <p className="text-white/90 font-bold text-lg">
+            <div className="bg-charcoal-soft px-4 py-3 rounded-solotion inline-block">
+              <p className="text-electric-lime font-bold text-lg">
                 ⏱️ {getDetailedTimeRemaining(appointment.scheduledAt)}
               </p>
             </div>
           )}
-        </div>
-      </div>
+        </motion.div>
 
-      {/* 하단 패널 - 직각 디자인 */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white/10 backdrop-blur-xl border-t border-white/20">
-        {/* 빠른 액션 버튼 영역 (상단에 배치) */}
-        {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
-          <div className="flex gap-2 p-4 border-b border-white/10">
-            {unlocked && (
-              <button
-                onClick={() => setActiveTab('record')}
-                className="flex-1 h-12 bg-green-500/90 hover:bg-green-600 text-white font-bold transition-all flex items-center justify-center gap-2"
-              >
-                <span>📸</span>
-                <span>인증하고 완료하기</span>
-              </button>
-            )}
-            <button
-              onClick={handleCancelAppointment}
-              className="px-4 h-12 bg-red-500/80 hover:bg-red-600 text-white font-semibold transition-all"
-            >
-              ❌
-            </button>
-            <button
-              onClick={handleBackToChat}
-              className="px-4 h-12 bg-white/20 hover:bg-white/30 text-white font-semibold transition-all"
-            >
-              💬
-            </button>
-          </div>
+        {/* 썸네일 이미지 */}
+        {backgroundImage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative h-64 sm:h-80 rounded-solotion overflow-hidden"
+          >
+            <img
+              src={backgroundImage}
+              alt={appointment.missionTitle || '미션'}
+              className="w-full h-full object-cover brightness-75"
+            />
+          </motion.div>
         )}
 
-        {/* 탭 헤더 */}
-        <div className="flex border-b border-white/10">
-          <button
-            onClick={() => setActiveTab('info')}
-            className={`flex-1 h-14 text-center font-bold text-lg transition-all ${
-              activeTab === 'info'
-                ? 'text-white bg-white/10 border-b-2 border-white'
-                : 'text-white/60 hover:text-white/80'
-            }`}
-          >
-            ℹ️ 일탈 가이드
-          </button>
-          <button
-            onClick={() => setActiveTab('map')}
-            className={`flex-1 h-14 text-center font-bold text-lg transition-all ${
-              activeTab === 'map'
-                ? 'text-white bg-white/10 border-b-2 border-white'
-                : 'text-white/60 hover:text-white/80'
-            }`}
-          >
-            🗺️ 비밀 장소
-          </button>
-          <button
-            onClick={() => setActiveTab('record')}
-            className={`flex-1 h-14 text-center font-bold text-lg transition-all ${
-              activeTab === 'record'
-                ? 'text-white bg-white/10 border-b-2 border-white'
-                : 'text-white/60 hover:text-white/80'
-            }`}
-          >
-            📝 나의 기록
-          </button>
-        </div>
+        {/* 준비물 섹션 - 항상 보임 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="card space-y-3"
+        >
+          <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
+            🎒 준비물
+          </h3>
+          <ul className="space-y-2">
+            {MOCK_PREPARATIONS.map((item, idx) => (
+              <li key={idx} className="text-text-gray flex items-center gap-2">
+                <span className="text-electric-lime">•</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </motion.div>
 
-        {/* 탭 컨텐츠 */}
-        <div className="p-8 pb-20 max-h-[55vh] overflow-y-auto overscroll-contain">
-          {/* Tab 1: 정보 */}
-          {activeTab === 'info' && (
-            <div className="space-y-6">
-              <div className="text-center">
-                <p className="text-white/90 text-xl font-light italic mb-8 drop-shadow-md">
-                  "혼자만의 시간을 즐기세요"
-                </p>
-              </div>
+        {/* 모임 장소 - 항상 보임 (지하철역만) */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="card space-y-4"
+        >
+          <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
+            📍 모임 장소
+          </h3>
+          {unlocked ? (
+            <>
+              <p className="text-text-gray text-lg">
+                {appointment.placeName || '장소 정보 없음'}
+              </p>
+              <p className="text-text-gray-dark">
+                {appointment.placeAddress || '주소 정보 없음'}
+              </p>
 
-              <div className="bg-white/5 p-6 border-b border-white/10">
-                <h3 className="text-white font-bold text-xl mb-3">미션 설명</h3>
-                <p className="text-white/90 leading-relaxed text-lg">
-                  {appointment.missionTitle
-                    ? '이 미션을 통해 당신만의 특별한 시간을 만들어보세요. 일상에서 벗어나 새로운 경험을 해보는 시간입니다.'
-                    : '미션을 선택해주세요.'}
-                </p>
-              </div>
-
-              <div className="bg-white/5 p-6 border-b border-white/10">
-                <h3 className="text-white font-bold text-xl mb-3">수행 조건</h3>
-                <ul className="text-white/90 space-y-3 text-lg">
-                  <li>• 약속 시간에 지정된 장소를 방문하세요</li>
-                  <li>• 그 순간을 온전히 즐기세요</li>
-                  <li>• 완료 후 소감을 남겨주세요</li>
-                </ul>
-              </div>
-
-              {appointment.visitCount && appointment.visitCount > 1 && (
-                <div className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 p-5 border border-amber-500/30 text-center">
-                  <p className="text-amber-200 font-bold text-lg">
-                    🏅 {appointment.visitCount}번째 만남입니다!
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tab 2: 장소 */}
-          {activeTab === 'map' && (
-            <div className="space-y-6">
-              {!unlocked ? (
-                <div className="text-center py-12">
-                  <div className="text-7xl mb-6">🔒</div>
-                  <h3 className="text-white font-bold text-2xl mb-3">미스터리 장소</h3>
-                  <p className="text-white/80 text-lg">
-                    당일에 공개됩니다. 조금만 기다려주세요!
-                  </p>
-                  <div className="mt-10 bg-white/5 p-5 border border-white/10">
-                    <p className="text-white/70 text-base">
-                      D-Day가 되면 이곳에 장소 정보가 표시됩니다
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="bg-white/10 p-6 border-b border-white/20">
-                    <h3 className="text-white font-bold text-2xl mb-3">
-                      {appointment.placeName || '장소 정보 없음'}
-                    </h3>
-                    <p className="text-white/80 text-lg mb-6">
-                      {appointment.placeAddress || '주소 정보 없음'}
-                    </p>
-
-                    {appointment.placeUrl && (
-                      <a
-                        href={appointment.placeUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center w-full h-14 bg-white/90 hover:bg-white text-gray-900 font-bold text-lg transition-all"
-                      >
-                        🗺️ 비밀 장소 확인하기
-                      </a>
-                    )}
-                  </div>
-
-                  {appointment.placeImageUrl && (
-                    <div className="w-full overflow-hidden border-b border-white/20">
-                      <img
-                        src={appointment.placeImageUrl}
-                        alt={appointment.placeName || '장소'}
-                        className="w-full h-56 object-cover"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Tab 3: 기록 */}
-          {activeTab === 'record' && (
-            <div className="space-y-8">
-              {/* Image Upload Section - Instagram Story Style */}
-              <div>
-                <h3 className="text-white font-bold text-xl mb-4">📸 인증샷 올리기</h3>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageSelect}
-                  className="hidden"
-                />
-
-                {!previewUrl ? (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED'}
-                    className="relative w-full h-72 bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-2 border-dashed border-white/30 hover:border-white/50 hover:from-purple-500/30 hover:to-pink-500/30 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden group"
+              {/* 카카오맵/네이버맵 링크 버튼 */}
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                {appointment.placeUrl && (
+                  <a
+                    href={appointment.placeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary flex items-center justify-center gap-2 text-base"
                   >
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                      <div className="relative">
-                        <div className="relative w-20 h-20 bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform">
-                          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-white font-bold text-lg">인증 사진을 추가해주세요</p>
-                        <p className="text-white/60 text-sm">탭하여 갤러리에서 선택</p>
-                      </div>
-                    </div>
-                  </button>
-                ) : (
-                  <div className="relative w-full h-96 overflow-hidden border-2 border-white/20 group">
-                    <img
-                      src={previewUrl}
-                      alt="Preview"
-                      className="w-full h-full object-cover"
-                    />
-                    {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
-                      <button
-                        onClick={handleRemoveImage}
-                        className="absolute top-4 right-4 w-10 h-10 bg-black/50 backdrop-blur-sm hover:bg-black/70 flex items-center justify-center transition-all border border-white/20 opacity-0 group-hover:opacity-100"
-                      >
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
+                    🗺️ 카카오맵
+                  </a>
                 )}
-              </div>
-
-              {/* Memo Section */}
-              <div>
-                <h3 className="text-white font-bold text-xl mb-4">✍️ 오늘의 기록</h3>
-                <textarea
-                  value={proofComment}
-                  onChange={(e) => setProofComment(e.target.value)}
-                  placeholder="오늘의 작은 일탈은 어땠나요?"
-                  disabled={appointment.status === 'COMPLETED' || appointment.status === 'CANCELLED'}
-                  className="w-full h-40 px-5 py-4 bg-white/10 border border-white/20 text-white text-lg placeholder-white/40 focus:bg-white/20 focus:border-white/40 transition-all outline-none resize-none disabled:opacity-50"
-                />
-              </div>
-
-              {/* Complete Button */}
-              {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && unlocked && (
-                <button
-                  onClick={handleComplete}
-                  disabled={isUploading || !proofImageFile}
-                  className="w-full h-16 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold text-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 relative overflow-hidden group"
+                <a
+                  href={`https://map.naver.com/v5/search/${encodeURIComponent(appointment.placeName || '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary flex items-center justify-center gap-2 text-base"
                 >
-                  {isUploading ? (
-                    <>
-                      <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>업로드 중...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>✅ 일탈 완료 도장 찍기</span>
-                      <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
-                    </>
-                  )}
+                  🗺️ 네이버맵
+                </a>
+              </div>
+
+              {/* 도착 인증 버튼 */}
+              {!isArrived && (
+                <button
+                  onClick={handleArrivalCheck}
+                  className="btn-outline w-full mt-4"
+                >
+                  📍 도착 인증하기
                 </button>
               )}
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-6xl mb-4">🔒</div>
+              <p className="text-text-gray">D-Day가 되면 공개돼.</p>
+            </div>
+          )}
+        </motion.div>
 
-              {/* Completed Status */}
-              {appointment.status === 'COMPLETED' && (
-                <div className="space-y-4">
-                  <div className="bg-green-500/20 border border-green-500/30 p-6 text-center">
-                    <p className="text-green-200 font-bold text-xl mb-2">✅ 완료된 미션입니다</p>
-                    {appointment.proofComment && (
-                      <p className="text-green-100 text-lg italic mt-3">"{appointment.proofComment}"</p>
-                    )}
-                  </div>
-                  {appointment.proofImageUrl && (
-                    <div className="w-full overflow-hidden border border-white/20">
-                      <img
-                        src={appointment.proofImageUrl}
-                        alt="Proof"
-                        className="w-full h-64 object-cover"
-                      />
-                    </div>
-                  )}
+        {/* 상세 코스 - 도착 인증 후에만 보임 (Progressive Disclosure) */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="card space-y-3 relative"
+        >
+          <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
+            🗺️ 상세 코스
+          </h3>
+          {isArrived ? (
+            <motion.div
+              initial={{ opacity: 0, filter: 'blur(10px)' }}
+              animate={{ opacity: 1, filter: 'blur(0px)' }}
+              transition={{ duration: 0.5 }}
+              className="text-text-gray whitespace-pre-line"
+            >
+              {MOCK_DETAILED_COURSE}
+            </motion.div>
+          ) : (
+            <div className="relative">
+              <div className="blur-md select-none text-text-gray whitespace-pre-line">
+                {MOCK_DETAILED_COURSE}
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center bg-charcoal-soft/80 rounded-solotion">
+                <div className="text-center">
+                  <div className="text-4xl mb-2">🔒</div>
+                  <p className="text-off-white font-bold">도착 인증 후 공개</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </motion.div>
+
+        {/* 할 일 - 도착 인증 후에만 보임 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="card space-y-3 relative"
+        >
+          <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
+            ✅ 할 일
+          </h3>
+          {isArrived ? (
+            <motion.ul
+              initial={{ opacity: 0, filter: 'blur(10px)' }}
+              animate={{ opacity: 1, filter: 'blur(0px)' }}
+              transition={{ duration: 0.5 }}
+              className="space-y-2"
+            >
+              {MOCK_TASKS.map((task, idx) => (
+                <li key={idx} className="text-text-gray flex items-start gap-2">
+                  <span className="text-electric-lime mt-1">•</span>
+                  <span>{task}</span>
+                </li>
+              ))}
+            </motion.ul>
+          ) : (
+            <div className="relative">
+              <ul className="space-y-2 blur-md select-none">
+                {MOCK_TASKS.map((task, idx) => (
+                  <li key={idx} className="text-text-gray flex items-start gap-2">
+                    <span className="text-electric-lime mt-1">•</span>
+                    <span>{task}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="absolute inset-0 flex items-center justify-center bg-charcoal-soft/80 rounded-solotion">
+                <div className="text-center">
+                  <div className="text-4xl mb-2">🔒</div>
+                  <p className="text-off-white font-bold">도착 인증 후 공개</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </motion.div>
+
+        {/* 인증 섹션 */}
+        {unlocked && appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="card space-y-6"
+          >
+            <h3 className="text-off-white text-xl font-bold">📸 인증하기</h3>
+
+            {/* 이미지 업로드 */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+
+              {!previewUrl ? (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full h-48 border-2 border-dashed border-charcoal-lighter rounded-solotion hover:border-electric-lime transition-all flex flex-col items-center justify-center gap-3"
+                >
+                  <div className="text-5xl">📷</div>
+                  <p className="text-text-gray">사진 추가</p>
+                </button>
+              ) : (
+                <div className="relative">
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="w-full h-64 object-cover rounded-solotion"
+                  />
+                  <button
+                    onClick={handleRemoveImage}
+                    className="absolute top-2 right-2 bg-charcoal-soft/90 text-off-white p-2 rounded-solotion hover:bg-charcoal-lighter"
+                  >
+                    ✕
+                  </button>
                 </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
+
+            {/* 코멘트 */}
+            <textarea
+              value={proofComment}
+              onChange={(e) => setProofComment(e.target.value)}
+              placeholder="오늘의 작은 일탈은 어땠어?"
+              className="input w-full h-32 resize-none"
+            />
+
+            {/* 감성 키워드 선택 */}
+            <div>
+              <label className="block text-sm font-medium text-text-gray mb-2">
+                어땠어? (선택사항)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {EMOTION_KEYWORDS.map((keyword) => (
+                  <button
+                    key={keyword}
+                    type="button"
+                    onClick={() => {
+                      if (selectedKeywords.includes(keyword)) {
+                        setSelectedKeywords(selectedKeywords.filter(k => k !== keyword));
+                      } else {
+                        setSelectedKeywords([...selectedKeywords, keyword]);
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                      selectedKeywords.includes(keyword)
+                        ? 'bg-electric-lime text-deep-charcoal'
+                        : 'bg-charcoal-soft text-text-gray hover:bg-charcoal-lighter'
+                    }`}
+                  >
+                    {keyword}
+                  </button>
+                ))}
+              </div>
+              {selectedKeywords.length === 0 && (
+                <p className="text-xs text-text-gray-dark mt-2">
+                  * 선택하지 않으면 기본 키워드로 저장돼
+                </p>
+              )}
+            </div>
+
+            {/* 완료 버튼 */}
+            <button
+              onClick={handleComplete}
+              disabled={isUploading || !proofImageFile}
+              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isUploading ? '업로드 중...' : '✅ 완료'}
+            </button>
+          </motion.div>
+        )}
+
+        {/* 완료 상태 표시 */}
+        {appointment.status === 'COMPLETED' && (
+          <div className="card bg-electric-lime/10 border-electric-lime/30">
+            <p className="text-electric-lime font-bold text-xl text-center">
+              ✅ 완료된 미션이야!
+            </p>
+            {appointment.proofComment && (
+              <p className="text-text-gray text-center mt-2 italic">"{appointment.proofComment}"</p>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* ===== Escape FAB (Floating Action Button) ===== */}
+      {/* 완료/취소된 미션에서는 숨김 */}
+      {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+        <motion.button
+          onClick={() => setShowPlanBModal(true)}
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="fixed bottom-6 right-4 sm:right-6 z-40 group"
+        >
+          {/* Glassmorphism 버튼 */}
+          <div className="relative">
+            {/* 네온 글로우 효과 */}
+            <div className="absolute inset-0 bg-electric-lime/30 blur-xl rounded-full animate-pulse"></div>
+            
+            {/* 메인 버튼 */}
+            <div className="relative backdrop-blur-xl bg-charcoal-soft/80 border-2 border-electric-lime/50 rounded-full shadow-2xl overflow-hidden">
+              {/* 호버 시 배경 효과 */}
+              <div className="absolute inset-0 bg-gradient-to-br from-electric-lime/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              
+              {/* 버튼 콘텐츠 */}
+              <div className="relative px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-3">
+                {/* 비상구 아이콘 */}
+                <div className="text-2xl animate-bounce">
+                  <svg 
+                    className="w-6 h-6 sm:w-7 sm:h-7 text-electric-lime" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth={2.5} 
+                      d="M17 8l4 4m0 0l-4 4m4-4H3"
+                    />
+                  </svg>
+                </div>
+                
+                {/* 텍스트 라벨 */}
+                <span className="text-off-white font-bold text-sm sm:text-base whitespace-nowrap">
+                  다른 거 할래
+                </span>
+              </div>
+            </div>
+          </div>
+        </motion.button>
+      )}
+
+      {/* ===== Plan B Modal ===== */}
+      <AnimatePresence>
+        {showPlanBModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+            onClick={() => setShowPlanBModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-charcoal-soft rounded-solotion-lg max-w-lg w-full overflow-hidden"
+            >
+              {/* 이미지 */}
+              {MOCK_PLAN_B.imageUrl && (
+                <div className="h-48 overflow-hidden">
+                  <img
+                    src={MOCK_PLAN_B.imageUrl}
+                    alt={MOCK_PLAN_B.title}
+                    className="w-full h-full object-cover brightness-75"
+                  />
+                </div>
+              )}
+
+              {/* 콘텐츠 */}
+              <div className="p-6 space-y-4">
+                <div className="text-center space-y-3">
+                  {/* 츤데레 멘트 */}
+                  <div className="text-electric-lime text-lg font-semibold italic">
+                    "{MOCK_PLAN_B.reason}"
+                  </div>
+                  <h3 className="text-off-white text-2xl font-extra-bold">{MOCK_PLAN_B.title}</h3>
+                </div>
+
+                <div className="bg-charcoal-lighter/50 rounded-lg p-4 border border-electric-lime/20">
+                  <p className="text-text-gray leading-relaxed">{MOCK_PLAN_B.description}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-off-white font-semibold">📍 {MOCK_PLAN_B.placeName}</p>
+                  {MOCK_PLAN_B.placeAddress && (
+                    <p className="text-text-gray-dark text-sm">{MOCK_PLAN_B.placeAddress}</p>
+                  )}
+                </div>
+
+                {/* 버튼들 */}
+                <div className="flex flex-col gap-3 pt-4">
+                  {MOCK_PLAN_B.placeUrl && (
+                    <a
+                      href={MOCK_PLAN_B.placeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-primary text-center flex items-center justify-center gap-2 py-3"
+                    >
+                      🗺️ 여기로 갈래!
+                    </a>
+                  )}
+                  <button 
+                    onClick={() => setShowPlanBModal(false)} 
+                    className="btn-ghost hover:bg-charcoal-lighter/50"
+                  >
+                    아니야, 원래대로 할게
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

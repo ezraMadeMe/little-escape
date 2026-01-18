@@ -9,7 +9,9 @@ public record UserResponse(
     String profileImageUrl,
     String phoneNumber,
     boolean isOnboarded,
-    String role
+    String role,
+    String mbti,
+    Integer soloLevel
 ) {
     public static UserResponse from(User user) {
         return new UserResponse(
@@ -19,7 +21,9 @@ public record UserResponse(
             user.getProfileImageUrl(),
             user.getPhoneNumber(),
             user.isOnboarded(),
-            user.getRole().name()
+            user.getRole().name(),
+            user.getMbti(),
+            user.getSoloLevel()
         );
     }
 }

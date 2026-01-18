@@ -41,6 +41,8 @@ public class SecurityConfig {
                 .requestMatchers("/oauth2/**", "/login/**", "/api/v1/auth/**").permitAll()
                 .requestMatchers("/uploads/**").permitAll()
                 .requestMatchers("/error").permitAll()
+                .requestMatchers("/api/admin/**").permitAll()  // 👈 Admin API 인증 없이 허용 (개발용)
+                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()  // 👈 Swagger 허용
                 .requestMatchers("/api/v1/users/**").authenticated()
                 .requestMatchers("/api/v1/appointments/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/v1/users/onboarding").hasAnyRole("GUEST", "USER")

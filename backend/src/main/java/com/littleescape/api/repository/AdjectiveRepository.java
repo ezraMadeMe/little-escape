@@ -10,6 +10,6 @@ import java.util.Optional;
 @Repository
 public interface AdjectiveRepository extends JpaRepository<Adjective, Long> {
 
-    @Query(value = "SELECT * FROM adjectives ORDER BY RAND() LIMIT 1", nativeQuery = true)
+    @Query(value = "SELECT * FROM adjectives ORDER BY RANDOM() LIMIT 1", nativeQuery = true)
     Optional<Adjective> findRandomAdjective();
 }

@@ -44,6 +44,10 @@ public class MissionTemplate extends BaseTimeEntity {
     @Column(name = "time_of_day", nullable = false)
     private TimeOfDay timeOfDay = TimeOfDay.ANY;
 
+    // 장소 필수 여부
+    @Column(name = "is_place_required", nullable = false)
+    private Boolean isPlaceRequired = false;
+
     // 미션 장소 위치
     @Column(name = "latitude")
     private Double latitude;

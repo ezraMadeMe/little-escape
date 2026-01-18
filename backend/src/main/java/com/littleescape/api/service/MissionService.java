@@ -2,7 +2,9 @@ package com.littleescape.api.service;
 
 import com.littleescape.api.domain.MissionTemplate;
 import com.littleescape.api.domain.type.LocationType;
+import com.littleescape.api.domain.type.MissionCategory;
 import com.littleescape.api.domain.type.TimeOfDay;
+import com.littleescape.api.dto.response.DailyMissionResponse;
 import com.littleescape.api.repository.MissionTemplateRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,9 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -158,5 +162,155 @@ public class MissionService {
         }
 
         return locations;
+    }
+
+    /**
+     * 일일 미션 추천 - 사용자에게 단일 미션 반환
+     *
+     * TODO: 향후 개선 사항
+     * 1. 사용자 프로필 분석 (선호도, 난이도, 과거 완료 이력)
+     * 2. 날씨 API 연동 (비올 때는 실내 미션 우선)
+     * 3. 시간대별 필터링 (오전/오후/저녁)
+     * 4. 위치 기반 필터링 (사용자 위치 근처)
+     *
+     * @param userId 사용자 ID (현재는 미사용, 추후 확장용)
+     * @param scheduledAt 약속 예정 시간 (선택적)
+     * @return 일일 추천 미션
+     */
+    public DailyMissionResponse getDailyMission(Long userId, LocalDateTime scheduledAt) {
+        log.info("=== 일일 미션 추천 시작 === userId: {}, scheduledAt: {}", userId, scheduledAt);
+
+        // 약속 시간이 없으면 현재 시간 사용
+        LocalDateTime targetTime = (scheduledAt != null) ? scheduledAt : LocalDateTime.now();
+
+        // TODO: 시간대/날씨 기반 필터링 로직 (향후 구현)
+        // List<TimeOfDay> targetTimes = analyzeTimeOfDay(targetTime);
+        // List<LocationType> targetLocations = analyzeLocation();
+
+        // 현재는 모든 미션 중 랜덤 선택
+        List<MissionTemplate> allMissions = missionTemplateRepository.findAll();
+
+        if (allMissions.isEmpty()) {
+            throw new IllegalStateException("사용 가능한 미션이 없습니다.");
+        }
+
+        // 랜덤 선택
+        Random random = new Random();
+        MissionTemplate selectedMission = allMissions.get(random.nextInt(allMissions.size()));
+
+        log.info("선택된 미션: {} (ID: {})", selectedMission.getTitle(), selectedMission.getId());
+
+        // DTO 변환
+        return convertToResponse(selectedMission, targetTime);
+    }
+
+    /**
+     * Plan B (대안 미션) 추천 - 원래 미션이 부담스러울 때
+     *
+     * @param originalMissionId 원래 미션 ID
+     * @return Plan B 미션 정보를 포함한 응답
+     */
+    public DailyMissionResponse getEscapeMission(Long originalMissionId) {
+        log.info("=== Plan B 미션 요청 === originalMissionId: {}", originalMissionId);
+
+        // 원래 미션 조회 (검증용)
+        missionTemplateRepository.findById(originalMissionId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 미션입니다: " + originalMissionId));
+
+        // Plan B: INDOOR 또는 RELAX 카테고리에서 랜덤 선택
+        List<MissionTemplate> planBCandidates = missionTemplateRepository.findAll().stream()
+                .filter(m -> m.getCategory() == MissionCategory.RELAX ||
+                             m.getLocationType() == LocationType.INDOOR)
+                .collect(Collectors.toList());
+
+        if (planBCandidates.isEmpty()) {
+            throw new IllegalStateException("Plan B로 추천할 수 있는 미션이 없습니다.");
+        }
+
+        // 랜덤 선택
+        Random random = new Random();
+        MissionTemplate planBMission = planBCandidates.get(random.nextInt(planBCandidates.size()));
+
+        log.info("Plan B 선택: {} (ID: {})", planBMission.getTitle(), planBMission.getId());
+
+        // 츤데레 톤의 추천 이유 생성
+        String tsundereReason = generateTsundereReason(planBMission.getCategory());
+
+        // DTO 변환
+        DailyMissionResponse response = convertToResponse(planBMission, LocalDateTime.now());
+
+        // Plan B 정보 추가
+        DailyMissionResponse.PlanB planBInfo = DailyMissionResponse.PlanB.builder()
+                .title(planBMission.getTitle())
+                .description(planBMission.getDescription())
+                .placeName(planBMission.getAddress())
+                .reason(tsundereReason)
+                .build();
+
+        return DailyMissionResponse.builder()
+                .id(response.getId())
+                .title(response.getTitle())
+                .description(response.getDescription())
+                .location(response.getLocation())
+                .timeToMeet(response.getTimeToMeet())
+                .isCompleted(response.getIsCompleted())
+                .category(response.getCategory())
+                .imageUrl(response.getImageUrl())
+                .planB(planBInfo)
+                .build();
+    }
+
+    /**
+     * MissionTemplate을 DailyMissionResponse로 변환
+     */
+    private DailyMissionResponse convertToResponse(MissionTemplate mission, LocalDateTime scheduledAt) {
+        // 시간 포맷팅 (예: "오후 3:00")
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("a h:mm");
+        String timeToMeet = scheduledAt.format(formatter);
+
+        // 장소 정보 생성
+        DailyMissionResponse.LocationInfo location = DailyMissionResponse.LocationInfo.builder()
+                .name(mission.getAddress())
+                .address(mission.getAddress())
+                .latitude(mission.getLatitude())
+                .longitude(mission.getLongitude())
+                .build();
+
+        return DailyMissionResponse.builder()
+                .id(mission.getId())
+                .title(mission.getTitle())
+                .description(mission.getDescription())
+                .location(location)
+                .timeToMeet(timeToMeet)
+                .isCompleted(false)
+                .category(mission.getCategory())
+                .imageUrl(mission.getImageUrl())
+                .planB(null) // 초기에는 Plan B 없음
+                .build();
+    }
+
+    /**
+     * 츤데레 톤의 Plan B 추천 이유 생성
+     */
+    private String generateTsundereReason(MissionCategory category) {
+        List<String> reasons = new ArrayList<>();
+
+        switch (category) {
+            case RELAX:
+                reasons.add("사람 많은 곳이 부담스러울 수도 있잖아. 그럴 줄 알고 준비했어.");
+                reasons.add("무리하지 마. 오늘은 편하게 쉬는 것도 나쁘지 않아.");
+                reasons.add("별로 안 피곤해 보이긴 하는데... 그래도 쉬는 게 나을 것 같아서.");
+                break;
+            case CULTURE:
+                reasons.add("문화생활도 나쁘지 않지. 뭐, 네가 원한다면 말이야.");
+                reasons.add("조용한 곳이 더 좋을 수도 있으니까. 억지로 권하는 건 아니야.");
+                break;
+            default:
+                reasons.add("이쪽이 더 편할 것 같아서. 뭐, 네 마음대로 해.");
+                reasons.add("부담 갖지 마. 천천히 해도 괜찮아.");
+        }
+
+        Random random = new Random();
+        return reasons.get(random.nextInt(reasons.size()));
     }
 }

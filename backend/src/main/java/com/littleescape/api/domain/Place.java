@@ -46,4 +46,17 @@ public class Place extends BaseTimeEntity {
         this.longitude = longitude;
         this.category = category;
     }
+
+    /**
+     * imageUrl을 포함한 생성자 (데이터 수집 시 사용)
+     */
+    public Place(String name, String address, String url, Double latitude, Double longitude, MissionCategory category, String imageUrl) {
+        this.name = name;
+        this.address = address;
+        this.url = url;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.category = category;
+        this.imageUrl = imageUrl;
+    }
 }

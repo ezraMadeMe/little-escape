@@ -204,6 +204,51 @@ public class UserController {
     }
 
     /**
+     * 채팅 온보딩 사용자 선호도 업데이트 API
+     * (nickname, MBTI, 혼밥 레벨)
+     */
+    @PostMapping("/preferences")
+    public ResponseEntity<UserResponse> updateUserPreferences(
+            @AuthenticationPrincipal String userId,
+            @RequestBody Map<String, Object> request) {
+
+        log.info("=== 사용자 선호도 업데이트 API 호출 ===");
+        log.info("인증된 사용자 ID: {}", userId);
+        log.info("요청 데이터: {}", request);
+
+        if (userId == null || userId.isEmpty()) {
+            log.error("❌ 사용자 ID가 없습니다 (인증 실패)");
+            return ResponseEntity.status(401).build();
+        }
+
+        String nickname = (String) request.get("nickname");
+        String mbti = (String) request.get("mbti");
+        Integer soloLevel = request.get("soloLevel") != null 
+            ? ((Number) request.get("soloLevel")).intValue() 
+            : null;
+
+        log.info("파싱된 데이터 - 닉네임: {}, MBTI: {}, 혼밥레벨: {}", nickname, mbti, soloLevel);
+
+        try {
+            User updatedUser = userService.updateUserPreferences(
+                Long.parseLong(userId), 
+                nickname, 
+                mbti, 
+                soloLevel
+            );
+
+            log.info("✅ 사용자 선호도 업데이트 성공: {}", updatedUser.getId());
+            return ResponseEntity.ok(UserResponse.from(updatedUser));
+        } catch (NumberFormatException e) {
+            log.error("❌ 사용자 ID 파싱 실패: {}", userId, e);
+            return ResponseEntity.status(400).body(null);
+        } catch (RuntimeException e) {
+            log.error("❌ 사용자 선호도 업데이트 실패: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    /**
      * 회원탈퇴 API
      */
     @DeleteMapping("/me")

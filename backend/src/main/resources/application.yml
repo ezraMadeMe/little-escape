@@ -94,7 +94,7 @@ coolsms:
   sender-number: 01041681419
 
 app:
-  client-base-url: http://10.0.3.48:5173
+  client-base-url: http://172.30.1.57:5173
   magic-link:
     base-url: ${app.client-base-url}
   oauth2:
@@ -103,8 +103,24 @@ app:
     allowed-origins:
       - http://localhost:5173
       - http://127.0.0.1:5173
-      - http://172.30.1.23:5173
-      - http://172.30.1.95:5173
-      - http://10.10.0.150:5173
-      - http://10.0.3.48:5173
-      - http://10.67.61.157:5173
+      - http://172.30.1.57:5173
+      - https://garrett-unmaniacal-raelyn.ngrok-free.dev
+
+# 외부 공공 API 연동 설정
+external-api:
+  kopis:
+    base-url: http://www.kopis.or.kr/openApi/restful
+    service-key: ddd0bd1412c94d7ba22e5460796681d9  # 공연예술통합전산망 API 키
+  seoul:
+    base-url: http://openapi.seoul.go.kr:8088
+    service-key: 42744b777a6c696b383141616b4359  # 서울시 열린데이터 API 키
+  library:
+    base-url: http://data4library.kr/api
+    auth-key: 1bc109f6b4d80109e6ce2c305834158acb51097d4f1eaf8d9e5dcffb4291b4bd  # 도서관정보나루 API 키
+  kakao:
+    base-url: https://dapi.kakao.com
+    rest-api-key: c8cfaa70e5cc90f45eb7e7dbc652d9bb  # 카카오 로컬 API 키
+
+# 데이터 수집 설정
+data-ingestion:
+  enabled: true  # 개발 중에는 false, 운영 시 true로 변경

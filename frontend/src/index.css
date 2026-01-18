@@ -1,3 +1,131 @@
+/* Pretendard 웹폰트 CDN */
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /* 기본 바디 스타일 - 다크 모드 배경 */
+  body {
+    @apply bg-deep-charcoal text-off-white font-sans antialiased;
+    font-feature-settings: 'kern' 1, 'liga' 1;
+  }
+
+  /* 헤딩 스타일 - 굵고 강렬하게 */
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-off-white font-bold;
+    letter-spacing: -0.02em;
+  }
+
+  h1 {
+    @apply text-4xl font-extra-bold;
+  }
+
+  h2 {
+    @apply text-3xl font-bold;
+  }
+
+  h3 {
+    @apply text-2xl font-bold;
+  }
+
+  /* 본문 텍스트 */
+  p {
+    @apply text-text-gray leading-relaxed;
+  }
+
+  /* 링크 스타일 */
+  a {
+    @apply text-electric-lime hover:text-electric-lime-dark transition-colors duration-200;
+  }
+}
+
+@layer components {
+  /* Primary CTA 버튼 - Electric Lime */
+  .btn-primary {
+    @apply bg-electric-lime text-deep-charcoal font-bold px-6 py-3 rounded-solotion
+           hover:bg-electric-lime-dark hover:shadow-neon-lime
+           active:scale-95 transition-all duration-200
+           uppercase tracking-wide;
+  }
+
+  /* Secondary CTA 버튼 - Neon Purple */
+  .btn-secondary {
+    @apply bg-neon-purple text-off-white font-bold px-6 py-3 rounded-solotion
+           hover:bg-neon-purple-dark hover:shadow-neon-purple
+           active:scale-95 transition-all duration-200
+           uppercase tracking-wide;
+  }
+
+  /* Outline 버튼 */
+  .btn-outline {
+    @apply border-2 border-electric-lime text-electric-lime font-bold px-6 py-3 rounded-solotion
+           hover:bg-electric-lime hover:text-deep-charcoal
+           active:scale-95 transition-all duration-200
+           uppercase tracking-wide;
+  }
+
+  /* Ghost 버튼 - 시크한 느낌 */
+  .btn-ghost {
+    @apply text-text-gray font-semibold px-4 py-2 rounded-solotion-sm
+           hover:text-off-white hover:bg-charcoal-lighter
+           transition-all duration-200;
+  }
+
+  /* 카드 스타일 */
+  .card {
+    @apply bg-charcoal-soft rounded-solotion p-6 shadow-solotion
+           border border-charcoal-lighter
+           hover:border-electric-lime/30 transition-all duration-300;
+  }
+
+  /* 인풋 필드 */
+  .input {
+    @apply bg-charcoal-lighter text-off-white px-4 py-3 rounded-solotion
+           border border-charcoal-lighter
+           focus:border-electric-lime focus:outline-none focus:ring-2 focus:ring-electric-lime/30
+           placeholder:text-text-gray-dark
+           transition-all duration-200;
+  }
+
+  /* 체크박스/라디오 커스텀 */
+  .checkbox {
+    @apply w-5 h-5 rounded-sm border-2 border-text-gray
+           checked:bg-electric-lime checked:border-electric-lime
+           focus:ring-2 focus:ring-electric-lime/30
+           transition-all duration-200;
+  }
+}
+
+@layer utilities {
+  /* 츤데레 느낌의 텍스트 유틸리티 */
+  .text-tsundere {
+    @apply text-off-white font-bold tracking-tight;
+  }
+
+  /* 강조 텍스트 - 네온 효과 */
+  .text-neon {
+    @apply text-electric-lime drop-shadow-[0_0_8px_rgba(204,255,0,0.5)];
+  }
+
+  /* 컨테이너 최대 너비 */
+  .container-solotion {
+    @apply max-w-6xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* 스크롤바 스타일링 */
+  .scrollbar-solotion::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-solotion::-webkit-scrollbar-track {
+    @apply bg-charcoal-lighter rounded-solotion-sm;
+  }
+
+  .scrollbar-solotion::-webkit-scrollbar-thumb {
+    @apply bg-text-gray hover:bg-electric-lime rounded-solotion-sm;
+    transition: background-color 0.2s;
+  }
+}

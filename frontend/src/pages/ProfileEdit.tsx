@@ -79,9 +79,10 @@ const ProfileEdit = () => {
       alert('프로필이 수정되었습니다.');
       navigate('/mypage');
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('프로필 수정 실패:', error);
-      alert(error.message || '프로필 수정에 실패했습니다.');
+      const errorMessage = error instanceof Error ? error.message : '프로필 수정에 실패했습니다.';
+      alert(errorMessage);
     } finally {
       setLoading(false);
     }

@@ -5,6 +5,8 @@ import com.littleescape.api.domain.MissionTemplate;
 import com.littleescape.api.domain.Place;
 import com.littleescape.api.domain.User;
 import com.littleescape.api.domain.type.AppointmentStatus;
+import com.littleescape.api.domain.type.LocationType;
+import com.littleescape.api.domain.type.TimeOfDay;
 import com.littleescape.api.dto.AppointmentResponse;
 import com.littleescape.api.repository.AppointmentRepository;
 import com.littleescape.api.repository.MissionTemplateRepository;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -52,35 +55,81 @@ public class AppointmentService {
         appointment.setStatus(AppointmentStatus.PENDING);
         appointment.setScheduledAt(scheduledAt);
 
-        // missionId가 있으면 미션과 장소를 함께 설정
+        // 미션 자동 배정 로직
+        MissionTemplate selectedMission;
+        
         if (missionId != null) {
+            // 1. 미션 ID가 명시된 경우 (기존 로직 유지)
             log.info("미션 ID가 제공됨 - 미션 및 장소 매칭 시작");
-            MissionTemplate missionTemplate = missionTemplateRepository.findById(missionId)
+            selectedMission = missionTemplateRepository.findById(missionId)
                     .orElseThrow(() -> new IllegalArgumentException("미션을 찾을 수 없습니다."));
+        } else {
+            // 2. 미션 ID가 없는 경우 - 자동 랜덤 배정 (핵심 로직)
+            log.info("미션 ID 없음 - 시간/날씨에 맞는 미션 자동 선정 시작");
+            
+            // 2-1. 시간대 분석
+            List<TimeOfDay> targetTimes = analyzeTimeOfDay(scheduledAt);
+            log.info("분석된 시간대: {}", targetTimes);
+            
+            // 2-2. 날씨/장소 분석 (추후 날씨 API 연동)
+            List<LocationType> targetLocations = analyzeLocation();
+            log.info("추천 장소 타입: {}", targetLocations);
+            
+            // 2-3. 조건에 맞는 미션 후보 조회
+            List<MissionTemplate> candidates = missionTemplateRepository
+                    .findAllByTimeOfDayInAndLocationTypeIn(targetTimes, targetLocations);
+            
+            log.info("조건에 맞는 미션 후보: {}개", candidates.size());
+            
+            if (candidates.isEmpty()) {
+                throw new IllegalStateException(
+                    "약속 시간에 맞는 미션을 찾을 수 없습니다. 관리자에게 문의해주세요."
+                );
+            }
+            
+            // 2-4. 랜덤으로 하나 선정
+            Collections.shuffle(candidates);
+            selectedMission = candidates.get(0);
+            
+            log.info("자동 선정된 미션: {} (ID: {})", selectedMission.getTitle(), selectedMission.getId());
+        }
 
-            appointment.updateMission(missionTemplate);
-            log.info("미션 카테고리: {}", missionTemplate.getCategory());
+        // 3. 선정된 미션을 Appointment에 연결
+        appointment.updateMission(selectedMission);
+        log.info("미션 연결 완료 - 카테고리: {}, 장소 필수: {}", 
+                selectedMission.getCategory(), 
+                selectedMission.getIsPlaceRequired());
 
-            // 랜덤 장소 매칭
-            List<Place> places = placeRepository.findByCategory(missionTemplate.getCategory());
+        // 4. 장소 조건부 매칭
+        if (selectedMission.getIsPlaceRequired() != null && selectedMission.getIsPlaceRequired()) {
+            // 4-1. 장소가 필요한 미션 -> 자동 매칭
+            log.info("🏠 장소가 필요한 미션 - 장소 자동 매칭 시작");
+            
+            List<Place> places = placeRepository.findByCategory(selectedMission.getCategory());
             log.info("조회된 장소 개수: {}개", places.size());
 
             if (!places.isEmpty()) {
                 Collections.shuffle(places);
                 Place randomPlace = places.get(0);
                 appointment.updatePlace(randomPlace);
-                log.info("선택된 장소: {}", randomPlace.getName());
+                log.info("✅ 선택된 장소: {}", randomPlace.getName());
             } else {
-                log.warn("장소 매칭 실패! 카테고리: {}", missionTemplate.getCategory());
+                log.error("❌ 장소 매칭 실패! 카테고리: {} - 장소가 필수인데 없음", selectedMission.getCategory());
+                throw new IllegalStateException(
+                    "이 미션은 장소가 필요하지만 적절한 장소를 찾을 수 없습니다. 관리자에게 문의해주세요."
+                );
             }
         } else {
-            log.info("미션 ID 없음 - 시간만 예약");
-            appointment.setMissionTemplate(null);
+            // 4-2. 장소가 필요 없는 미션 -> 장소 없이 진행
+            log.info("🌍 장소가 필요 없는 미션 - 어디서든 수행 가능");
             appointment.setPlace(null);
         }
 
         Appointment savedAppointment = appointmentRepository.save(appointment);
         log.info("=== 약속 생성 완료 (ID: {}) ===", savedAppointment.getId());
+        log.info("📋 미션: {} (ID: {})", selectedMission.getTitle(), selectedMission.getId());
+        log.info("📍 장소: {}", savedAppointment.getPlace() != null ? savedAppointment.getPlace().getName() : "없음 (어디서든 가능)");
+        log.info("🏷️ 상태: {}", savedAppointment.getStatus());
 
         // 약속 생성 후 매직 토큰 만료 처리
         if (user.getMagicToken() != null) {
@@ -91,6 +140,56 @@ public class AppointmentService {
         }
 
         return savedAppointment;
+    }
+
+    /**
+     * 시간대 분석 로직
+     * @param scheduledAt 약속 예정 시간
+     * @return 해당 시간대 + ANY를 포함한 리스트
+     */
+    private List<TimeOfDay> analyzeTimeOfDay(LocalDateTime scheduledAt) {
+        int hour = scheduledAt.getHour();
+        List<TimeOfDay> times = new ArrayList<>();
+
+        // 시간대별 분류
+        if (hour >= 6 && hour < 12) {
+            times.add(TimeOfDay.MORNING);
+        } else if (hour >= 12 && hour < 18) {
+            times.add(TimeOfDay.AFTERNOON);
+        } else {
+            // 18~24시 또는 0~6시는 NIGHT
+            times.add(TimeOfDay.NIGHT);
+        }
+
+        // ANY(무관)는 항상 포함
+        times.add(TimeOfDay.ANY);
+
+        return times;
+    }
+
+    /**
+     * 날씨/장소 분석 로직
+     * TODO: 날씨 API 연동 후 실제 날씨 데이터 활용
+     * @return 추천 가능한 장소 타입 리스트
+     */
+    private List<LocationType> analyzeLocation() {
+        // 임시: 날씨 API 연동 전이므로 항상 맑음으로 가정
+        boolean isRaining = false;
+
+        List<LocationType> locations = new ArrayList<>();
+
+        if (isRaining) {
+            // 비/눈: 실내와 무관만 포함
+            locations.add(LocationType.INDOOR);
+            locations.add(LocationType.ANY);
+        } else {
+            // 맑음: 모든 장소 포함
+            locations.add(LocationType.INDOOR);
+            locations.add(LocationType.OUTDOOR);
+            locations.add(LocationType.ANY);
+        }
+
+        return locations;
     }
 
     @Transactional

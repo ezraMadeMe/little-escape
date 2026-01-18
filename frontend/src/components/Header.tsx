@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { getMyInfo } from '../api/userApi';
 import { User } from '../types/user';
 
@@ -44,13 +44,13 @@ const Header = () => {
   return (
     // 배경색/그림자 제거, 배경 블러 처리만 살짝 (유리 느낌)
     <header className="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-transparent backdrop-blur-sm">
-      {/* 로고 */}
-      <div
-        onClick={() => navigate('/')}
-        className="font-bold text-xl text-purple-600 cursor-pointer"
+      {/* 로고 - 메인 화면(오늘의 미션)으로 이동 */}
+      <Link
+        to="/missions"
+        className="font-bold text-xl text-purple-600 cursor-pointer hover:text-purple-700 transition-colors"
       >
         Little Escape
-      </div>
+      </Link>
 
       {/* 우측 유저 영역 */}
       <div>

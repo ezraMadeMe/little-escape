@@ -64,11 +64,6 @@ function MissionProof() {
   };
 
   const handleSubmit = async () => {
-    if (selectedKeywords.length === 0) {
-      alert('최소 1개 이상의 감성 키워드를 선택해주세요.');
-      return;
-    }
-
     if (!appointmentId) {
       alert('약속 ID가 없습니다.');
       return;
@@ -77,17 +72,20 @@ function MissionProof() {
     try {
       setIsSubmitting(true);
 
+      const keywords = selectedKeywords.length > 0 
+        ? selectedKeywords 
+        : ['완료했어'];
+
       await completeAppointment(
         Number(appointmentId),
         proofComment.trim(),
-        selectedKeywords,
+        keywords,
         imageFiles
       );
 
       alert('미션 인증이 완료되었습니다!');
       navigate('/mypage');
     } catch (error) {
-      console.error('인증 실패:', error);
       alert('인증에 실패했습니다. 다시 시도해주세요.');
     } finally {
       setIsSubmitting(false);
@@ -115,7 +113,7 @@ function MissionProof() {
         {/* 키워드 선택 섹션 */}
         <div>
           <h2 className="text-xl font-bold text-gray-900 mb-4">이 미션, 어떠셨나요?</h2>
-          <p className="text-sm text-gray-600 mb-4">느낀 감정을 선택해주세요 (복수 선택 가능)</p>
+          <p className="text-sm text-gray-600 mb-4">느낀 감정을 선택해주세요 (선택사항, 복수 선택 가능)</p>
           <div className="flex flex-wrap gap-3">
             {REVIEW_KEYWORDS.map(keyword => (
               <button
@@ -202,7 +200,7 @@ function MissionProof() {
         <div className="max-w-2xl mx-auto">
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting || selectedKeywords.length === 0}
+            disabled={isSubmitting}
             className="w-full h-14 bg-purple-600 hover:bg-purple-700 text-white font-bold text-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isSubmitting ? (
