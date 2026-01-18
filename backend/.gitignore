@@ -40,4 +40,4 @@ build/
 .DS_Store
 
 /uploads/*
-application.yml
+/src/main/resources/application.yml
