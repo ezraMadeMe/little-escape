@@ -1,14 +1,13 @@
 package com.littleescape.api.controller;
 
 import com.littleescape.api.service.DataIngestionService;
+import com.littleescape.api.service.DataImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,6 +24,7 @@ import java.util.Map;
 public class AdminController {
 
     private final DataIngestionService dataIngestionService;
+    private final DataImportService dataImportService;
 
     /**
      * 데이터 수집 수동 트리거
@@ -78,6 +78,67 @@ public class AdminController {
         Map<String, String> response = new HashMap<>();
         response.put("status", "UP");
         response.put("message", "Admin API is running");
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 서울 맛집 데이터 import
+     * POST /api/admin/data/import/seoul-restaurants
+     */
+    @PostMapping("/data/import/seoul-restaurants")
+    @Operation(summary = "서울 맛집 데이터 import",
+               description = "Excel 파일로부터 생성된 서울 맛집 데이터를 Places 테이블에 삽입합니다.")
+    public ResponseEntity<Map<String, Object>> importSeoulRestaurants() {
+        log.info("=== 서울 맛집 데이터 import API 호출 ===");
+
+        int importedCount = dataImportService.importSeoulRestaurants();
+        long totalCount = dataImportService.countPlaces();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "서울 맛집 데이터 import 완료");
+        response.put("importedCount", importedCount);
+        response.put("totalPlacesCount", totalCount);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Places 테이블 전체 삭제 (개발용)
+     * DELETE /api/admin/data/places
+     */
+    @DeleteMapping("/data/places")
+    @Operation(summary = "Places 테이블 전체 삭제",
+               description = "⚠️ 주의: Places 테이블의 모든 데이터를 삭제합니다. (개발용)")
+    public ResponseEntity<Map<String, Object>> clearAllPlaces() {
+        log.warn("⚠️ Places 테이블 전체 삭제 API 호출");
+
+        long beforeCount = dataImportService.countPlaces();
+        dataImportService.clearAllPlaces();
+        long afterCount = dataImportService.countPlaces();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Places 테이블의 모든 데이터가 삭제되었습니다");
+        response.put("deletedCount", beforeCount);
+        response.put("remainingCount", afterCount);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Places 테이블 데이터 개수 조회
+     * GET /api/admin/data/places/count
+     */
+    @GetMapping("/data/places/count")
+    @Operation(summary = "Places 데이터 개수 조회",
+               description = "현재 Places 테이블에 저장된 총 데이터 개수를 조회합니다.")
+    public ResponseEntity<Map<String, Object>> getPlacesCount() {
+        long count = dataImportService.countPlaces();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("totalPlacesCount", count);
+
         return ResponseEntity.ok(response);
     }
 }

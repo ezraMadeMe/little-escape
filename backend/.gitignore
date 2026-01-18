@@ -41,3 +41,4 @@ build/
 
 /uploads/*
 /src/main/resources/application.yml
+/src/main/resources/db/*

@@ -1,12 +1,14 @@
 import { apiFetch } from './client';
 import { Appointment } from '../types/appointment';
 
-export async function createAppointment(params: { 
-  scheduledAt: string; 
+export async function createAppointment(params: {
+  scheduledAt: string;
   missionId?: number;
   departureLatitude?: number;
   departureLongitude?: number;
   searchRadius?: number;
+  userLatitude?: number | null;
+  userLongitude?: number | null;
 }): Promise<Appointment> {
   const body: any = {
     scheduledAt: params.scheduledAt,
@@ -26,6 +28,14 @@ export async function createAppointment(params: {
 
   if (params.searchRadius !== undefined) {
     body.searchRadius = params.searchRadius;
+  }
+
+  if (params.userLatitude !== undefined && params.userLatitude !== null) {
+    body.userLatitude = params.userLatitude;
+  }
+
+  if (params.userLongitude !== undefined && params.userLongitude !== null) {
+    body.userLongitude = params.userLongitude;
   }
 
   return apiFetch<Appointment>('/api/v1/appointments', {
@@ -130,6 +140,12 @@ export async function cloneAppointment(appointmentId: number): Promise<number> {
 
 export async function toggleFavorite(appointmentId: number): Promise<void> {
   return apiFetch<void>(`/api/v1/appointments/${appointmentId}/favorite`, {
+    method: 'PATCH',
+  });
+}
+
+export async function markAsArrived(appointmentId: number): Promise<Appointment> {
+  return apiFetch<Appointment>(`/api/v1/appointments/${appointmentId}/arrive`, {
     method: 'PATCH',
   });
 }

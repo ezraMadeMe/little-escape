@@ -12,6 +12,13 @@ export default {
         'charcoal-soft': '#1A1A1A',
         'charcoal-lighter': '#242424',
 
+        // Brand Aliases (표준 명명 규칙)
+        'brand-dark': '#121212',      // = deep-charcoal
+        'brand-gray': '#1A1A1A',      // = charcoal-soft
+        'brand-neon': '#CCFF00',      // = electric-lime
+        'brand-text': '#EDEDED',      // = off-white
+        'brand-muted': '#A0A0A0',     // = text-gray
+
         // Primary Colors - 힙하고 도파민 터지는 느낌
         'electric-lime': '#CCFF00',
         'electric-lime-dark': '#A3CC00',

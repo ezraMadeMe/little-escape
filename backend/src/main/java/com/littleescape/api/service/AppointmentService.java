@@ -33,10 +33,17 @@ public class AppointmentService {
     private final MissionTemplateRepository missionTemplateRepository;
     private final PlaceRepository placeRepository;
 
+    // 1인 가구 타겟에 맞지 않는 키워드
+    private static final String[] BAD_KEYWORDS = {
+        "어린이", "유아", "강좌", "교실", "모집", "시니어", "동호회"
+    };
+
     @Transactional
-    public Appointment createAppointment(Long userId, LocalDateTime scheduledAt, Long missionId) {
+    public Appointment createAppointment(Long userId, LocalDateTime scheduledAt, Long missionId,
+                                        Double userLatitude, Double userLongitude) {
         log.info("=== 약속 생성 시작 ===");
         log.info("사용자 ID: {}, 약속 시간: {}, 미션 ID: {}", userId, scheduledAt, missionId);
+        log.info("사용자 위치: 위도 {}, 경도 {}", userLatitude, userLongitude);
 
         // 진행 중인 약속이 있는지 검증
         List<AppointmentStatus> activeStatuses = List.of(AppointmentStatus.PENDING, AppointmentStatus.ACCEPTED);
@@ -100,23 +107,20 @@ public class AppointmentService {
                 selectedMission.getCategory(), 
                 selectedMission.getIsPlaceRequired());
 
-        // 4. 장소 조건부 매칭
+        // 4. 장소 조건부 매칭 (개선된 로직: 거리 제한 포함)
         if (selectedMission.getIsPlaceRequired() != null && selectedMission.getIsPlaceRequired()) {
-            // 4-1. 장소가 필요한 미션 -> 자동 매칭
-            log.info("🏠 장소가 필요한 미션 - 장소 자동 매칭 시작");
-            
-            List<Place> places = placeRepository.findByCategory(selectedMission.getCategory());
-            log.info("조회된 장소 개수: {}개", places.size());
+            // 4-1. 장소가 필요한 미션 -> 필터링된 양질의 장소 자동 매칭 (반경 10km 이내)
+            log.info("🏠 장소가 필요한 미션 - 필터링된 장소 자동 매칭 시작 (반경 10km 이내)");
 
-            if (!places.isEmpty()) {
-                Collections.shuffle(places);
-                Place randomPlace = places.get(0);
-                appointment.updatePlace(randomPlace);
-                log.info("✅ 선택된 장소: {}", randomPlace.getName());
+            Place matchedPlace = findQualityPlaceNearby(selectedMission.getCategory(), userLatitude, userLongitude);
+
+            if (matchedPlace != null) {
+                appointment.updatePlace(matchedPlace);
+                log.info("✅ 선택된 장소: {} (카테고리: {})", matchedPlace.getName(), matchedPlace.getCategory());
             } else {
-                log.error("❌ 장소 매칭 실패! 카테고리: {} - 장소가 필수인데 없음", selectedMission.getCategory());
+                log.error("❌ 장소 매칭 실패! 카테고리: {} - 반경 10km 내 필터링 후 적합한 장소가 없음", selectedMission.getCategory());
                 throw new IllegalStateException(
-                    "이 미션은 장소가 필요하지만 적절한 장소를 찾을 수 없습니다. 관리자에게 문의해주세요."
+                    "이 미션은 장소가 필요하지만 주변 10km 이내에서 적절한 장소를 찾을 수 없습니다. 다른 지역을 시도해주세요."
                 );
             }
         } else {
@@ -140,6 +144,161 @@ public class AppointmentService {
         }
 
         return savedAppointment;
+    }
+
+    /**
+     * 필터링된 양질의 장소 찾기 (거리 제한 포함)
+     * @param missionCategory 미션 카테고리
+     * @param userLatitude 사용자 위도
+     * @param userLongitude 사용자 경도
+     * @return 매칭된 장소 (없으면 null)
+     */
+    private Place findQualityPlaceNearby(com.littleescape.api.domain.type.MissionCategory missionCategory,
+                                         Double userLatitude, Double userLongitude) {
+        log.info("=== 필터링된 양질의 장소 검색 시작 (반경 10km 이내) ===");
+        log.info("미션 카테고리: {}, 사용자 위치: ({}, {})", missionCategory, userLatitude, userLongitude);
+
+        // 1단계: 미션 카테고리에 매칭되는 장소 카테고리 목록 가져오기
+        List<com.littleescape.api.domain.type.MissionCategory> targetCategories =
+            getCategoryMapping(missionCategory);
+
+        log.info("매칭 시도 카테고리 목록: {}", targetCategories);
+
+        // 2단계: 각 카테고리별로 필터링된 장소 검색 (거리 제한 포함)
+        List<Place> allFilteredPlaces = new ArrayList<>();
+
+        for (com.littleescape.api.domain.type.MissionCategory targetCategory : targetCategories) {
+            List<Place> filteredPlaces = placeRepository.findByCategoryFilteredWithDistance(
+                targetCategory,
+                userLatitude, userLongitude,
+                BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
+                BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+            );
+            log.info("카테고리 {} - 반경 10km 내 필터링된 장소: {}개", targetCategory, filteredPlaces.size());
+            allFilteredPlaces.addAll(filteredPlaces);
+        }
+
+        log.info("총 필터링된 장소 개수 (반경 10km 이내): {}개", allFilteredPlaces.size());
+
+        // 3단계: 매칭된 장소가 없으면 Fallback (카테고리 무관, 거리+필터링만 유지)
+        if (allFilteredPlaces.isEmpty()) {
+            log.warn("카테고리 매칭된 장소 없음 - Fallback으로 전체 필터링된 장소 검색 (반경 10km 이내)");
+            allFilteredPlaces = placeRepository.findAllFilteredWithDistance(
+                userLatitude, userLongitude,
+                BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
+                BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+            );
+            log.info("Fallback - 반경 10km 내 전체 필터링된 장소: {}개", allFilteredPlaces.size());
+        }
+
+        // 4단계: 랜덤 선택
+        if (!allFilteredPlaces.isEmpty()) {
+            Collections.shuffle(allFilteredPlaces);
+            Place selectedPlace = allFilteredPlaces.get(0);
+            log.info("=== 최종 선택된 장소: {} (카테고리: {}) ===", selectedPlace.getName(), selectedPlace.getCategory());
+            return selectedPlace;
+        }
+
+        log.error("=== 반경 10km 내 필터링 후에도 적합한 장소를 찾을 수 없음 ===");
+        return null;
+    }
+
+    /**
+     * 필터링된 양질의 장소 찾기 (거리 제한 없음 - 레거시)
+     * updateAppointmentMission에서 사용 (사용자 위치 정보가 없는 경우)
+     * @param missionCategory 미션 카테고리
+     * @return 매칭된 장소 (없으면 null)
+     */
+    private Place findQualityPlace(com.littleescape.api.domain.type.MissionCategory missionCategory) {
+        log.info("=== 필터링된 양질의 장소 검색 시작 (거리 제한 없음) ===");
+        log.info("미션 카테고리: {}", missionCategory);
+
+        // 1단계: 미션 카테고리에 매칭되는 장소 카테고리 목록 가져오기
+        List<com.littleescape.api.domain.type.MissionCategory> targetCategories =
+            getCategoryMapping(missionCategory);
+
+        log.info("매칭 시도 카테고리 목록: {}", targetCategories);
+
+        // 2단계: 각 카테고리별로 필터링된 장소 검색
+        List<Place> allFilteredPlaces = new ArrayList<>();
+
+        for (com.littleescape.api.domain.type.MissionCategory targetCategory : targetCategories) {
+            List<Place> filteredPlaces = placeRepository.findByCategoryFiltered(
+                targetCategory,
+                BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
+                BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+            );
+            log.info("카테고리 {} - 필터링된 장소: {}개", targetCategory, filteredPlaces.size());
+            allFilteredPlaces.addAll(filteredPlaces);
+        }
+
+        log.info("총 필터링된 장소 개수: {}개", allFilteredPlaces.size());
+
+        // 3단계: 매칭된 장소가 없으면 Fallback (카테고리 무관, 필터링만 유지)
+        if (allFilteredPlaces.isEmpty()) {
+            log.warn("카테고리 매칭된 장소 없음 - Fallback으로 전체 필터링된 장소 검색");
+            allFilteredPlaces = placeRepository.findAllFiltered(
+                BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
+                BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+            );
+            log.info("Fallback - 전체 필터링된 장소: {}개", allFilteredPlaces.size());
+        }
+
+        // 4단계: 랜덤 선택
+        if (!allFilteredPlaces.isEmpty()) {
+            Collections.shuffle(allFilteredPlaces);
+            Place selectedPlace = allFilteredPlaces.get(0);
+            log.info("=== 최종 선택된 장소: {} (카테고리: {}) ===", selectedPlace.getName(), selectedPlace.getCategory());
+            return selectedPlace;
+        }
+
+        log.error("=== 필터링 후에도 적합한 장소를 찾을 수 없음 ===");
+        return null;
+    }
+
+    /**
+     * 미션 카테고리에 따른 장소 카테고리 매핑 전략
+     * @param missionCategory 미션 카테고리
+     * @return 매칭 가능한 장소 카테고리 목록
+     */
+    private List<com.littleescape.api.domain.type.MissionCategory> getCategoryMapping(
+        com.littleescape.api.domain.type.MissionCategory missionCategory) {
+
+        List<com.littleescape.api.domain.type.MissionCategory> mapping = new ArrayList<>();
+
+        switch (missionCategory) {
+            case ACTIVITY:
+                // 활동(산책, 운동 등) -> ACTIVITY 우선, 부가적으로 RELAX, CULTURE
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.ACTIVITY);
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.RELAX);
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.CULTURE);
+                break;
+
+            case CULTURE:
+                // 문화(전시/관람) -> CULTURE 우선, 부가적으로 RELAX
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.CULTURE);
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.RELAX);
+                break;
+
+            case RELAX:
+                // 휴식(카페, 도서관) -> RELAX 우선, 부가적으로 CULTURE
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.RELAX);
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.CULTURE);
+                break;
+
+            case FOOD:
+                // 음식 -> FOOD 우선, 부가적으로 RELAX
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.FOOD);
+                mapping.add(com.littleescape.api.domain.type.MissionCategory.RELAX);
+                break;
+
+            default:
+                // 기본값: 미션 카테고리 그대로
+                mapping.add(missionCategory);
+                break;
+        }
+
+        return mapping;
     }
 
     /**
@@ -212,18 +371,16 @@ public class AppointmentService {
         // 미션 설정
         appointment.updateMission(missionTemplate);
 
-        // 랜덤 장소 매칭 로직
-        log.info("카테고리 {}에 해당하는 장소 조회 중...", missionTemplate.getCategory());
-        List<Place> places = placeRepository.findByCategory(missionTemplate.getCategory());
-        log.info("조회된 장소 개수: {}개", places.size());
+        // 필터링된 양질의 장소 매칭 로직
+        log.info("카테고리 {}에 해당하는 필터링된 장소 조회 중...", missionTemplate.getCategory());
 
-        if (!places.isEmpty()) {
-            Collections.shuffle(places);
-            Place randomPlace = places.get(0);
-            appointment.updatePlace(randomPlace);
-            log.info("선택된 장소: {}", randomPlace.getName());
+        Place matchedPlace = findQualityPlace(missionTemplate.getCategory());
+
+        if (matchedPlace != null) {
+            appointment.updatePlace(matchedPlace);
+            log.info("선택된 장소: {} (카테고리: {})", matchedPlace.getName(), matchedPlace.getCategory());
         } else {
-            log.warn("장소 매칭 실패! 카테고리: {}", missionTemplate.getCategory());
+            log.warn("장소 매칭 실패! 카테고리: {} - 필터링 후 적합한 장소가 없음", missionTemplate.getCategory());
         }
 
         log.info("=== 약속 미션 업데이트 완료 (ID: {}) ===", appointmentId);
@@ -508,6 +665,26 @@ public class AppointmentService {
         appointmentRepository.save(appointment);
 
         log.info("=== 즐겨찾기 토글 완료 (현재 상태: {}) ===", appointment.isFavorite());
+    }
+
+    @Transactional
+    public Appointment markAsArrived(Long userId, Long appointmentId) {
+        log.info("=== 도착 인증 시작 ===");
+        log.info("사용자 ID: {}, 약속 ID: {}", userId, appointmentId);
+
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new RuntimeException("약속을 찾을 수 없습니다."));
+
+        if (!appointment.getUser().getId().equals(userId)) {
+            throw new RuntimeException("권한이 없습니다.");
+        }
+
+        // 상태를 ARRIVED로 변경
+        appointment.setStatus(AppointmentStatus.ARRIVED);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        log.info("=== 도착 인증 완료 (상태: {}) ===", savedAppointment.getStatus());
+        return savedAppointment;
     }
 
     @Transactional
