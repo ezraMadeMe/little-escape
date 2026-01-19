@@ -38,6 +38,11 @@ public class Place extends BaseTimeEntity {
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 
+    // 장소 태그 (쉼표로 구분된 문자열)
+    // 예: "ALCOHOL_ONLY,VIEW_POINT"
+    @Column(name = "tags", length = 500)
+    private String tags;
+
     public Place(String name, String address, String url, Double latitude, Double longitude, MissionCategory category) {
         this.name = name;
         this.address = address;

@@ -1,3 +1,49 @@
+-- ========================================
+-- 태그 필터링 시스템 스키마 변경
+-- ========================================
+
+-- User 테이블에 tags 컬럼 추가 (존재하지 않을 경우에만)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tags VARCHAR(500);
+
+-- MissionTemplate 테이블에 tags 컬럼 추가
+ALTER TABLE mission_templates ADD COLUMN IF NOT EXISTS tags VARCHAR(500);
+
+-- Place 테이블에 tags 컬럼 추가
+ALTER TABLE places ADD COLUMN IF NOT EXISTS tags VARCHAR(500);
+
+-- MissionTemplate 테이블에 guide 컬럼 추가 (JSON 형식으로 단계별 가이드 저장)
+ALTER TABLE mission_templates ADD COLUMN IF NOT EXISTS guide JSON;
+
+-- ========================================
+-- 사용자 제보 시스템 (Suggestion)
+-- ========================================
+
+-- Suggestions 테이블 생성
+CREATE TABLE IF NOT EXISTS suggestions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- ========================================
+-- 태그 정의 (코드로 관리, 주석으로만 기록)
+-- ========================================
+-- 사용자 태그(User Tags):
+--   NO_ALCOHOL: 술을 못 마시거나 싫어함
+--   HATE_WALKING: 걷기/이동을 싫어함 (장거리 산책 제외)
+--   INDOOR_ONLY: 실내 활동만 선호
+--   NO_SPORTS: 운동/스포츠 싫어함
+--
+-- 미션/장소 태그(Mission/Place Tags):
+--   ALCOHOL_ONLY: 술 관련 필수 장소 (와인바, 포장마차 등)
+--   HIGH_ACTIVITY: 높은 활동량 필요 (조깅, 등산, 자전거 등)
+--   OUTDOOR_REQUIRED: 야외 필수
+--   SPORTS_REQUIRED: 스포츠/운동 필수
+--   VIEW_POINT: 전망 좋은 곳
+
 -- Sample Mission Templates Data
 INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, is_place_required, created_at, updated_at)
 SELECT '공원 산책', '근처 공원에서 30분 이상 산책하기', 'ACTIVITY', 'EASY', '30분 이상 산책', NULL, 'OUTDOOR', 'ANY', false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
@@ -43,6 +89,82 @@ WHERE NOT EXISTS (SELECT 1 FROM mission_templates WHERE title = '브런치 카�
 -- 위치 기반 미션 데이터 (가산디지털단지역 주변)
 -- 중심 좌표: (37.481, 126.882)
 -- ========================================
+
+-- ========================================
+-- 태그가 적용된 미션 템플릿 업데이트
+-- ========================================
+
+-- 포장마차 (술 관련)
+UPDATE mission_templates SET tags = 'ALCOHOL_ONLY' WHERE title = '가산 포장마차 거리 가기';
+
+-- 한강 자전거 타기 (높은 활동량)
+UPDATE mission_templates SET tags = 'HIGH_ACTIVITY' WHERE title = '한강 자전거 타기';
+
+-- 새벽 운동 (스포츠/운동)
+UPDATE mission_templates SET tags = 'HIGH_ACTIVITY,SPORTS_REQUIRED' WHERE title = '새벽 운동';
+
+-- 실내 클라이밍 (스포츠/운동)
+UPDATE mission_templates SET tags = 'SPORTS_REQUIRED' WHERE title = '실내 클라이밍';
+
+-- 가산 헬스장 운동 (스포츠/운동)
+UPDATE mission_templates SET tags = 'SPORTS_REQUIRED' WHERE title = '가산 헬스장 운동';
+
+-- LP 바 (술 관련 가능성)
+UPDATE mission_templates SET tags = 'ALCOHOL_ONLY' WHERE title = 'LP 바에서 음악 듣기';
+
+-- 장한평 야시장 (술 관련 가능성)
+UPDATE mission_templates SET tags = 'ALCOHOL_ONLY' WHERE title = '장한평 야시장 구경';
+
+-- 리셋 워크 25 (걷기)
+UPDATE mission_templates SET tags = 'HIGH_ACTIVITY' WHERE title = '리셋 워크 25';
+
+-- 계단 리셋 12 (높은 활동량)
+UPDATE mission_templates SET tags = 'HIGH_ACTIVITY' WHERE title = '계단 리셋 12';
+
+-- 미니 하이킹 30 (높은 활동량, 야외)
+UPDATE mission_templates SET tags = 'HIGH_ACTIVITY,OUTDOOR_REQUIRED' WHERE title = '미니 하이킹 30';
+
+-- 천변 바람 22 (야외)
+UPDATE mission_templates SET tags = 'OUTDOOR_REQUIRED' WHERE title = '천변 바람 22';
+
+-- 답십리 공원 조깅 (높은 활동량, 스포츠)
+UPDATE mission_templates SET tags = 'HIGH_ACTIVITY,SPORTS_REQUIRED' WHERE title = '답십리 공원 조깅';
+
+-- ========================================
+-- 단계별 가이드(Guide) 샘플 데이터
+-- ========================================
+
+-- 천변 바람 22 (산책 후 카페 코스)
+UPDATE mission_templates
+SET guide = JSON_ARRAY(
+    JSON_OBJECT('icon', 'WALK', 'title', '중랑천 바람 쐬기', 'desc', '장한평역 3번 출구에서 뚝방길 따라 20분 걷기. 이어폰 필수.'),
+    JSON_OBJECT('icon', 'DRINK', 'title', '감성 충전', 'desc', '사이에섬에서 시그니처 칵테일 한 잔 시키고 야경 보기.')
+)
+WHERE title = '천변 바람 22';
+
+-- 장한평 서점 방문 (서점 → 카페 코스)
+UPDATE mission_templates
+SET guide = JSON_ARRAY(
+    JSON_OBJECT('icon', 'BOOK', 'title', '책 구경하기', 'desc', '서점에서 30분 천천히 둘러보기. 마음에 드는 책 1권 메모.'),
+    JSON_OBJECT('icon', 'COFFEE', 'title', '카페 타임', 'desc', '근처 카페에서 아메리카노 한 잔과 함께 여유 부리기.')
+)
+WHERE title = '장한평 서점 방문';
+
+-- 미니 하이킹 30 (하이킹 → 휴식 코스)
+UPDATE mission_templates
+SET guide = JSON_ARRAY(
+    JSON_OBJECT('icon', 'HIKE', 'title', '오르막 걷기', 'desc', '30분 천천히 등산로 오르기. 호흡 유지하며 무리하지 않기.'),
+    JSON_OBJECT('icon', 'REST', 'title', '정상에서 휴식', 'desc', '물 2모금 마시고 발목/종아리 스트레치. 주변 소리 듣기.')
+)
+WHERE title = '미니 하이킹 30';
+
+-- 디저트 한 입 + 10분 산책 (디저트 → 산책 코스)
+UPDATE mission_templates
+SET guide = JSON_ARRAY(
+    JSON_OBJECT('icon', 'DESSERT', 'title', '디저트 픽업', 'desc', '베이커리나 디저트 카페에서 테이크아웃. 편의점도 괜찮아.'),
+    JSON_OBJECT('icon', 'WALK', 'title', '산책하며 먹기', 'desc', '10분 걸으며 천천히 먹기. 가장 맛있는 한 입의 이유 생각해보기.')
+)
+WHERE title = '디저트 한 입 + 10분 산책';
 
 INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, is_place_required, created_at, updated_at)
 SELECT '가산 포장마차 거리 가기', '가산디지털단지 포장마차 거리에서 저녁 한 잔', 'FOOD', 'EASY', '저녁 시간 추천', 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=800', 'OUTDOOR', 'NIGHT', 37.4815, 126.8825, '서울시 금천구 가산디지털1로 168',false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP

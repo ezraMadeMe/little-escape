@@ -11,7 +11,8 @@ public record UserResponse(
     boolean isOnboarded,
     String role,
     String mbti,
-    Integer soloLevel
+    Integer soloLevel,
+    String tags
 ) {
     public static UserResponse from(User user) {
         return new UserResponse(
@@ -23,7 +24,8 @@ public record UserResponse(
             user.isOnboarded(),
             user.getRole().name(),
             user.getMbti(),
-            user.getSoloLevel()
+            user.getSoloLevel(),
+            user.getTags()
         );
     }
 }

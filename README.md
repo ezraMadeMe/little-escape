@@ -218,6 +218,89 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 
 ---
 
+## 🚀 v2.2 주요 업데이트 (2026.01.19)
+
+### 1. 🏷️ 태그 기반 필터링 시스템 (Tag-based Filtering)
+- **사용자 선호도 태그:** 사용자의 취향과 제약사항을 태그로 관리
+  - `NO_ALCOHOL`: 술을 못 마시는 사용자
+  - `HATE_WALKING`: 장거리 이동을 싫어하는 사용자
+  - `INDOOR_ONLY`: 실내 활동만 선호
+  - `NO_SPORTS`: 운동/스포츠 싫어함
+- **미션/장소 태그:** 미션과 장소의 특성을 태그로 정의
+  - `ALCOHOL_ONLY`: 술 관련 필수 장소 (와인바, 포장마차)
+  - `HIGH_ACTIVITY`: 높은 활동량 필요 (조깅, 등산, 자전거)
+  - `OUTDOOR_REQUIRED`: 야외 필수
+  - `SPORTS_REQUIRED`: 스포츠/운동 필수
+- **충돌 규칙 기반 필터링:**
+  - `NO_ALCOHOL` ↔ `ALCOHOL_ONLY` 충돌 시 자동 제외
+  - `HATE_WALKING` ↔ `HIGH_ACTIVITY` 충돌 시 자동 제외
+  - `NO_SPORTS` ↔ `SPORTS_REQUIRED` 충돌 시 자동 제외
+  - `INDOOR_ONLY` ↔ `OUTDOOR_REQUIRED` 충돌 시 자동 제외
+- **Fallback 처리:** 필터링 결과가 0개일 경우 전체 후보군 사용
+
+### 2. 💬 사용자 제보 시스템 (Suggestion System)
+- **간편한 피드백:** 카톡 보내듯 텍스트 하나로 제보 완료
+- **다중 진입점:**
+  - 마이페이지: "사장님한테 훈수 두기 (코스 추천/버그 제보)"
+  - 미션 완료 페이지: "이 코스보다 좋은 곳 아는데..."
+- **백엔드 구조:**
+  - Suggestion 엔티티 (user_id, content, created_at)
+  - SuggestionController, SuggestionService, SuggestionRepository
+  - 자동 타임스탬프 관리
+- **모달 UI:** 브랜드 컬러(electric-lime)를 활용한 감성적인 디자인
+
+### 3. 🧾 인스타그램 감성 영수증 UI (Receipt-style Proof)
+- **영수증 스타일 디자인:**
+  - 톱니 모양(zigzag) 하단 디테일
+  - 모노스페이스 폰트로 빈티지 감성
+  - Electric-lime 액센트 컬러
+  - "PRICELESS" 가격 표시
+  - "✓ DONE" 스탬프 효과
+- **이미지 다운로드 기능:**
+  - html2canvas 라이브러리 활용
+  - 2배 해상도로 고화질 저장
+  - 파일명: `solotion-receipt-{timestamp}.png`
+- **기존 기능 유지:**
+  - 키워드 선택
+  - 사진 업로드
+  - 코멘트 작성
+  - 모든 데이터 정상 전송
+
+### 4. 🗺️ 멀티스텝 코스/플로우 시스템 (Multi-step Course Guide)
+- **JSON 기반 단계별 가이드:**
+  - MissionTemplate에 `guide` 필드 추가 (JSON 타입)
+  - 복잡한 1:N 관계 없이 유연한 구조 유지
+  - 예시 구조: `[{"icon": "WALK", "title": "중랑천 바람 쐬기", "desc": "..."}]`
+- **샘플 데이터 4종:**
+  - 천변 바람 22: 산책 → 칵테일
+  - 장한평 서점 방문: 서점 → 카페
+  - 미니 하이킹 30: 하이킹 → 휴식
+  - 디저트 한 입 + 10분 산책: 디저트 → 산책
+- **타임라인 시각화:**
+  - 아이콘 배지 (🚶 🍹 ☕ 📚 ⛰️ 🧘 🍰)
+  - Electric-lime 원형 컨테이너
+  - 스텝 간 연결선
+  - 제목과 설명 표시
+- **조건부 렌더링:** guide 데이터가 있는 미션만 표시
+
+### 5. 🔧 기술적 개선사항
+- **태그 필터링 알고리즘:**
+  - CSV 파싱 → Set 변환
+  - 교집합 체크로 충돌 감지
+  - AppointmentService에서 미션/장소 선택 시 적용
+- **JSON 컬럼 활용:**
+  - MySQL JSON 타입으로 유연한 데이터 구조 저장
+  - `JSON_ARRAY`, `JSON_OBJECT` 함수로 초기 데이터 삽입
+- **DTO 확장:**
+  - UserDto, MissionTemplateResponse, AppointmentResponse에 새 필드 추가
+  - 하위 호환성 유지
+- **프론트엔드 타입 안전성:**
+  - GuideStep 인터페이스 정의
+  - ICON_MAP으로 아이콘 중앙화
+  - parseGuide 유틸 함수로 안전한 JSON 파싱
+
+---
+
 ## 🎯 다음 개발 계획 (Roadmap)
 
 ### Phase 1: 소셜 기능 고도화

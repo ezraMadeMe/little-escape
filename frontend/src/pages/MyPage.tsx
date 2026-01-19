@@ -3,12 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { getMyInfo, deleteUser } from '../api/userApi';
 import { getMyAppointments } from '../api/appointmentApi';
+import { createSuggestion } from '../api/suggestionApi';
 import { User } from '../types/user';
 import { Appointment, AppointmentStatus } from '../types/appointment';
 
 const MyPage = () => {
   const navigate = useNavigate();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showSuggestionModal, setShowSuggestionModal] = useState(false);
+  const [suggestionContent, setSuggestionContent] = useState('');
+  const [isSendingSuggestion, setIsSendingSuggestion] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoadingAppointments, setIsLoadingAppointments] = useState(true);
@@ -58,6 +62,26 @@ const MyPage = () => {
     } catch (error) {
       console.error('회원 탈퇴 실패:', error);
       alert('회원 탈퇴에 실패했습니다.');
+    }
+  };
+
+  const handleSendSuggestion = async () => {
+    if (!suggestionContent.trim()) {
+      alert('내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      setIsSendingSuggestion(true);
+      await createSuggestion(suggestionContent);
+      alert('제보가 접수되었습니다. 감사합니다! 🙏');
+      setSuggestionContent('');
+      setShowSuggestionModal(false);
+    } catch (error) {
+      console.error('제보 전송 실패:', error);
+      alert('제보 전송에 실패했습니다.');
+    } finally {
+      setIsSendingSuggestion(false);
     }
   };
 
@@ -300,8 +324,18 @@ const MyPage = () => {
           </motion.button>
         </div>
 
+        {/* 제보 버튼 */}
+        <div className="px-4 text-center mt-8 mb-4">
+          <button
+            onClick={() => setShowSuggestionModal(true)}
+            className="text-sm text-brand-muted underline hover:text-electric-lime transition-colors"
+          >
+            사장님한테 훈수 두기 (코스 추천/버그 제보)
+          </button>
+        </div>
+
         {/* 버전 정보 */}
-        <div className="px-4 text-center text-xs text-text-gray-dark mt-8 mb-6">
+        <div className="px-4 text-center text-xs text-text-gray-dark mb-6">
           <p>작은 일탈 v1.2.0</p>
         </div>
       </div>
@@ -344,6 +378,72 @@ const MyPage = () => {
                 </button>
                 <button
                   onClick={() => setShowLogoutConfirm(false)}
+                  className="btn-ghost w-full"
+                >
+                  취소
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+
+      {/* 제보 모달 */}
+      {showSuggestionModal && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 bg-black/80 z-50"
+            onClick={() => {
+              setShowSuggestionModal(false);
+              setSuggestionContent('');
+            }}
+          />
+          <motion.div
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="fixed inset-x-0 bottom-0 z-50 bg-charcoal-soft rounded-t-3xl shadow-2xl max-w-md mx-auto border-t border-charcoal-lighter"
+          >
+            <div className="p-6">
+              <div className="w-12 h-1 bg-charcoal-lighter rounded-full mx-auto mb-6"></div>
+
+              <div className="mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-2xl">💡</span>
+                  <h3 className="text-off-white text-xl font-extra-bold">
+                    훈수 두기
+                  </h3>
+                </div>
+                <p className="text-text-gray text-sm mb-4">
+                  추천하고 싶은 코스나 발견한 버그를 알려주세요.
+                </p>
+
+                <textarea
+                  value={suggestionContent}
+                  onChange={(e) => setSuggestionContent(e.target.value)}
+                  placeholder="야, 성수동에 OO카페는 꼭 넣어야지. 분위기 깡패임."
+                  className="w-full bg-charcoal-lighter text-off-white rounded-2xl p-4 min-h-[120px] resize-none focus:outline-none focus:ring-2 focus:ring-electric-lime/50 transition-all placeholder:text-text-gray-dark"
+                  maxLength={500}
+                />
+                <p className="text-text-gray-dark text-xs mt-2 text-right">
+                  {suggestionContent.length} / 500
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleSendSuggestion}
+                  disabled={isSendingSuggestion || !suggestionContent.trim()}
+                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSendingSuggestion ? '보내는 중...' : '보내기'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSuggestionModal(false);
+                    setSuggestionContent('');
+                  }}
                   className="btn-ghost w-full"
                 >
                   취소

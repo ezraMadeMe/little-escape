@@ -77,6 +77,11 @@ public class User extends BaseTimeEntity {
     @Column(name = "solo_level")
     private Integer soloLevel;  // 1~10 (혼밥 레벨)
 
+    // 사용자 태그 (쉼표로 구분된 문자열)
+    // 예: "NO_ALCOHOL,HATE_WALKING"
+    @Column(name = "tags", length = 500)
+    private String tags;
+
     /**
      * 소셜 ID 기반으로 사용자 검색 (Kakao, Google, Naver 통합)
      */

@@ -19,8 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.stream.Collectors;
 
 @Service
@@ -37,6 +40,56 @@ public class AppointmentService {
     private static final String[] BAD_KEYWORDS = {
         "어린이", "유아", "강좌", "교실", "모집", "시니어", "동호회"
     };
+
+    /**
+     * 태그 충돌 검증 메서드
+     * 사용자 태그와 미션/장소 태그를 비교하여 충돌 여부 반환
+     *
+     * @param userTags 사용자 태그 (쉼표로 구분된 문자열, 예: "NO_ALCOHOL,HATE_WALKING")
+     * @param targetTags 미션/장소 태그 (쉼표로 구분된 문자열, 예: "ALCOHOL_ONLY,HIGH_ACTIVITY")
+     * @return true면 충돌 (추천 제외), false면 충돌 없음 (추천 가능)
+     */
+    private boolean hasTagConflict(String userTags, String targetTags) {
+        if (userTags == null || userTags.trim().isEmpty()
+            || targetTags == null || targetTags.trim().isEmpty()) {
+            return false; // 태그가 없으면 충돌 없음
+        }
+
+        Set<String> userTagSet = Arrays.stream(userTags.split(","))
+                .map(String::trim)
+                .collect(Collectors.toSet());
+
+        Set<String> targetTagSet = Arrays.stream(targetTags.split(","))
+                .map(String::trim)
+                .collect(Collectors.toSet());
+
+        // 충돌 규칙 정의
+        // 1. 유저가 NO_ALCOHOL && 장소/미션이 ALCOHOL_ONLY -> 충돌
+        if (userTagSet.contains("NO_ALCOHOL") && targetTagSet.contains("ALCOHOL_ONLY")) {
+            log.info("🚫 태그 충돌 감지: 사용자는 NO_ALCOHOL, 대상은 ALCOHOL_ONLY");
+            return true;
+        }
+
+        // 2. 유저가 HATE_WALKING && 미션이 HIGH_ACTIVITY -> 충돌
+        if (userTagSet.contains("HATE_WALKING") && targetTagSet.contains("HIGH_ACTIVITY")) {
+            log.info("🚫 태그 충돌 감지: 사용자는 HATE_WALKING, 대상은 HIGH_ACTIVITY");
+            return true;
+        }
+
+        // 3. 유저가 NO_SPORTS && 미션이 SPORTS_REQUIRED -> 충돌
+        if (userTagSet.contains("NO_SPORTS") && targetTagSet.contains("SPORTS_REQUIRED")) {
+            log.info("🚫 태그 충돌 감지: 사용자는 NO_SPORTS, 대상은 SPORTS_REQUIRED");
+            return true;
+        }
+
+        // 4. 유저가 INDOOR_ONLY && 미션이 OUTDOOR_REQUIRED -> 충돌
+        if (userTagSet.contains("INDOOR_ONLY") && targetTagSet.contains("OUTDOOR_REQUIRED")) {
+            log.info("🚫 태그 충돌 감지: 사용자는 INDOOR_ONLY, 대상은 OUTDOOR_REQUIRED");
+            return true;
+        }
+
+        return false; // 충돌 없음
+    }
 
     @Transactional
     public Appointment createAppointment(Long userId, LocalDateTime scheduledAt, Long missionId,
@@ -85,15 +138,35 @@ public class AppointmentService {
             // 2-3. 조건에 맞는 미션 후보 조회
             List<MissionTemplate> candidates = missionTemplateRepository
                     .findAllByTimeOfDayInAndLocationTypeIn(targetTimes, targetLocations);
-            
+
             log.info("조건에 맞는 미션 후보: {}개", candidates.size());
-            
+
+            // 2-3-1. 사용자 태그 기반 필터링 (태그 충돌 제외)
+            String userTags = user.getTags();
+            if (userTags != null && !userTags.trim().isEmpty()) {
+                log.info("🏷️ 사용자 태그 필터링 적용: {}", userTags);
+                List<MissionTemplate> filteredCandidates = candidates.stream()
+                        .filter(mission -> !hasTagConflict(userTags, mission.getTags()))
+                        .collect(Collectors.toList());
+
+                log.info("태그 필터링 후 미션 후보: {}개 (제외된 미션: {}개)",
+                        filteredCandidates.size(),
+                        candidates.size() - filteredCandidates.size());
+
+                // 필터링 후에도 후보가 있으면 사용
+                if (!filteredCandidates.isEmpty()) {
+                    candidates = filteredCandidates;
+                } else {
+                    log.warn("⚠️ 태그 필터링 후 미션 후보가 0개 - 필터링 무시하고 진행");
+                }
+            }
+
             if (candidates.isEmpty()) {
                 throw new IllegalStateException(
                     "약속 시간에 맞는 미션을 찾을 수 없습니다. 관리자에게 문의해주세요."
                 );
             }
-            
+
             // 2-4. 랜덤으로 하나 선정
             Collections.shuffle(candidates);
             selectedMission = candidates.get(0);
@@ -112,7 +185,7 @@ public class AppointmentService {
             // 4-1. 장소가 필요한 미션 -> 필터링된 양질의 장소 자동 매칭 (반경 10km 이내)
             log.info("🏠 장소가 필요한 미션 - 필터링된 장소 자동 매칭 시작 (반경 10km 이내)");
 
-            Place matchedPlace = findQualityPlaceNearby(selectedMission.getCategory(), userLatitude, userLongitude);
+            Place matchedPlace = findQualityPlaceNearby(user, selectedMission.getCategory(), userLatitude, userLongitude);
 
             if (matchedPlace != null) {
                 appointment.updatePlace(matchedPlace);
@@ -147,13 +220,15 @@ public class AppointmentService {
     }
 
     /**
-     * 필터링된 양질의 장소 찾기 (거리 제한 포함)
+     * 필터링된 양질의 장소 찾기 (거리 제한 포함 + 태그 필터링)
+     * @param user 사용자 객체 (태그 필터링용)
      * @param missionCategory 미션 카테고리
      * @param userLatitude 사용자 위도
      * @param userLongitude 사용자 경도
      * @return 매칭된 장소 (없으면 null)
      */
-    private Place findQualityPlaceNearby(com.littleescape.api.domain.type.MissionCategory missionCategory,
+    private Place findQualityPlaceNearby(User user,
+                                         com.littleescape.api.domain.type.MissionCategory missionCategory,
                                          Double userLatitude, Double userLongitude) {
         log.info("=== 필터링된 양질의 장소 검색 시작 (반경 10km 이내) ===");
         log.info("미션 카테고리: {}, 사용자 위치: ({}, {})", missionCategory, userLatitude, userLongitude);
@@ -191,7 +266,27 @@ public class AppointmentService {
             log.info("Fallback - 반경 10km 내 전체 필터링된 장소: {}개", allFilteredPlaces.size());
         }
 
-        // 4단계: 랜덤 선택
+        // 4단계: 사용자 태그 기반 장소 필터링
+        String userTags = user.getTags();
+        if (userTags != null && !userTags.trim().isEmpty()) {
+            log.info("🏷️ 사용자 태그 기반 장소 필터링 적용: {}", userTags);
+            List<Place> tagFilteredPlaces = allFilteredPlaces.stream()
+                    .filter(place -> !hasTagConflict(userTags, place.getTags()))
+                    .collect(Collectors.toList());
+
+            log.info("태그 필터링 후 장소 후보: {}개 (제외된 장소: {}개)",
+                    tagFilteredPlaces.size(),
+                    allFilteredPlaces.size() - tagFilteredPlaces.size());
+
+            // 필터링 후에도 후보가 있으면 사용
+            if (!tagFilteredPlaces.isEmpty()) {
+                allFilteredPlaces = tagFilteredPlaces;
+            } else {
+                log.warn("⚠️ 태그 필터링 후 장소 후보가 0개 - 필터링 무시하고 진행");
+            }
+        }
+
+        // 5단계: 랜덤 선택
         if (!allFilteredPlaces.isEmpty()) {
             Collections.shuffle(allFilteredPlaces);
             Place selectedPlace = allFilteredPlaces.get(0);
@@ -464,7 +559,8 @@ public class AppointmentService {
                             null, 
                             null, 
                             0L, // visitCount
-                            appointment.isFavorite()
+                            appointment.isFavorite(),
+                            null
                         );
                     }
                 })
