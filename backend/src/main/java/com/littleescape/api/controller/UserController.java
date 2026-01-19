@@ -205,7 +205,7 @@ public class UserController {
 
     /**
      * 채팅 온보딩 사용자 선호도 업데이트 API
-     * (nickname, MBTI, 혼밥 레벨)
+     * (nickname, MBTI, 혼밥 레벨, tags)
      */
     @PostMapping("/preferences")
     public ResponseEntity<UserResponse> updateUserPreferences(
@@ -223,18 +223,20 @@ public class UserController {
 
         String nickname = (String) request.get("nickname");
         String mbti = (String) request.get("mbti");
-        Integer soloLevel = request.get("soloLevel") != null 
-            ? ((Number) request.get("soloLevel")).intValue() 
+        Integer soloLevel = request.get("soloLevel") != null
+            ? ((Number) request.get("soloLevel")).intValue()
             : null;
+        String tags = (String) request.get("tags");
 
-        log.info("파싱된 데이터 - 닉네임: {}, MBTI: {}, 혼밥레벨: {}", nickname, mbti, soloLevel);
+        log.info("파싱된 데이터 - 닉네임: {}, MBTI: {}, 혼밥레벨: {}, 태그: {}", nickname, mbti, soloLevel, tags);
 
         try {
             User updatedUser = userService.updateUserPreferences(
-                Long.parseLong(userId), 
-                nickname, 
-                mbti, 
-                soloLevel
+                Long.parseLong(userId),
+                nickname,
+                mbti,
+                soloLevel,
+                tags
             );
 
             log.info("✅ 사용자 선호도 업데이트 성공: {}", updatedUser.getId());

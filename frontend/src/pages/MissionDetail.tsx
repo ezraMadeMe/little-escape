@@ -6,6 +6,27 @@ import { Appointment } from '../types/appointment';
 import { PlanB } from '../types/mission';
 import { supabase } from '../lib/supabaseClient';
 
+// 가이드 스텝 인터페이스
+interface GuideStep {
+  icon: string;
+  title: string;
+  desc: string;
+}
+
+// 아이콘 매핑
+const ICON_MAP: Record<string, string> = {
+  WALK: '🚶',
+  DRINK: '🍹',
+  COFFEE: '☕',
+  BOOK: '📚',
+  HIKE: '⛰️',
+  REST: '🧘',
+  DESSERT: '🍰',
+  EAT: '🍽️',
+  VIEW: '🌆',
+  PHOTO: '📸',
+};
+
 // Mock 데이터 - 실제로는 API에서 가져와야 함
 const MOCK_PREPARATIONS = ['편한 신발', '물', '여유로운 마음'];
 const MOCK_DETAILED_COURSE = '1. 성수역 3번 출구에서 도보 5분\n2. 골목길을 따라 왼쪽으로 돌아\n3. 빨간 간판이 보이면 2층으로 올라가면 돼';
@@ -44,6 +65,17 @@ function MissionDetail() {
 
   // Plan B 모달 상태
   const [showPlanBModal, setShowPlanBModal] = useState<boolean>(false);
+
+  // 가이드 파싱
+  const parseGuide = (guideJson?: string): GuideStep[] => {
+    if (!guideJson) return [];
+    try {
+      return JSON.parse(guideJson) as GuideStep[];
+    } catch (e) {
+      console.error('Failed to parse guide JSON:', e);
+      return [];
+    }
+  };
 
   useEffect(() => {
     const loadAppointment = async () => {
@@ -319,6 +351,45 @@ function MissionDetail() {
               alt={appointment.missionTitle || '미션'}
               className="w-full h-full object-cover brightness-75"
             />
+          </motion.div>
+        )}
+
+        {/* 단계별 코스 가이드 - guide 필드가 있을 때만 표시 */}
+        {appointment.missionGuide && parseGuide(appointment.missionGuide).length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="card space-y-4"
+          >
+            <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
+              🗺️ 오늘의 코스
+            </h3>
+            <div className="space-y-4">
+              {parseGuide(appointment.missionGuide).map((step, index) => (
+                <div key={index} className="flex gap-4">
+                  {/* 스텝 번호와 아이콘 */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-12 h-12 rounded-full bg-electric-lime/20 border-2 border-electric-lime flex items-center justify-center text-2xl">
+                      {ICON_MAP[step.icon] || '📍'}
+                    </div>
+                    {index < parseGuide(appointment.missionGuide).length - 1 && (
+                      <div className="w-0.5 h-full min-h-[40px] bg-electric-lime/30 mt-2"></div>
+                    )}
+                  </div>
+
+                  {/* 스텝 내용 */}
+                  <div className="flex-1 pb-4">
+                    <h4 className="text-off-white font-bold text-lg mb-1">
+                      {step.title}
+                    </h4>
+                    <p className="text-text-gray leading-relaxed">
+                      {step.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </motion.div>
         )}
 

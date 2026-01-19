@@ -58,4 +58,15 @@ public class MissionTemplate extends BaseTimeEntity {
     // 지번/도로명 주소
     @Column(name = "address", length = 500)
     private String address;
+
+    // 미션 태그 (쉼표로 구분된 문자열)
+    // 예: "HIGH_ACTIVITY,ALCOHOL_ONLY"
+    @Column(name = "tags", length = 500)
+    private String tags;
+
+    // 단계별 가이드 (JSON 형식)
+    // 예: [{"icon": "WALK", "title": "중랑천 바람 쐬기", "desc": "장한평역 3번 출구에서 뚝방길 따라 20분 걷기."}]
+    @Lob
+    @Column(name = "guide", columnDefinition = "JSON")
+    private String guide;
 }
