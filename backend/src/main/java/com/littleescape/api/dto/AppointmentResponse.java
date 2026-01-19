@@ -30,7 +30,9 @@ public record AppointmentResponse(
     // 방문 횟수
     Long visitCount,
     // 즐겨찾기 여부
-    boolean isFavorite
+    boolean isFavorite,
+    // 미션 가이드 (JSON)
+    String missionGuide
 ) {
     public static AppointmentResponse from(Appointment appointment, Long visitCount) {
         // 장소가 매칭되었는지 확인
@@ -60,7 +62,9 @@ public record AppointmentResponse(
             // 방문 횟수 (계산된 값)
             visitCount,
             // 즐겨찾기 여부
-            appointment.isFavorite()
+            appointment.isFavorite(),
+            // 미션 가이드
+            hasMission ? appointment.getMissionTemplate().getGuide() : null
         );
     }
 }

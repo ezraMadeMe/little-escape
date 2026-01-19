@@ -32,4 +32,5 @@ export interface Appointment {
   visitCount?: number;
   isFavorite?: boolean; // 즐겨찾기 여부
   unlockToken?: string; // 미션 공개용 UUID 토큰
+  missionGuide?: string; // JSON 형식 단계별 가이드
 }

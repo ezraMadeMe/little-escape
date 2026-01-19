@@ -240,10 +240,10 @@ public class UserService {
     }
 
     /**
-     * 채팅 온보딩 사용자 선호도 업데이트 (nickname, MBTI, 혼밥 레벨)
+     * 채팅 온보딩 사용자 선호도 업데이트 (nickname, MBTI, 혼밥 레벨, tags)
      */
     @Transactional
-    public User updateUserPreferences(Long userId, String nickname, String mbti, Integer soloLevel) {
+    public User updateUserPreferences(Long userId, String nickname, String mbti, Integer soloLevel, String tags) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -268,6 +268,12 @@ public class UserService {
         if (soloLevel != null && soloLevel >= 1 && soloLevel <= 10) {
             user.setSoloLevel(soloLevel);
             log.info("혼밥 레벨 업데이트: {}", soloLevel);
+        }
+
+        // 태그 업데이트
+        if (tags != null) {
+            user.setTags(tags);
+            log.info("태그 업데이트: {}", tags);
         }
 
         User savedUser = userRepository.save(user);

@@ -14,13 +14,15 @@ public class UserDto {
     private String nickname;
     private OAuthProvider oauthProvider;
     private String oauthId;
+    private String tags; // 사용자 태그 (쉼표로 구분)
 
     public static UserDto from(User user) {
         return new UserDto(
             user.getId(),
             user.getNickname(),
             user.getOauthProvider(),
-            user.getOauthId()
+            user.getOauthId(),
+            user.getTags()
         );
     }
 }

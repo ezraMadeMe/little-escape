@@ -14,7 +14,8 @@ public record MissionTemplateResponse(
     String condition,
     String imageUrl,
     LocationType locationType,
-    TimeOfDay timeOfDay
+    TimeOfDay timeOfDay,
+    String guide
 ) {
     public static MissionTemplateResponse from(MissionTemplate missionTemplate) {
         return new MissionTemplateResponse(
@@ -26,7 +27,8 @@ public record MissionTemplateResponse(
             missionTemplate.getCondition(),
             missionTemplate.getImageUrl(),
             missionTemplate.getLocationType(),
-            missionTemplate.getTimeOfDay()
+            missionTemplate.getTimeOfDay(),
+            missionTemplate.getGuide()
         );
     }
 }
