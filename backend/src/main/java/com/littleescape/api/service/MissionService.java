@@ -1,11 +1,13 @@
 package com.littleescape.api.service;
 
 import com.littleescape.api.domain.MissionTemplate;
+import com.littleescape.api.domain.SeoulCityPlace;
 import com.littleescape.api.domain.type.LocationType;
 import com.littleescape.api.domain.type.MissionCategory;
 import com.littleescape.api.domain.type.TimeOfDay;
 import com.littleescape.api.dto.response.DailyMissionResponse;
 import com.littleescape.api.repository.MissionTemplateRepository;
+import com.littleescape.api.repository.SeoulCityPlaceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -29,6 +31,12 @@ import java.util.stream.Collectors;
 public class MissionService {
 
     private final MissionTemplateRepository missionTemplateRepository;
+    private final SeoulCityPlaceRepository seoulCityPlaceRepository;
+
+    // 혼잡도 필터링 기준: 보통(2) 이하만 추천
+    private static final int MAX_ACCEPTABLE_CONGESTION_LEVEL = 2;
+    // 미션-장소 간 매칭 거리 허용 범위 (km)
+    private static final double PLACE_MATCHING_RADIUS_KM = 0.5;
 
     /**
      * 주어진 약속 시간에 맞는 미션 추천
@@ -62,13 +70,13 @@ public class MissionService {
     }
 
     /**
-     * 위치 기반 미션 추천 (거리 필터링 포함)
+     * 위치 기반 미션 추천 (거리 필터링 + 혼잡도 필터링 포함)
      *
      * @param scheduledAt 약속 예정 시간
      * @param latitude 사용자 위도
      * @param longitude 사용자 경도
      * @param radiusKm 검색 반경 (km)
-     * @return 추천 미션 리스트 (최대 4개, 거리순 정렬)
+     * @return 추천 미션 리스트 (최대 4개, 거리순 정렬, 혼잡한 장소 제외)
      */
     public List<MissionTemplate> getRecommendationsWithLocation(
             LocalDateTime scheduledAt,
@@ -94,7 +102,7 @@ public class MissionService {
         List<String> timeStrings = targetTimes.stream()
                 .map(Enum::name)
                 .collect(Collectors.toList());
-        
+
         List<String> locationStrings = targetLocations.stream()
                 .map(Enum::name)
                 .collect(Collectors.toList());
@@ -105,11 +113,138 @@ public class MissionService {
                         timeStrings, locationStrings
                 );
 
-        // 4. 거리순으로 이미 정렬되어 있으므로 섞지 않음
-        // 5. 최대 4개 선정
-        return candidates.stream()
+        log.info("초기 후보 미션 {}개 조회됨", candidates.size());
+
+        // 4. 혼잡도 필터링 적용
+        List<MissionTemplate> filteredCandidates = filterByCongestion(candidates, latitude, longitude);
+
+        log.info("혼잡도 필터링 후 {}개 미션 남음", filteredCandidates.size());
+
+        // 5. 거리순으로 이미 정렬되어 있으므로 섞지 않음
+        // 6. 최대 4개 선정
+        return filteredCandidates.stream()
                 .limit(4)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 혼잡도 기반 미션 필터링
+     *
+     * 필터링 규칙:
+     * 1. 미션 위치 주변 0.5km 내 SeoulCityPlace 데이터가 있는지 확인
+     * 2. 있다면 → 혼잡도 2(보통) 이하인 경우만 포함
+     * 3. 없다면 → 그대로 포함 (카카오맵 기반 장소는 필터링 제외)
+     *
+     * @param missions 필터링 대상 미션 목록
+     * @param userLatitude 사용자 위도
+     * @param userLongitude 사용자 경도
+     * @return 혼잡도 필터링된 미션 목록
+     */
+    private List<MissionTemplate> filterByCongestion(
+            List<MissionTemplate> missions,
+            Double userLatitude,
+            Double userLongitude
+    ) {
+        // 근처의 서울시 도시데이터 조회 (보통 이하 혼잡도만)
+        List<SeoulCityPlace> lowCongestionPlaces = seoulCityPlaceRepository
+                .findByCongestionLevelLessThanEqual(MAX_ACCEPTABLE_CONGESTION_LEVEL);
+
+        log.info("서울시 도시데이터: 혼잡도 {}(보통) 이하 장소 {}개",
+                MAX_ACCEPTABLE_CONGESTION_LEVEL, lowCongestionPlaces.size());
+
+        // 모든 서울시 장소 (혼잡도 정보 있는 곳)
+        List<SeoulCityPlace> allSeoulPlaces = seoulCityPlaceRepository
+                .findByIsValidTrue();
+
+        return missions.stream()
+                .filter(mission -> {
+                    // 미션 위치 정보가 없으면 포함 (안전하게 처리)
+                    if (mission.getLatitude() == null || mission.getLongitude() == null) {
+                        log.debug("미션 '{}': 위치 정보 없음 → 포함", mission.getTitle());
+                        return true;
+                    }
+
+                    // 미션 근처에 서울시 도시데이터가 있는지 확인
+                    SeoulCityPlace nearestPlace = findNearestPlace(
+                            mission.getLatitude(),
+                            mission.getLongitude(),
+                            allSeoulPlaces
+                    );
+
+                    // 근처에 서울시 데이터가 없으면 → 카카오맵 기반 장소이므로 포함
+                    if (nearestPlace == null ||
+                        calculateDistance(
+                            mission.getLatitude(), mission.getLongitude(),
+                            nearestPlace.getLatitude(), nearestPlace.getLongitude()
+                        ) > PLACE_MATCHING_RADIUS_KM) {
+                        log.debug("미션 '{}': 서울시 데이터 없음 (카카오맵 기반) → 포함", mission.getTitle());
+                        return true;
+                    }
+
+                    // 근처에 서울시 데이터가 있으면 → 혼잡도 확인
+                    boolean isInLowCongestion = lowCongestionPlaces.stream()
+                            .anyMatch(place -> place.getId().equals(nearestPlace.getId()));
+
+                    if (isInLowCongestion) {
+                        log.debug("미션 '{}': 근처 장소 '{}' 혼잡도 {} → 포함",
+                                mission.getTitle(), nearestPlace.getPlaceName(),
+                                nearestPlace.getCongestionLevel());
+                        return true;
+                    } else {
+                        log.debug("미션 '{}': 근처 장소 '{}' 혼잡도 {} → 제외 (혼잡함)",
+                                mission.getTitle(), nearestPlace.getPlaceName(),
+                                nearestPlace.getCongestionLevel());
+                        return false;
+                    }
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 가장 가까운 서울시 장소 찾기
+     *
+     * @param latitude 기준 위도
+     * @param longitude 기준 경도
+     * @param places 검색 대상 장소 목록
+     * @return 가장 가까운 장소 (없으면 null)
+     */
+    private SeoulCityPlace findNearestPlace(
+            Double latitude,
+            Double longitude,
+            List<SeoulCityPlace> places
+    ) {
+        return places.stream()
+                .filter(place -> place.getLatitude() != null && place.getLongitude() != null)
+                .min((p1, p2) -> {
+                    double dist1 = calculateDistance(latitude, longitude, p1.getLatitude(), p1.getLongitude());
+                    double dist2 = calculateDistance(latitude, longitude, p2.getLatitude(), p2.getLongitude());
+                    return Double.compare(dist1, dist2);
+                })
+                .orElse(null);
+    }
+
+    /**
+     * 두 지점 간 거리 계산 (Haversine 공식)
+     *
+     * @param lat1 지점1 위도
+     * @param lon1 지점1 경도
+     * @param lat2 지점2 위도
+     * @param lon2 지점2 경도
+     * @return 거리 (km)
+     */
+    private double calculateDistance(Double lat1, Double lon1, Double lat2, Double lon2) {
+        final int EARTH_RADIUS_KM = 6371;
+
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                   Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                   Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return EARTH_RADIUS_KM * c;
     }
 
     /**

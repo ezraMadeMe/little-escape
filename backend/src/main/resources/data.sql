@@ -386,3 +386,5 @@ INSERT INTO adjectives (word) SELECT '활발한' WHERE NOT EXISTS (SELECT 1 FROM
 INSERT INTO adjectives (word) SELECT '사랑스러운' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '사랑스러운');
 INSERT INTO adjectives (word) SELECT '차분한' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '차분한');
 INSERT INTO adjectives (word) SELECT '밝은' WHERE NOT EXISTS (SELECT 1 FROM adjectives WHERE word = '밝은');
+-- Import Seoul City Places data
+-- File: init-seoul-places.sql (execute separately or include in schema migration)
