@@ -301,6 +301,65 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 
 ---
 
+## 🚀 v2.3 주요 업데이트 (2026.01.21)
+
+### 1. 🗄️ PostgreSQL JSONB 타입 호환성 개선
+- **@Lob 어노테이션 제거:** `MissionTemplate.guide` 필드에서 `@Lob` 제거
+  - 기존: Hibernate가 JSONB를 CLOB으로 잘못 매핑하여 `DataIntegrityViolationException` 발생
+  - 개선: `columnDefinition = "JSONB"`만 사용하여 PostgreSQL 네이티브 타입으로 정상 처리
+  - 에러 해결: `Bad value for type long : [{"desc": "...", "icon": "BOOK", "title": "..."}]`
+
+### 2. 🎲 메모리 효율적인 랜덤 미션 선택 알고리즘
+- **페이지네이션 기반 랜덤 선택 구현:**
+  - 기존: `findAll()`로 전체 미션을 메모리에 로드 → OutOfMemoryError 위험
+  - 개선: `count()` + `PageRequest.of(randomIndex, 1)` 패턴으로 단일 레코드만 조회
+  - 장점: 메모리 사용량 최소화, 대용량 데이터셋 대응 가능, 성능 향상
+- **구현 세부사항:**
+  ```java
+  // MissionService.selectRandomMission()
+  long totalCount = missionTemplateRepository.count();
+  int randomIndex = (int) (Math.random() * totalCount);
+  PageRequest pageRequest = PageRequest.of(randomIndex, 1);
+  Page<MissionTemplate> page = missionTemplateRepository.findAll(pageRequest);
+  ```
+- **동시성 이슈 대응:** 랜덤 인덱스가 범위를 벗어나는 경우 자동으로 첫 번째 미션 반환
+
+### 3. 🔧 코드 리팩토링 & 단순화
+- **selectRandomPlanBMission() 단순화:**
+  - 기존: RELAX/INDOOR 필터링 로직 (데이터 부족으로 에러 발생)
+  - 개선: 전체 미션 풀에서 랜덤 선택하도록 단순화
+  - 주석 추가: 데이터가 충분히 쌓인 후 필터링 재적용 가능하도록 안내
+- **Random → Math.random() 전환:**
+  - `java.util.Random` 의존성 제거
+  - `Math.random()` 사용으로 간결화
+
+### 4. 📊 Hibernate 쿼리 최적화 검증
+- **Native Query 안전성 확인:**
+  - `MissionTemplateRepository`의 네이티브 쿼리들이 `SELECT *` 대신 명시적 컬럼 리스트 사용 확인
+  - 컬럼 순서 불일치 문제 없음 검증
+- **실행 쿼리 확인:**
+  ```sql
+  -- 카운트 쿼리
+  select count(*) from mission_templates mt1_0
+
+  -- 페이지네이션 쿼리 (단일 레코드)
+  select mt1_0.id, mt1_0.address, ..., mt1_0.guide, ...
+  from mission_templates mt1_0
+  offset ? rows
+  fetch first ? rows only
+  ```
+
+### 5. 🧪 테스트 완료
+- **엔드포인트 검증:**
+  - ✅ `GET /api/v1/missions/today` - HTTP 200, 정상 응답
+  - ✅ `POST /api/v1/missions/{id}/escape` - HTTP 200, 정상 응답
+- **에러 해결 확인:**
+  - ✅ `DataIntegrityViolationException` 완전 해결
+  - ✅ JSONB 컬럼 정상 읽기/쓰기
+  - ✅ 메모리 사용량 최소화 확인
+
+---
+
 ## 🎯 다음 개발 계획 (Roadmap)
 
 ### Phase 1: 소셜 기능 고도화
