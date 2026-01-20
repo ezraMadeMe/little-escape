@@ -10,7 +10,13 @@
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
       "Bash(python scripts/import_seoul_restaurants.py:*)",
-      "Bash(./gradlew compileJava:*)"
+      "Bash(./gradlew compileJava:*)",
+      "Bash(dir:*)",
+      "Bash(ls:*)",
+      "Bash(./gradlew clean build:*)",
+      "Bash(curl:*)",
+      "Bash(timeout /t 15 /nobreak)",
+      "Bash(powershell -Command \"Start-Sleep -Seconds 20\")"
     ]
   }
 }

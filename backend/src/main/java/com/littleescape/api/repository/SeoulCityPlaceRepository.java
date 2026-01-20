@@ -342,6 +342,16 @@ public interface SeoulCityPlaceRepository extends JpaRepository<SeoulCityPlace, 
     long countByCongestionLevelAndIsValidTrue(CongestionLevel congestionLevel);
 
     /**
+     * 혼잡도별 장소 수 조회 (SeoulDataController용 alias)
+     *
+     * @param congestionLevel 혼잡도
+     * @return 해당 혼잡도의 장소 수
+     */
+    default long getPlaceCountByCongestionLevel(CongestionLevel congestionLevel) {
+        return countByCongestionLevelAndIsValidTrue(congestionLevel);
+    }
+
+    /**
      * 평균 혼잡도 계산
      * (SMOOTH=1, NORMAL=2, SLIGHTLY_CROWDED=3, CROWDED=4, VERY_CROWDED=5)
      *

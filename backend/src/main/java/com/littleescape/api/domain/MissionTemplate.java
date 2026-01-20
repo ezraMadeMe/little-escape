@@ -66,7 +66,6 @@ public class MissionTemplate extends BaseTimeEntity {
 
     // 단계별 가이드 (JSON 형식)
     // 예: [{"icon": "WALK", "title": "중랑천 바람 쐬기", "desc": "장한평역 3번 출구에서 뚝방길 따라 20분 걷기."}]
-    @Lob
-    @Column(name = "guide", columnDefinition = "JSON")
+    @Column(name = "guide", columnDefinition = "JSONB")
     private String guide;
 }

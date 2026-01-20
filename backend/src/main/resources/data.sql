@@ -11,20 +11,20 @@ ALTER TABLE mission_templates ADD COLUMN IF NOT EXISTS tags VARCHAR(500);
 -- Place 테이블에 tags 컬럼 추가
 ALTER TABLE places ADD COLUMN IF NOT EXISTS tags VARCHAR(500);
 
--- MissionTemplate 테이블에 guide 컬럼 추가 (JSON 형식으로 단계별 가이드 저장)
-ALTER TABLE mission_templates ADD COLUMN IF NOT EXISTS guide JSON;
+-- MissionTemplate 테이블에 guide 컬럼 추가 (JSONB 형식으로 단계별 가이드 저장)
+ALTER TABLE mission_templates ADD COLUMN IF NOT EXISTS guide JSONB;
 
 -- ========================================
 -- 사용자 제보 시스템 (Suggestion)
 -- ========================================
 
--- Suggestions 테이블 생성
+-- Suggestions 테이블 생성 (PostgreSQL 문법)
 CREATE TABLE IF NOT EXISTS suggestions (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -136,34 +136,34 @@ UPDATE mission_templates SET tags = 'HIGH_ACTIVITY,SPORTS_REQUIRED' WHERE title 
 
 -- 천변 바람 22 (산책 후 카페 코스)
 UPDATE mission_templates
-SET guide = JSON_ARRAY(
-    JSON_OBJECT('icon', 'WALK', 'title', '중랑천 바람 쐬기', 'desc', '장한평역 3번 출구에서 뚝방길 따라 20분 걷기. 이어폰 필수.'),
-    JSON_OBJECT('icon', 'DRINK', 'title', '감성 충전', 'desc', '사이에섬에서 시그니처 칵테일 한 잔 시키고 야경 보기.')
-)
+SET guide = '[
+    {"icon": "WALK", "title": "중랑천 바람 쐬기", "desc": "장한평역 3번 출구에서 뚝방길 따라 20분 걷기. 이어폰 필수."},
+    {"icon": "DRINK", "title": "감성 충전", "desc": "사이에섬에서 시그니처 칵테일 한 잔 시키고 야경 보기."}
+]'::jsonb
 WHERE title = '천변 바람 22';
 
 -- 장한평 서점 방문 (서점 → 카페 코스)
 UPDATE mission_templates
-SET guide = JSON_ARRAY(
-    JSON_OBJECT('icon', 'BOOK', 'title', '책 구경하기', 'desc', '서점에서 30분 천천히 둘러보기. 마음에 드는 책 1권 메모.'),
-    JSON_OBJECT('icon', 'COFFEE', 'title', '카페 타임', 'desc', '근처 카페에서 아메리카노 한 잔과 함께 여유 부리기.')
-)
+SET guide = '[
+    {"icon": "BOOK", "title": "책 구경하기", "desc": "서점에서 30분 천천히 둘러보기. 마음에 드는 책 1권 메모."},
+    {"icon": "COFFEE", "title": "카페 타임", "desc": "근처 카페에서 아메리카노 한 잔과 함께 여유 부리기."}
+]'::jsonb
 WHERE title = '장한평 서점 방문';
 
 -- 미니 하이킹 30 (하이킹 → 휴식 코스)
 UPDATE mission_templates
-SET guide = JSON_ARRAY(
-    JSON_OBJECT('icon', 'HIKE', 'title', '오르막 걷기', 'desc', '30분 천천히 등산로 오르기. 호흡 유지하며 무리하지 않기.'),
-    JSON_OBJECT('icon', 'REST', 'title', '정상에서 휴식', 'desc', '물 2모금 마시고 발목/종아리 스트레치. 주변 소리 듣기.')
-)
+SET guide = '[
+    {"icon": "HIKE", "title": "오르막 걷기", "desc": "30분 천천히 등산로 오르기. 호흡 유지하며 무리하지 않기."},
+    {"icon": "REST", "title": "정상에서 휴식", "desc": "물 2모금 마시고 발목/종아리 스트레치. 주변 소리 듣기."}
+]'::jsonb
 WHERE title = '미니 하이킹 30';
 
 -- 디저트 한 입 + 10분 산책 (디저트 → 산책 코스)
 UPDATE mission_templates
-SET guide = JSON_ARRAY(
-    JSON_OBJECT('icon', 'DESSERT', 'title', '디저트 픽업', 'desc', '베이커리나 디저트 카페에서 테이크아웃. 편의점도 괜찮아.'),
-    JSON_OBJECT('icon', 'WALK', 'title', '산책하며 먹기', 'desc', '10분 걸으며 천천히 먹기. 가장 맛있는 한 입의 이유 생각해보기.')
-)
+SET guide = '[
+    {"icon": "DESSERT", "title": "디저트 픽업", "desc": "베이커리나 디저트 카페에서 테이크아웃. 편의점도 괜찮아."},
+    {"icon": "WALK", "title": "산책하며 먹기", "desc": "10분 걸으며 천천히 먹기. 가장 맛있는 한 입의 이유 생각해보기."}
+]'::jsonb
 WHERE title = '디저트 한 입 + 10분 산책';
 
 INSERT INTO mission_templates (title, description, category, difficulty_level, condition, image_url, location_type, time_of_day, latitude, longitude, address, is_place_required, created_at, updated_at)
