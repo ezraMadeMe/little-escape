@@ -360,6 +360,126 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 
 ---
 
+## 🚀 v2.4 주요 업데이트 (2026.01.20)
+
+### 1. 🌐 서울시 실시간 도시데이터 API 연동
+- **서울시 Open API 통합:**
+  - 120개 주요 장소의 실시간 혼잡도 데이터 수집
+  - WebClient 기반 비동기 API 호출 구현
+  - SeoulOpenApiService, SeoulOpenApiProperties 설정 완료
+- **데이터 수집 항목:**
+  - 혼잡도 레벨 (1-5): 여유 → 보통 → 약간 붐빔 → 붐빔 → 매우 붐빔
+  - 실시간 인구수
+  - 날씨 정보 (기온, 강수량, 날씨 상태)
+  - 대기질 (PM10, PM2.5)
+
+### 2. 🗄️ 혼잡도 데이터 캐싱 시스템
+- **SeoulCityPlace 엔티티 구현:**
+  - placeCode, placeName, 위경도 정보
+  - congestionLevel, congestionMessage, currentPopulation
+  - weatherCondition, temperature, rainfall
+  - pm10, pm25 (미세먼지)
+  - lastUpdated, isValid (데이터 신선도 관리)
+- **Repository 메서드:**
+  - 반경 기반 검색: `findNearbyPlaces(lat, lng, radius)`
+  - 혼잡도 필터링: `findLowCongestionPlaces()`
+  - 장소명 검색: `findByPlaceNameContaining()`
+
+### 3. ⏰ 자동 갱신 스케줄러
+- **SeoulDataRefreshScheduler 구현:**
+  - 정규 갱신: 매시간 정각 (Cron: `0 0 * * * *`)
+  - 피크타임 갱신: 금/토요일 18-23시 10분마다
+  - Rate Limiting: 100 요청/초 준수
+  - 에러 재시도 로직 및 로깅
+- **@EnableScheduling 활성화:**
+  - BackendApplication에서 스케줄링 기능 활성화
+  - 배치 실행 로그 자동 기록
+
+### 4. 🎯 스마트 미션 추천 시스템
+- **혼잡도 기반 필터링:**
+  - `MissionService.filterByCongestion()` 구현
+  - 혼잡도 2(보통) 이하 장소만 추천
+  - 서울시 데이터 없는 장소는 기본 포함 (유연한 처리)
+- **악천후 자동 Plan B 전환:**
+  - `WeatherBasedPlanBScheduler` 구현
+  - 매일 06:00 날씨 체크 (비/눈 예보 확인)
+  - OUTDOOR 미션 → INDOOR 미션 자동 변경
+  - PLAN_B_ACTIVATED 상태로 전환 및 알림
+
+### 5. 📡 RESTful API 엔드포인트 (6개)
+- **SeoulDataController 구현:**
+  - `GET /api/seoul/congestion/{placeCode}` - 특정 장소 혼잡도
+  - `GET /api/seoul/congestion/nearby` - 반경 내 장소 리스트
+  - `GET /api/seoul/congestion/nearby/low` - 여유 있는 장소만
+  - `GET /api/seoul/congestion/search` - 장소명 검색
+  - `GET /api/seoul/congestion/all` - 전체 장소 (관리자)
+  - `GET /api/seoul/congestion/stats` - 혼잡도 통계
+- **CongestionResponse DTO:**
+  - placeCode, placeName, areaName
+  - latitude, longitude
+  - congestionLevel, congestionText, badgeColor
+  - currentPopulation, weatherCondition, temperature
+  - lastUpdated, isValid
+
+### 6. 🎨 프론트엔드 혼잡도 시각화
+- **CongestionBadge 컴포넌트 (3가지 variant):**
+  - `default`: 미션 카드 본문용 (이모지 + 텍스트 + 상세정보)
+  - `compact`: 미션 카드 헤더용 (이모지 + 레벨만 표시)
+  - `detailed`: 추천 장소 강조용 (풀 정보 + 배경색)
+- **색상 매핑:**
+  - Level 1 (여유): 🟢 Green
+  - Level 2 (보통): 🔵 Blue
+  - Level 3 (약간 붐빔): 🟡 Yellow
+  - Level 4 (붐빔): 🟠 Orange
+  - Level 5 (매우 붐빔): 🔴 Red
+- **API 연동 Hook:**
+  - `useCongestion`: 반경 기반 다중 장소 조회
+  - `useSingleCongestion`: 단일 장소 조회
+  - 자동 재조회, 로딩/에러 상태 관리
+- **구현 파일:**
+  - `frontend/src/components/CongestionBadge.tsx`
+  - `frontend/src/components/CongestionBadgeExample.tsx`
+  - `frontend/src/api/congestionApi.ts`
+  - `frontend/src/hooks/useCongestion.ts`
+
+### 7. 🗄️ PostgreSQL 호환성 개선
+- **data.sql 마이그레이션:**
+  - `AUTO_INCREMENT` → `BIGSERIAL`
+  - `ON UPDATE CURRENT_TIMESTAMP` 제거 (PostgreSQL 미지원)
+  - `JSON_OBJECT()`, `JSON_ARRAY()` → 네이티브 JSON 문자열 + `::jsonb` 캐스팅
+- **suggestions 테이블 생성:**
+  - 사용자 제보 시스템용 테이블
+  - user_id, content, created_at, updated_at
+  - Foreign Key Constraint 적용
+
+### 8. 📚 문서화
+- **DEBUG_FIX_SUMMARY.md:**
+  - Spring Boot 시작 오류 해결 과정 문서화
+  - MySQL vs PostgreSQL 차이점 정리
+  - 마이그레이션 가이드 제공
+- **IMPLEMENTATION_STATUS.md:**
+  - 서울시 혼잡도 연동 Phase 1-6 체크리스트
+  - 아키텍처 다이어그램
+  - API 엔드포인트 명세
+  - 테스트 가이드
+- **INTEGRATION_GUIDE.md:**
+  - CongestionBadge 미션 카드 통합 가이드
+  - 타입 정의 및 컴포넌트 수정 방법
+  - 단계별 구현 예시
+
+### 9. 🧪 테스트 완료
+- **백엔드:**
+  - ✅ 빌드 성공 (./gradlew clean build -x test)
+  - ✅ 애플리케이션 시작 성공 (포트 8080)
+  - ✅ 스케줄러 정상 동작 확인
+  - ✅ API 엔드포인트 응답 확인
+- **프론트엔드:**
+  - ✅ CongestionBadge 3가지 variant 렌더링 확인
+  - ✅ useCongestion Hook 동작 확인
+  - ✅ API 연동 테스트 준비 완료
+
+---
+
 ## 🎯 다음 개발 계획 (Roadmap)
 
 ### Phase 1: 소셜 기능 고도화
