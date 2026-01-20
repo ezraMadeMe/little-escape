@@ -2,6 +2,7 @@ package com.littleescape.api.repository;
 
 import com.littleescape.api.domain.MissionTemplate;
 import com.littleescape.api.domain.type.LocationType;
+import com.littleescape.api.domain.type.MissionCategory;
 import com.littleescape.api.domain.type.TimeOfDay;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -17,6 +18,31 @@ public interface MissionTemplateRepository extends JpaRepository<MissionTemplate
             List<TimeOfDay> timeOfDays,
             List<LocationType> locationTypes
     );
+
+    /**
+     * 카테고리 + 시간대 + 장소 타입으로 검색
+     * (WeatherBasedPlanBScheduler용)
+     */
+    List<MissionTemplate> findByCategoryAndTimeOfDayAndLocationType(
+            MissionCategory category,
+            TimeOfDay timeOfDay,
+            LocationType locationType
+    );
+
+    /**
+     * 시간대 + 장소 타입으로 검색
+     * (WeatherBasedPlanBScheduler용)
+     */
+    List<MissionTemplate> findByTimeOfDayAndLocationType(
+            TimeOfDay timeOfDay,
+            LocationType locationType
+    );
+
+    /**
+     * 장소 타입으로 검색
+     * (WeatherBasedPlanBScheduler용)
+     */
+    List<MissionTemplate> findByLocationType(LocationType locationType);
 
     /**
      * Haversine 공식을 사용한 거리 기반 미션 검색

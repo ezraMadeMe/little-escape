@@ -8,6 +8,7 @@ public enum AppointmentStatus {
     REJECTED,   // 거절됨
     CANCELLED,  // 취소됨
     COMPLETED,  // 완료됨
-    NO_SHOW,     // 불참
-    ARRIVED     // 도착
+    NO_SHOW,    // 불참
+    ARRIVED,    // 도착
+    PLAN_B_ACTIVATED  // 악천후로 인한 Plan B 자동 전환
 }

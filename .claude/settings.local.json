@@ -9,7 +9,8 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
-      "Bash(python scripts/import_seoul_restaurants.py:*)"
+      "Bash(python scripts/import_seoul_restaurants.py:*)",
+      "Bash(./gradlew compileJava:*)"
     ]
   }
 }
