@@ -56,42 +56,28 @@ function MissionList() {
     try {
       setIsCreating(true);
 
-      // 1. 사용자 위치 가져오기 (옵션)
+      // 1. 사용자 위치 가져오기 (localStorage 우선)
       let userLat: number | null = null;
       let userLon: number | null = null;
 
-      if ('geolocation' in navigator) {
+      // localStorage에서 저장된 위치 먼저 확인
+      const savedLocation = localStorage.getItem('user_location');
+      if (savedLocation) {
         try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            const timeoutId = setTimeout(() => {
-              reject(new Error('위치 확인 시간 초과'));
-            }, 3000);
-
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                clearTimeout(timeoutId);
-                resolve(pos);
-              },
-              (err) => {
-                clearTimeout(timeoutId);
-                reject(err);
-              },
-              {
-                enableHighAccuracy: false,
-                timeout: 3000,
-                maximumAge: 300000, // 5분 이내 캐시 사용
-              }
-            );
-          });
-
-          userLat = position.coords.latitude;
-          userLon = position.coords.longitude;
-          console.log('✅ 사용자 위치 확인 성공:', { userLat, userLon });
-        } catch (geoError) {
-          console.warn('⚠️ 위치 확인 실패 (서울 성수동 기본값 사용):', geoError);
+          const location = JSON.parse(savedLocation);
+          userLat = location.lat;
+          userLon = location.lng;
+          console.log('✅ 저장된 위치 사용:', { userLat, userLon, name: location.name });
+        } catch (parseError) {
+          console.warn('⚠️ 저장된 위치 파싱 실패:', parseError);
         }
-      } else {
-        console.warn('⚠️ 브라우저가 위치 정보를 지원하지 않음');
+      }
+
+      // localStorage에 위치가 없으면 위치 설정 페이지로 리다이렉트
+      if (!userLat || !userLon) {
+        console.warn('⚠️ 저장된 위치가 없음 -> 위치 설정 페이지로 이동');
+        navigate('/location');
+        return;
       }
 
       // 2. API 호출 (약속 생성)
@@ -132,6 +118,14 @@ function MissionList() {
     const init = async () => {
       try {
         setLoading(true);
+
+        // 위치 설정 가드: localStorage에 위치가 없으면 /location으로 리다이렉트
+        const savedLocation = localStorage.getItem('user_location');
+        if (!savedLocation) {
+          console.warn('⚠️ 저장된 위치가 없음 -> 위치 설정 페이지로 리다이렉트');
+          navigate('/location');
+          return;
+        }
 
         if (isLoggedIn) {
           try {

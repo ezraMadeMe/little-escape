@@ -1,7 +1,10 @@
 package com.littleescape.api.controller;
 
+import com.littleescape.api.dto.simulation.SimulationRequest;
+import com.littleescape.api.dto.simulation.SimulationResponse;
 import com.littleescape.api.service.DataIngestionService;
 import com.littleescape.api.service.DataImportService;
+import com.littleescape.api.service.SimulationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -25,6 +29,7 @@ public class AdminController {
 
     private final DataIngestionService dataIngestionService;
     private final DataImportService dataImportService;
+    private final SimulationService simulationService;
 
     /**
      * 데이터 수집 수동 트리거
@@ -140,5 +145,62 @@ public class AdminController {
         response.put("totalPlacesCount", count);
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * God Mode Simulation API
+     * 환경 변수를 통제하여 추천 로직 테스트
+     * POST /api/admin/simulation
+     */
+    @PostMapping("/simulation")
+    @Operation(
+        summary = "God Mode Simulation - 추천 로직 테스트",
+        description = """
+            모든 환경 변수(시간, 날씨, 혼잡도 등)를 통제하여 추천 로직을 테스트합니다.
+
+            **사용 사례:**
+            - 월요일 도서관 필터링 검증
+            - 비오는 날 실내 장소 추천 검증
+            - 야간 시간대 전시 제외 검증
+            - 혼잡도에 따른 조용한 장소 우선순위 검증
+            - 솔로 레벨에 따른 난이도 필터링 검증
+
+            **디버그 로그:**
+            응답에 포함된 debugLogs 배열로 필터링 과정을 상세히 확인할 수 있습니다.
+            """
+    )
+    public ResponseEntity<SimulationResponse> runSimulation(
+            @RequestBody SimulationRequest request) {
+
+        log.info("========================================");
+        log.info("🎮 God Mode Simulation API 호출");
+        log.info("========================================");
+        log.info("요청 파라미터: {}", request);
+
+        try {
+            SimulationResponse response = simulationService.runSimulation(request);
+
+            log.info("시뮬레이션 완료 - 추천된 미션: {}",
+                    response.mission() != null ? response.mission().title() : "없음");
+            log.info("시뮬레이션 완료 - 추천된 장소: {}",
+                    response.place() != null ? response.place().name() : "없음");
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("시뮬레이션 실행 중 오류 발생", e);
+
+            // 오류 발생 시에도 디버그 로그 제공
+            SimulationResponse errorResponse = new SimulationResponse(
+                null,
+                null,
+                List.of("❌ 시뮬레이션 실행 실패: " + e.getMessage()),
+                0, 0, 0, 0,
+                List.of(),
+                List.of()
+            );
+
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
     }
 }

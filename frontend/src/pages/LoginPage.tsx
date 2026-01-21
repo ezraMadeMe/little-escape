@@ -240,7 +240,7 @@ const LoginPage: React.FC = () => {
                 <div className="flex-1 flex items-start">
                   {currentQuestion.type === 'text' && (
                     <TextInput
-                      placeholder={currentQuestion.placeholder}
+                      placeholder={currentQuestion.placeholder ?? ''}
                       onSubmit={handleNext}
                     />
                   )}
