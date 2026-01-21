@@ -6,14 +6,23 @@ const MainLayout = () => {
   const location = useLocation();
   const { appointment, timeRemaining, isUrgent } = useNextAppointment();
 
-  // 중앙 버튼 클릭 핸들러
+  // 중앙 버튼 클릭 핸들러 (Smart Navigation)
   const handleCenterButtonClick = () => {
-    if (appointment) {
-      // 약속 있음 -> 미션 상세 페이지로 직행
+    // CRITICAL: localStorage에서 appointmentId 확인 (useNextAppointment보다 더 즉각적)
+    const savedAppointmentId = localStorage.getItem('appointmentId');
+
+    if (savedAppointmentId) {
+      // Case A: 약속 ID 있음 -> 기존 약속 확인 페이지로
+      console.log('✅ 기존 약속 존재 -> 상세 페이지로 이동:', savedAppointmentId);
+      navigate(`/mission/${savedAppointmentId}`);
+    } else if (appointment) {
+      // Case A-2: hook에서 약속 발견 (fallback)
+      console.log('✅ 약속 발견 (hook) -> 상세 페이지로 이동:', appointment.id);
       navigate(`/mission/${appointment.id}`);
     } else {
-      // 약속 없음 -> 새로운 추천 받으러 홈으로
-      navigate('/missions');
+      // Case B: 약속 없음 -> 위치 설정 후 새 약속 받기
+      console.log('📍 약속 없음 -> 위치 설정 페이지로 이동');
+      navigate('/location');
     }
   };
 
@@ -28,17 +37,17 @@ const MainLayout = () => {
       <nav className="fixed bottom-0 left-0 right-0 bg-charcoal-soft/95 backdrop-blur-lg border-t border-charcoal-lighter z-50">
         <div className="max-w-md mx-auto px-6 py-4">
           <div className="flex items-center justify-between relative">
-            {/* 좌측: 홈/미션 */}
+            {/* 좌측: 피드 (Home) */}
             <button
-              onClick={() => navigate('/missions')}
+              onClick={() => navigate('/feed')}
               className={`flex flex-col items-center justify-center w-16 h-16 transition-all ${
-                isActive('/missions')
+                isActive('/feed')
                   ? 'text-electric-lime'
                   : 'text-text-gray hover:text-off-white'
               }`}
             >
               <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               <span className="text-xs mt-1 font-semibold">홈</span>
             </button>

@@ -2,6 +2,7 @@ package com.littleescape.api.repository;
 
 import com.littleescape.api.domain.Appointment;
 import com.littleescape.api.domain.type.AppointmentStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDateTime;
@@ -29,4 +30,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     java.util.Optional<Appointment> findByUnlockToken(String unlockToken);
 
     void deleteByUserId(Long userId);
+
+    // 피드용: 공개된 완료 약속을 최신순으로 조회 (페이징 지원)
+    List<Appointment> findAllByStatusAndIsPublicTrueOrderByCompletedAtDesc(
+        AppointmentStatus status,
+        Pageable pageable
+    );
 }

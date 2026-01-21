@@ -59,6 +59,21 @@ export async function getMyAppointments(): Promise<Appointment[]> {
   return apiFetch<Appointment[]>('/api/v1/appointments/me');
 }
 
+export interface FeedItem {
+  appointmentId: number;
+  missionTitle: string;
+  placeName: string;
+  proofImageUrls: string[];
+  proofComment: string | null;
+  userNickname: string;
+  completedAt: string;
+  reviewKeywords: string[];
+}
+
+export async function getPublicFeed(page: number = 0, size: number = 20): Promise<FeedItem[]> {
+  return apiFetch<FeedItem[]>(`/api/v1/appointments/feed?page=${page}&size=${size}`);
+}
+
 export async function cancelAppointment(id: number): Promise<void> {
   return apiFetch<void>(`/api/v1/appointments/${id}/cancel`, {
     method: 'PATCH',

@@ -10,6 +10,10 @@ import Reviews from './pages/Reviews';
 import Appointments from './pages/Appointments';
 import MyPage from './pages/MyPage';
 import ChatAppointment from './pages/ChatAppointment';
+import LocationSetting from './pages/LocationSetting';
+
+// Dev Pages
+import DevConsole from './pages/DevConsole';
 
 // Legacy Pages (필요시 유지)
 import MissionList from './pages/MissionList';
@@ -33,30 +37,38 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   return <>{children}</>;
 };
 
-// 온보딩 체크 컴포넌트 (메인 엔트리 포인트용)
-const OnboardingGuard = () => {
+// 랜딩 페이지 가드 (자동 로그인 체크)
+const LandingGuard = () => {
   const token = localStorage.getItem('token');
   const onboardingComplete = localStorage.getItem('onboarding_complete');
+  const userLocation = localStorage.getItem('user_location');
 
-  console.log('=== OnboardingGuard 체크 ===');
+  console.log('=== LandingGuard 체크 ===');
   console.log('토큰 존재:', !!token);
   console.log('온보딩 완료:', onboardingComplete === 'true');
+  console.log('위치 설정:', !!userLocation);
 
-  // 1. 토큰 없음 -> 로그인 페이지
+  // 1. 토큰 없음 -> 로그인 페이지로 이동
   if (!token || token === 'null' || token === 'undefined') {
     console.log('🚫 토큰 없음 -> 로그인 페이지로 이동');
     return <Navigate to="/login" replace />;
   }
 
-  // 2. 토큰 있음 + 온보딩 미완료 -> 온보딩 채팅
+  // 2. 토큰 있음 + 온보딩 미완료 -> 온보딩 채팅으로 이동
   if (onboardingComplete !== 'true') {
     console.log('📝 온보딩 미완료 -> 채팅 온보딩으로 이동');
     return <Navigate to="/chat" replace />;
   }
 
-  // 3. 토큰 있음 + 온보딩 완료 -> 메인 화면
-  console.log('✅ 온보딩 완료 -> 메인 미션 화면으로 이동');
-  return <Navigate to="/missions" replace />;
+  // 3. 토큰 있음 + 온보딩 완료 + 위치 미설정 -> 위치 설정 페이지로 이동
+  if (!userLocation) {
+    console.log('📍 위치 미설정 -> 위치 설정 페이지로 이동');
+    return <Navigate to="/location" replace />;
+  }
+
+  // 4. 토큰 있음 + 온보딩 완료 + 위치 설정 완료 -> 피드 페이지로 이동 (자동 로그인)
+  console.log('✅ 자동 로그인 성공 -> 피드 페이지로 이동');
+  return <Navigate to="/feed" replace />;
 };
 
 function App() {
@@ -79,11 +91,21 @@ function App() {
           }
         />
 
-        {/* Main Entry Point - Onboarding Guard */}
+        {/* Main Entry Point - Landing Guard (자동 로그인 체크) */}
         <Route
           index
           path="/"
-          element={<OnboardingGuard />}
+          element={<LandingGuard />}
+        />
+
+        {/* Location Setting Route */}
+        <Route
+          path="/location"
+          element={
+            <ProtectedRoute>
+              <LocationSetting />
+            </ProtectedRoute>
+          }
         />
 
         {/* Missions Route - Without Bottom Navigation (Full Screen) */}
@@ -99,7 +121,7 @@ function App() {
         {/* Main App - With Bottom Navigation */}
         <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
           {/* Bottom Nav Routes */}
-          <Route path="feed" element={<FeedPage />} />
+          <Route index path="feed" element={<FeedPage />} />
           <Route path="reviews" element={<Reviews />} />
           <Route path="appointments" element={<Appointments />} />
           <Route path="mypage" element={<MyPage />} />
@@ -152,6 +174,9 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Dev Tools - God Mode Simulation */}
+        <Route path="/dev-console" element={<DevConsole />} />
 
         {/* Legacy Routes - 호환성 유지 */}
         <Route
