@@ -2,10 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { getMyInfo, deleteUser } from '../api/userApi';
-import { getMyAppointments } from '../api/appointmentApi';
 import { createSuggestion } from '../api/suggestionApi';
 import { User } from '../types/user';
-import { Appointment, AppointmentStatus } from '../types/appointment';
 
 const MyPage = () => {
   const navigate = useNavigate();
@@ -14,12 +12,9 @@ const MyPage = () => {
   const [suggestionContent, setSuggestionContent] = useState('');
   const [isSendingSuggestion, setIsSendingSuggestion] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [isLoadingAppointments, setIsLoadingAppointments] = useState(true);
 
   useEffect(() => {
     loadUserInfo();
-    loadAppointments();
   }, []);
 
   const loadUserInfo = async () => {
@@ -28,18 +23,6 @@ const MyPage = () => {
       setUser(userInfo);
     } catch (error) {
       console.error('유저 정보 조회 실패:', error);
-    }
-  };
-
-  const loadAppointments = async () => {
-    try {
-      setIsLoadingAppointments(true);
-      const data = await getMyAppointments();
-      setAppointments(data);
-    } catch (error) {
-      console.error('약속 목록 조회 실패:', error);
-    } finally {
-      setIsLoadingAppointments(false);
     }
   };
 
@@ -82,51 +65,6 @@ const MyPage = () => {
       alert('제보 전송에 실패했습니다.');
     } finally {
       setIsSendingSuggestion(false);
-    }
-  };
-
-  const handleAppointmentClick = (appointment: Appointment) => {
-    const activeStatuses = [
-      AppointmentStatus.CREATED,
-      AppointmentStatus.UNLOCKED,
-      AppointmentStatus.PENDING,
-      AppointmentStatus.ACCEPTED,
-    ];
-
-    if (activeStatuses.includes(appointment.status)) {
-      navigate(`/mission/${appointment.id}`);
-    } else if (appointment.status === AppointmentStatus.COMPLETED) {
-      navigate(`/mission/${appointment.id}`);
-    } else {
-      alert('이 약속은 현재 확인할 수 없습니다.');
-    }
-  };
-
-  const getStatusLabel = (status: AppointmentStatus) => {
-    switch (status) {
-      case AppointmentStatus.CREATED: return '생성됨';
-      case AppointmentStatus.UNLOCKED: return '잠금 해제';
-      case AppointmentStatus.PENDING: return '대기 중';
-      case AppointmentStatus.ACCEPTED: return '수락됨';
-      case AppointmentStatus.REJECTED: return '거절됨';
-      case AppointmentStatus.COMPLETED: return '완료';
-      case AppointmentStatus.CANCELLED: return '취소됨';
-      case AppointmentStatus.NO_SHOW: return '불참';
-      default: return status;
-    }
-  };
-
-  const getStatusColor = (status: AppointmentStatus) => {
-    switch (status) {
-      case AppointmentStatus.CREATED: return 'bg-neon-purple/10 text-neon-purple border-neon-purple/30';
-      case AppointmentStatus.UNLOCKED: return 'bg-electric-lime/10 text-electric-lime border-electric-lime/30';
-      case AppointmentStatus.PENDING: return 'bg-accent-cyan/10 text-accent-cyan border-accent-cyan/30';
-      case AppointmentStatus.ACCEPTED: return 'bg-electric-lime/10 text-electric-lime border-electric-lime/30';
-      case AppointmentStatus.REJECTED: return 'bg-accent-pink/10 text-accent-pink border-accent-pink/30';
-      case AppointmentStatus.COMPLETED: return 'bg-text-gray/10 text-text-gray border-text-gray/30';
-      case AppointmentStatus.CANCELLED: return 'bg-text-gray-dark/10 text-text-gray-dark border-text-gray-dark/30';
-      case AppointmentStatus.NO_SHOW: return 'bg-accent-pink/10 text-accent-pink border-accent-pink/30';
-      default: return 'bg-text-gray/10 text-text-gray border-text-gray/30';
     }
   };
 
@@ -194,75 +132,6 @@ const MyPage = () => {
             </div>
           </div>
         </motion.div>
-
-        {/* 약속 목록 섹션 */}
-        <div className="px-4 space-y-3 mb-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-off-white text-lg font-bold">내 약속</h3>
-            <button
-              onClick={() => navigate('/appointments')}
-              className="text-sm text-electric-lime hover:text-electric-lime-dark font-semibold transition-colors"
-            >
-              전체보기 →
-            </button>
-          </div>
-
-          {isLoadingAppointments ? (
-            <div className="card text-center py-8">
-              <div className="animate-pulse space-y-3">
-                <div className="h-4 bg-charcoal-lighter rounded w-3/4 mx-auto"></div>
-                <div className="h-3 bg-charcoal-lighter rounded w-1/2 mx-auto"></div>
-              </div>
-            </div>
-          ) : appointments.length === 0 ? (
-            <div className="card text-center py-8">
-              <span className="text-5xl mb-3 block">📅</span>
-              <p className="text-text-gray mb-4">아직 약속이 없어.</p>
-              <button
-                onClick={() => navigate('/missions')}
-                className="btn-primary inline-block"
-              >
-                첫 미션 시작하기 →
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {appointments.slice(0, 3).map((appointment) => (
-                <motion.button
-                  key={appointment.id}
-                  onClick={() => handleAppointmentClick(appointment)}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="card w-full text-left clickable"
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">🎯</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-off-white font-bold truncate">
-                          {appointment.missionTitle || '미션'}
-                        </h4>
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${getStatusColor(appointment.status)}`}>
-                          {getStatusLabel(appointment.status)}
-                        </span>
-                      </div>
-                      <p className="text-text-gray text-sm">
-                        {new Date(appointment.scheduledAt).toLocaleDateString('ko-KR', {
-                          month: 'long',
-                          day: 'numeric',
-                          weekday: 'short'
-                        })}
-                      </p>
-                    </div>
-                    <svg className="w-5 h-5 text-text-gray flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </motion.button>
-              ))}
-            </div>
-          )}
-        </div>
 
         {/* 메뉴 섹션 */}
         <div className="px-4 space-y-3 mb-6">
@@ -458,4 +327,3 @@ const MyPage = () => {
 };
 
 export default MyPage;
-

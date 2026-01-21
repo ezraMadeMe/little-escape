@@ -8,12 +8,15 @@ import com.littleescape.api.domain.type.AppointmentStatus;
 import com.littleescape.api.domain.type.LocationType;
 import com.littleescape.api.domain.type.TimeOfDay;
 import com.littleescape.api.dto.AppointmentResponse;
+import com.littleescape.api.dto.FeedResponse;
 import com.littleescape.api.repository.AppointmentRepository;
 import com.littleescape.api.repository.MissionTemplateRepository;
 import com.littleescape.api.repository.PlaceRepository;
 import com.littleescape.api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -678,6 +681,7 @@ public class AppointmentService {
 
         // 약속 완료 처리
         appointment.setStatus(AppointmentStatus.COMPLETED);
+        appointment.setCompletedAt(LocalDateTime.now());
         appointment.setProofComment(request.proofComment());
 
         // 다중 이미지 URL 저장
@@ -800,6 +804,42 @@ public class AppointmentService {
         appointmentRepository.deleteAll(appointments);
 
         log.info("=== 다중 약속 삭제 완료 ({} 건) ===", appointments.size());
+    }
+
+    /**
+     * 공개 피드 조회 (인증샷이 있는 완료된 약속만)
+     * @param page 페이지 번호 (0부터 시작)
+     * @param size 페이지 크기
+     * @return 피드 리스트
+     */
+    @Transactional(readOnly = true)
+    public List<FeedResponse> getPublicFeed(int page, int size) {
+        log.info("=== 공개 피드 조회 시작 ===");
+        log.info("페이지: {}, 사이즈: {}", page, size);
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        List<Appointment> appointments = appointmentRepository
+            .findAllByStatusAndIsPublicTrueOrderByCompletedAtDesc(
+                AppointmentStatus.COMPLETED,
+                pageable
+            );
+
+        log.info("조회된 공개 약속 개수: {}", appointments.size());
+
+        // 인증샷(proofImageUrls)이 없는 데이터는 제외
+        List<FeedResponse> feedResponses = appointments.stream()
+            .filter(appointment ->
+                appointment.getProofImageUrls() != null &&
+                !appointment.getProofImageUrls().isEmpty()
+            )
+            .map(FeedResponse::from)
+            .collect(Collectors.toList());
+
+        log.info("인증샷이 있는 피드 개수: {}", feedResponses.size());
+        log.info("=== 공개 피드 조회 완료 ===");
+
+        return feedResponses;
     }
 
     // ========================================

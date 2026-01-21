@@ -8,6 +8,7 @@ import com.littleescape.api.dto.AppointmentDto;
 import com.littleescape.api.dto.AppointmentMissionUpdateRequest;
 import com.littleescape.api.dto.AppointmentRequest;
 import com.littleescape.api.dto.AppointmentResponse;
+import com.littleescape.api.dto.FeedResponse;
 import com.littleescape.api.repository.UserRepository;
 import com.littleescape.api.service.AppointmentService;
 import jakarta.validation.Valid;
@@ -92,6 +93,18 @@ public class AppointmentController {
         List<AppointmentResponse> appointments = appointmentService.getMyAppointments(Long.parseLong(userId));
 
         return ResponseEntity.ok(appointments);
+    }
+
+    @GetMapping("/feed")
+    public ResponseEntity<List<FeedResponse>> getPublicFeed(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        log.info("공개 피드 조회 요청 - 페이지: {}, 사이즈: {}", page, size);
+
+        List<FeedResponse> feed = appointmentService.getPublicFeed(page, size);
+
+        return ResponseEntity.ok(feed);
     }
 
     @PatchMapping("/{id}/cancel")

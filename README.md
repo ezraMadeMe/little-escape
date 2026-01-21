@@ -480,19 +480,111 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 
 ---
 
+## 🚀 v2.5 주요 업데이트 (2026.01.21)
+
+### 1. 🏠 공개 피드 중심 홈 화면 재구성
+- **피드 기반 홈 페이지:** 기존 미션 추천 중심에서 공개 피드 기반 홈으로 전환
+  - 다른 사용자들의 완료된 미션 인증샷을 카드 형태로 표시
+  - 닉네임 마스킹 처리로 개인정보 보호 (예: "홍*동")
+  - 상대 시간 표시 (예: "3시간 전", "2일 전")
+- **인증 필요 없는 공개 API:**
+  - `/api/v1/appointments/feed` 엔드포인트를 인증 없이 접근 가능하도록 설정
+  - SecurityConfig에서 `.permitAll()` 처리
+  - 누구나 피드를 둘러볼 수 있어 서비스 매력도 향상
+
+### 2. 🧭 위치 설정 페이지 (Location Setting)
+- **온보딩 후 위치 설정 단계 추가:**
+  - 로그인 → 온보딩 → **위치 설정** → 미션 추천 플로우
+  - GPS 자동 감지 (navigator.geolocation API)
+  - 서울 핫스팟 빠른 선택 (성수, 홍대, 강남, 이태원, 을지로)
+- **LocalStorage 기반 상태 관리:**
+  - 선택한 위치를 localStorage에 저장
+  - 미션 추천 시 저장된 위치 활용
+  - 중복 위치 요청 방지로 UX 개선
+
+### 3. 🎯 스마트 네비게이션 (Smart Navigation)
+- **중앙 FAB 버튼 로직 개선:**
+  - 기존 약속 존재 → 약속 상세 페이지로 이동
+  - 약속 없음 → 위치 설정 페이지로 이동
+  - localStorage 기반 즉각 반응 (useNextAppointment 훅보다 빠름)
+- **하단 네비게이션 재구성:**
+  - 좌측: 피드 (홈) - 공개된 인증샷 피드
+  - 중앙: 스마트 버튼 - 상황에 맞는 다음 액션
+  - 우측: 마이페이지 - 프로필 및 설정
+
+### 4. 🗄️ 데이터베이스 스키마 확장
+- **Appointment 엔티티 필드 추가:**
+  - `is_public` (boolean): 피드 공개 여부 (기본값: false)
+  - `completed_at` (timestamp): 약속 완료 시간
+- **성능 최적화 인덱스:**
+  - `idx_appointments_feed`: (status, is_public, completed_at DESC)
+  - WHERE 조건: `status = 'COMPLETED' AND is_public = true`
+  - 피드 조회 쿼리 성능 최적화
+
+### 5. 📱 프론트엔드 리팩토링
+- **FeedPage 실제 API 연동:**
+  - 기존 Mock 데이터 → 실제 Backend API 호출
+  - 페이지네이션 구현 (page, size 파라미터)
+  - 더보기 버튼으로 추가 로드
+- **MyPage 단순화:**
+  - 중복되는 약속 리스트 제거 (피드에서 확인 가능)
+  - 프로필, 지원, 계정 관리 섹션만 유지
+  - 깔끔한 UI로 사용자 경험 개선
+- **App.tsx 라우팅 변경:**
+  - 기본 경로: `/feed` (이전: `/missions`)
+  - 로그인 후 리다이렉트: `/feed`
+  - LandingGuard 목적지 변경
+
+### 6. 🔧 백엔드 구현
+- **FeedResponse DTO:**
+  - appointmentId, missionTitle, placeName
+  - proofImageUrls, proofComment, reviewKeywords
+  - userNickname (마스킹 처리), completedAt
+  - `maskNickname()`: 첫 글자 제외 "*"로 치환
+- **AppointmentRepository 쿼리 메서드:**
+  ```java
+  List<Appointment> findAllByStatusAndIsPublicTrueOrderByCompletedAtDesc(
+    AppointmentStatus status, Pageable pageable
+  );
+  ```
+- **AppointmentService 필터링 로직:**
+  - 완료 상태 + 공개 설정 + 인증샷 있음 조건
+  - Stream API로 이미지 없는 항목 자동 제외
+  - 최신순 정렬 (completedAt DESC)
+
+### 7. 📋 문서화
+- **QUICK_START.md:** 빠른 시작 가이드 (테스트 데이터 추가 방법)
+- **SETUP_COMPLETE.md:** 상세 구현 보고서 및 해결한 문제들
+- **FEED_FEATURE_STATUS.md:** 기능 상태 문서
+- **test-feed-api.sh:** API 자동 테스트 스크립트
+
+### 8. 🐛 해결한 주요 이슈
+- **이슈 1: Feed API 인증 문제**
+  - 증상: API 호출 시 로그인 페이지 HTML 반환
+  - 원인: SecurityConfig에서 모든 `/api/v1/appointments/**` 경로 인증 요구
+  - 해결: Feed 엔드포인트를 `.permitAll()`로 예외 처리
+- **이슈 2: ddl-auto 충돌**
+  - 증상: Hibernate가 NOT NULL 컬럼 추가 시 에러
+  - 해결: `ddl-auto: validate`로 변경, 수동 SQL 스크립트 제공
+
+---
+
 ## 🎯 다음 개발 계획 (Roadmap)
 
-### Phase 1: 소셜 기능 고도화
+### Phase 1: 피드 기능 고도화
+- [x] 공개 피드 API 구현
+- [x] 피드 페이지 실제 API 연동
+- [x] 닉네임 마스킹 처리
 - [ ] 피드 무한 스크롤 (Infinite Scroll)
 - [ ] 피드 필터링 (카테고리별, 인기순, 최신순)
 - [ ] 좋아요 기능 추가
 - [ ] 사용자 프로필 페이지 및 팔로우 시스템
 
-### Phase 2: 백엔드 API 연동
-- [ ] 피드 조회 API 구현
-- [ ] 댓글 CRUD API 구현
+### Phase 2: 소셜 기능 확장
+- [ ] 댓글 CRUD API 구현 및 연동
 - [ ] 북마크 API 구현
 - [ ] 미션 복사 API 구현
+- [ ] 공유 기능 (카카오톡, 인스타그램)
 
 ### Phase 3: 알림 시스템
 - [ ] 댓글 알림

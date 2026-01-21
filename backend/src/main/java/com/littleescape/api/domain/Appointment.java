@@ -78,6 +78,12 @@ public class Appointment extends BaseTimeEntity {
     @Column(name = "is_favorite", nullable = false)
     private boolean isFavorite = false;
 
+    @Column(name = "is_public", nullable = false)
+    private boolean isPublic = false;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
     // 비즈니스 로직 메서드
     public void cancel() {
         this.status = AppointmentStatus.CANCELLED;

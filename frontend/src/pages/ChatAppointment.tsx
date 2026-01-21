@@ -23,6 +23,7 @@ const ChatAppointment = () => {
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasInitialized = useRef(false); // 초기화 방지용
 
   // 상태 관리
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -83,8 +84,11 @@ const ChatAppointment = () => {
     setMessages((prev) => [...prev, newMessage]);
   };
 
-  // 초기화 - 웰컴 메시지
+  // 초기화 - 웰컴 메시지 (중복 실행 방지)
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
     const initChat = async () => {
       await addManagerMessage('왔냐? 주말에 집에만 있기 지겹지도 않냐?', 500);
       await addManagerMessage('나는 너의 매니저야. 이번 주말에 뭐 할지 내가 정해줄게.', 500);
@@ -202,8 +206,8 @@ const ChatAppointment = () => {
       localStorage.setItem('onboarding_complete', 'true');
       console.log('✅ 온보딩 완료 플래그 저장됨');
 
-      // 메인 화면(오늘의 미션)으로 이동
-      navigate('/missions', { replace: true });
+      // 위치 설정 페이지로 이동
+      navigate('/location', { replace: true });
     }, 800);
   };
 
