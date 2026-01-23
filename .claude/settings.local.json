@@ -18,7 +18,9 @@
       "Bash(timeout /t 15 /nobreak)",
       "Bash(powershell -Command \"Start-Sleep -Seconds 20\")",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(./mvnw clean:*)",
+      "Bash(./gradlew:*)"
     ]
   }
 }

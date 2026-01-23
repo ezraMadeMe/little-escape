@@ -68,7 +68,7 @@ const LocationSetting = () => {
     setSelectedLocation(hotspot);
   };
 
-  // 미션 받기
+  // 시간 선택으로 이동
   const handleConfirm = () => {
     if (!selectedLocation) return;
 
@@ -76,8 +76,8 @@ const LocationSetting = () => {
     localStorage.setItem('user_location', JSON.stringify(selectedLocation));
     console.log('✅ 위치 저장됨:', selectedLocation);
 
-    // 미션 페이지로 이동
-    navigate('/missions');
+    // 시간 선택 페이지로 이동
+    navigate('/time-picker');
   };
 
   return (
@@ -219,7 +219,7 @@ const LocationSetting = () => {
           className="btn-primary w-full text-xl py-4 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {selectedLocation
-            ? `${selectedLocation.name}에서 미션 받기 🚀`
+            ? `${selectedLocation.name}에서 출발하기 🚀`
             : '위치를 선택해주세요'}
         </motion.button>
       </footer>

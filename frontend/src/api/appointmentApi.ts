@@ -68,6 +68,8 @@ export interface FeedItem {
   userNickname: string;
   completedAt: string;
   reviewKeywords: string[];
+  status: string; // ACCEPTED, ARRIVED, COMPLETED 등
+  scheduledAt: string;
 }
 
 export async function getPublicFeed(page: number = 0, size: number = 20): Promise<FeedItem[]> {
@@ -205,6 +207,19 @@ export async function devUnlockNow(appointmentId: number): Promise<Appointment> 
   
   console.log('✅ API 응답 성공:', result);
   console.log('============================================');
+  return result;
+}
+
+// 미션 교체 (Swap)
+export async function swapMission(appointmentId: number): Promise<Appointment> {
+  console.log('=== 미션 교체 API 호출 ===');
+  console.log('약속 ID:', appointmentId);
+
+  const result = await apiFetch<Appointment>(`/api/v1/appointments/${appointmentId}/swap`, {
+    method: 'PATCH',
+  });
+
+  console.log('✅ 미션 교체 성공:', result);
   return result;
 }
 

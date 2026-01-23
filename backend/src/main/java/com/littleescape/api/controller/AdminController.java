@@ -30,6 +30,8 @@ public class AdminController {
     private final DataIngestionService dataIngestionService;
     private final DataImportService dataImportService;
     private final SimulationService simulationService;
+    private final com.littleescape.api.scheduler.AppointmentScheduler appointmentScheduler;
+    private final com.littleescape.api.repository.AppointmentRepository appointmentRepository;
 
     /**
      * 데이터 수집 수동 트리거
@@ -145,6 +147,91 @@ public class AdminController {
         response.put("totalPlacesCount", count);
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 약속 만료 체크 수동 실행
+     * POST /api/admin/scheduler/check-expired
+     */
+    @PostMapping("/scheduler/check-expired")
+    @Operation(summary = "약속 만료 체크 수동 실행",
+               description = "스케줄러를 기다리지 않고 즉시 만료된 약속을 체크하고 EXPIRED 상태로 변경합니다.")
+    public ResponseEntity<Map<String, Object>> triggerExpiredCheck() {
+        log.info("========================================");
+        log.info("🔧 관리자 요청: 약속 만료 체크 수동 실행");
+        log.info("========================================");
+
+        try {
+            // 스케줄러 메서드 직접 호출
+            appointmentScheduler.checkExpiredAppointments();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "약속 만료 체크가 완료되었습니다. 로그를 확인해주세요.");
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("약속 만료 체크 실행 중 오류", e);
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "약속 만료 체크 실패: " + e.getMessage());
+            errorResponse.put("error", e.toString());
+
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
+    }
+
+    /**
+     * 완료된 약속을 모두 공개 상태로 변경
+     * POST /api/admin/fix-public-status
+     */
+    @PostMapping("/fix-public-status")
+    @Operation(summary = "완료된 약속 공개 상태 수정",
+               description = "COMPLETED 상태인 모든 약속의 isPublic을 true로 변경합니다.")
+    public ResponseEntity<Map<String, Object>> fixPublicStatus() {
+        log.info("========================================");
+        log.info("🔧 관리자 요청: 완료된 약속 공개 상태 수정");
+        log.info("========================================");
+
+        try {
+            java.util.List<com.littleescape.api.domain.Appointment> completedAppointments =
+                appointmentRepository.findAll().stream()
+                    .filter(a -> a.getStatus() == com.littleescape.api.domain.type.AppointmentStatus.COMPLETED)
+                    .collect(java.util.stream.Collectors.toList());
+
+            log.info("완료된 약속 개수: {}", completedAppointments.size());
+
+            int updatedCount = 0;
+            for (com.littleescape.api.domain.Appointment appointment : completedAppointments) {
+                if (!appointment.isPublic()) {
+                    appointment.setPublic(true);
+                    appointmentRepository.save(appointment);
+                    updatedCount++;
+                }
+            }
+
+            log.info("✅ 공개 상태로 변경된 약속 개수: {}", updatedCount);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("totalCompleted", completedAppointments.size());
+            response.put("updated", updatedCount);
+            response.put("message", updatedCount + "개의 완료된 약속을 공개 상태로 변경했습니다.");
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("공개 상태 수정 중 오류", e);
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "공개 상태 수정 실패: " + e.getMessage());
+            errorResponse.put("error", e.toString());
+
+            return ResponseEntity.internalServerError().body(errorResponse);
+        }
     }
 
     /**

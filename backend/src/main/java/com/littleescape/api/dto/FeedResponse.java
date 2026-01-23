@@ -1,6 +1,7 @@
 package com.littleescape.api.dto;
 
 import com.littleescape.api.domain.Appointment;
+import com.littleescape.api.domain.type.AppointmentStatus;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -18,6 +19,8 @@ public class FeedResponse {
     private String userNickname;
     private LocalDateTime completedAt;
     private List<String> reviewKeywords;
+    private AppointmentStatus status;  // ACCEPTED, ARRIVED, COMPLETED 등
+    private LocalDateTime scheduledAt;
 
     public static FeedResponse from(Appointment appointment) {
         // 사용자 닉네임 (익명 처리 옵션)
@@ -43,7 +46,9 @@ public class FeedResponse {
             appointment.getProofComment(),
             userNickname,
             appointment.getCompletedAt(),
-            appointment.getReviewKeywords()
+            appointment.getReviewKeywords(),
+            appointment.getStatus(),
+            appointment.getScheduledAt()
         );
     }
 

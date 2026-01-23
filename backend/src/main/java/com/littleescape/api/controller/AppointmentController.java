@@ -193,6 +193,22 @@ public class AppointmentController {
         return ResponseEntity.ok(AppointmentDto.from(updatedAppointment));
     }
 
+    @PatchMapping("/{id}/swap")
+    public ResponseEntity<AppointmentResponse> swapMission(
+            @AuthenticationPrincipal String userId,
+            @PathVariable Long id) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.info("미션 교체 요청 - 사용자: {}, 약속 ID: {}", userId, id);
+
+        AppointmentResponse swappedAppointment = appointmentService.swapMission(Long.parseLong(userId), id);
+
+        return ResponseEntity.ok(swappedAppointment);
+    }
+
     @DeleteMapping("/bulk")
     public ResponseEntity<Void> bulkDeleteAppointments(
             @AuthenticationPrincipal String userId,
