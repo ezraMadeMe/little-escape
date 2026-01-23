@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { showToast } from '../utils/toast';
 
 interface Location {
   lat: number;
@@ -37,18 +38,22 @@ const LocationSetting = () => {
         },
         (error) => {
           console.warn('위치 확인 실패:', error);
-          setGeoError('위치 확인 실패. 아래에서 핫플을 선택해주세요.');
-          // 기본값: 성수
+
+          // 기본값: 성수동으로 자동 설정
           setSelectedLocation({
             lat: 37.5445,
             lng: 127.0557,
             name: '성수',
           });
           setIsLoadingGeo(false);
+
+          // 사용자 친화적 토스트 메시지 표시
+          showToast('위치를 찾을 수 없어 성수동으로 설정했어요.');
+          setGeoError('위치를 찾을 수 없어 성수동으로 설정했어요. 아래에서 다른 핫플을 선택할 수 있어요.');
         },
         {
           enableHighAccuracy: true,
-          timeout: 5000,
+          timeout: 10000,
           maximumAge: 0,
         }
       );
@@ -60,6 +65,7 @@ const LocationSetting = () => {
         name: '성수',
       });
       setIsLoadingGeo(false);
+      showToast('위치를 찾을 수 없어 성수동으로 설정했어요.');
     }
   }, []);
 

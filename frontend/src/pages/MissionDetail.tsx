@@ -75,6 +75,10 @@ function MissionDetail() {
   // 긍정 강화 토스트 상태
   const [showPositiveToast, setShowPositiveToast] = useState<boolean>(false);
 
+  // 스크롤 감지 상태
+  const [isScrollingDown, setIsScrollingDown] = useState<boolean>(false);
+  const [lastScrollY, setLastScrollY] = useState<number>(0);
+
   // 가이드 파싱
   const parseGuide = (guideJson?: string): GuideStep[] => {
     if (!guideJson) return [];
@@ -90,7 +94,7 @@ function MissionDetail() {
     const loadAppointment = async () => {
       if (!appointmentId) {
         alert('약속 ID가 없어.');
-        navigate('/mypage');
+        navigate('/appointments');
         return;
       }
 
@@ -100,7 +104,7 @@ function MissionDetail() {
       } catch (err) {
         console.error('약속 로딩 실패:', err);
         alert('약속 정보를 불러오는데 실패했어.');
-        navigate('/mypage');
+        navigate('/appointments');
       } finally {
         setLoading(false);
       }
@@ -108,6 +112,28 @@ function MissionDetail() {
 
     loadAppointment();
   }, [appointmentId, navigate]);
+
+  // 스크롤 감지 (Smart Scroll Buttons)
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+
+      // 스크롤 방향 감지 (50px 이상 이동 시에만 반응)
+      if (Math.abs(currentScrollY - lastScrollY) > 50) {
+        if (currentScrollY > lastScrollY && currentScrollY > 100) {
+          // 아래로 스크롤 중
+          setIsScrollingDown(true);
+        } else {
+          // 위로 스크롤 중
+          setIsScrollingDown(false);
+        }
+        setLastScrollY(currentScrollY);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
 
   // D-Day 계산
   const getDdayText = (scheduledAt: string): string => {
@@ -377,7 +403,7 @@ function MissionDetail() {
       );
 
       alert('수고했어!');
-      navigate('/mypage');
+      navigate('/appointments');
     } catch (err) {
       alert('완료 처리에 실패했어. 다시 시도해봐.');
     } finally {
@@ -413,11 +439,18 @@ function MissionDetail() {
   const isStep3Unlocked = isArrived;
 
   return (
-    <div className="min-h-screen bg-deep-charcoal flex flex-col">
+    <div className="min-h-screen bg-deep-charcoal flex flex-col pb-24">
       {/* ===== Header ===== */}
       <header className="px-4 sm:px-6 py-6 flex items-center justify-between border-b border-charcoal-lighter sticky top-0 z-20 bg-deep-charcoal/95 backdrop-blur-sm">
         <button
-          onClick={() => navigate('/mypage')}
+          onClick={() => {
+            // Smart Navigation: 이전 페이지로 이동 (location.state?.from 또는 브라우저 히스토리)
+            if (location.state?.from) {
+              navigate(location.state.from);
+            } else {
+              navigate(-1);
+            }
+          }}
           className="flex items-center gap-2 text-text-gray hover:text-off-white transition-colors"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -426,8 +459,8 @@ function MissionDetail() {
           <span className="font-semibold">뒤로</span>
         </button>
 
-        {/* D-Day 카운터 */}
-        <div className="bg-electric-lime text-deep-charcoal px-4 py-2 rounded-solotion font-extra-bold text-lg">
+        {/* D-Day 라벨 (버튼처럼 보이지 않게) */}
+        <div className="bg-electric-lime/20 text-electric-lime px-4 py-2 rounded-solotion font-extra-bold text-lg cursor-default select-none">
           {getDdayText(appointment.scheduledAt)}
         </div>
 
@@ -901,65 +934,74 @@ function MissionDetail() {
       </main>
 
       {/* ===== Feed Button (약속 구경) ===== */}
-      <motion.button
-        onClick={() => navigate('/feed')}
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed bottom-24 right-4 sm:right-6 z-40"
+      {/* ===== 하단 액션 버튼 그룹 (Smart Scroll) ===== */}
+      <motion.div
+        initial={{ x: 0 }}
+        animate={{ x: isScrollingDown ? '120%' : 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="fixed bottom-6 right-4 sm:right-6 z-40 flex flex-col gap-3"
       >
-        <div className="bg-electric-lime text-deep-charcoal px-5 sm:px-6 py-3 sm:py-4 rounded-full shadow-2xl font-bold text-sm sm:text-base whitespace-nowrap flex items-center gap-2">
-          <span>📸</span>
-          <span>약속 구경</span>
-        </div>
-      </motion.button>
-
-      {/* ===== Escape FAB (Floating Action Button) ===== */}
-      {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+        {/* 피드 구경 버튼 */}
         <motion.button
-          onClick={() => setShowPlanBModal(true)}
+          onClick={() => navigate('/feed')}
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+          transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
-          className="fixed bottom-6 right-4 sm:right-6 z-40 group"
+          className="flex-1"
         >
-          {/* Glassmorphism 버튼 */}
-          <div className="relative">
-            {/* 네온 글로우 효과 */}
-            <div className="absolute inset-0 bg-electric-lime/30 blur-xl rounded-full animate-pulse"></div>
-
-            {/* 메인 버튼 */}
-            <div className="relative backdrop-blur-xl bg-charcoal-soft/80 border-2 border-electric-lime/50 rounded-full shadow-2xl overflow-hidden">
-              {/* 호버 시 배경 효과 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-electric-lime/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-              {/* 버튼 콘텐츠 */}
-              <div className="relative px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-3">
-                {/* 비상구 아이콘 */}
-                <div className="text-2xl animate-bounce">
-                  <svg
-                    className="w-6 h-6 sm:w-7 sm:h-7 text-electric-lime"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                  </svg>
-                </div>
-
-                {/* 텍스트 라벨 */}
-                <span className="text-off-white font-bold text-sm sm:text-base whitespace-nowrap">
-                  다른 거 할래
-                </span>
-              </div>
-            </div>
+          <div className="bg-electric-lime text-deep-charcoal px-5 sm:px-6 py-3 sm:py-4 rounded-full shadow-2xl font-bold text-sm sm:text-base whitespace-nowrap flex items-center justify-center gap-2">
+            <span>📸</span>
+            <span>피드 구경</span>
           </div>
         </motion.button>
-      )}
+
+        {/* 다른 거 할래 버튼 */}
+        {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+          <motion.button
+            onClick={() => setShowPlanBModal(true)}
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex-1 group"
+          >
+            {/* Glassmorphism 버튼 */}
+            <div className="relative">
+              {/* 네온 글로우 효과 */}
+              <div className="absolute inset-0 bg-electric-lime/30 blur-xl rounded-full animate-pulse"></div>
+
+              {/* 메인 버튼 */}
+              <div className="relative backdrop-blur-xl bg-charcoal-soft/80 border-2 border-electric-lime/50 rounded-full shadow-2xl overflow-hidden">
+                {/* 호버 시 배경 효과 */}
+                <div className="absolute inset-0 bg-gradient-to-br from-electric-lime/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+
+                {/* 버튼 콘텐츠 */}
+                <div className="relative px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-center gap-2 sm:gap-3">
+                  {/* 비상구 아이콘 */}
+                  <div className="text-2xl animate-bounce">
+                    <svg
+                      className="w-6 h-6 sm:w-7 sm:h-7 text-electric-lime"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                  </div>
+
+                  {/* 텍스트 라벨 */}
+                  <span className="text-off-white font-bold text-sm sm:text-base whitespace-nowrap">
+                    이거 말고
+                  </span>
+                </div>
+              </div>
+            </div>
+          </motion.button>
+        )}
+      </motion.div>
 
       {/* ===== Arrival Success Modal ===== */}
       <AnimatePresence>

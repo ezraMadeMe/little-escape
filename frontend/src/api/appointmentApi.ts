@@ -70,6 +70,8 @@ export interface FeedItem {
   reviewKeywords: string[];
   status: string; // ACCEPTED, ARRIVED, COMPLETED 등
   scheduledAt: string;
+  isLikedByMe: boolean; // 현재 사용자가 좋아요 했는지 여부
+  isSavedByMe: boolean; // 현재 사용자가 저장했는지 여부
 }
 
 export async function getPublicFeed(page: number = 0, size: number = 20): Promise<FeedItem[]> {
@@ -227,18 +229,18 @@ export async function swapMission(appointmentId: number): Promise<Appointment> {
 export async function getNextAppointment(): Promise<Appointment | null> {
   try {
     const appointments = await getMyAppointments();
-    
+
     console.log('📋 전체 약속 목록:', appointments);
     console.log('📋 약속 개수:', appointments.length);
 
     // 완료되지 않은 약속만 필터링 (PENDING, ACCEPTED 포함)
     const activeAppointments = appointments.filter(
-      (apt) => apt.status !== 'COMPLETED' && 
-               apt.status !== 'CANCELLED' && 
+      (apt) => apt.status !== 'COMPLETED' &&
+               apt.status !== 'CANCELLED' &&
                apt.status !== 'NO_SHOW' &&
                apt.status !== 'REJECTED'
     );
-    
+
     console.log('🔄 진행 중인 약속:', activeAppointments);
     console.log('🔄 진행 중인 약속 개수:', activeAppointments.length);
 
@@ -251,7 +253,7 @@ export async function getNextAppointment(): Promise<Appointment | null> {
     const sorted = activeAppointments.sort((a, b) =>
       new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
     );
-    
+
     console.log('✅ 가장 가까운 약속:', sorted[0]);
     console.log('  - ID:', sorted[0].id);
     console.log('  - Status:', sorted[0].status);
@@ -263,4 +265,46 @@ export async function getNextAppointment(): Promise<Appointment | null> {
     console.error('❌ 다음 약속 조회 실패:', error);
     return null;
   }
+}
+
+// ========================================
+// 저장 기능 (Scrap/Bookmark)
+// ========================================
+
+/**
+ * 약속 좋아요/좋아요 취소 (토글)
+ * @param appointmentId 좋아요할 약속 ID
+ * @returns 좋아요 여부 (true: 좋아요됨, false: 좋아요 취소됨)
+ */
+export async function toggleLikeAppointment(appointmentId: number): Promise<boolean> {
+  const response = await apiFetch<{ isLiked: boolean; message: string }>(
+    `/api/v1/appointments/${appointmentId}/like`,
+    {
+      method: 'POST',
+    }
+  );
+  return response.isLiked;
+}
+
+/**
+ * 약속 저장/저장 취소 (토글)
+ * @param appointmentId 저장할 약속 ID
+ * @returns 저장 여부 (true: 저장됨, false: 저장 취소됨)
+ */
+export async function toggleSaveAppointment(appointmentId: number): Promise<boolean> {
+  const response = await apiFetch<{ isSaved: boolean; message: string }>(
+    `/api/v1/appointments/${appointmentId}/save`,
+    {
+      method: 'POST',
+    }
+  );
+  return response.isSaved;
+}
+
+/**
+ * 사용자가 저장한 약속 목록 조회
+ * @returns 저장된 약속 리스트
+ */
+export async function getSavedAppointments(): Promise<FeedItem[]> {
+  return apiFetch<FeedItem[]>('/api/v1/appointments/saved');
 }

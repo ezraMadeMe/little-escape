@@ -38,11 +38,45 @@ public class AppointmentService {
     private final UserRepository userRepository;
     private final MissionTemplateRepository missionTemplateRepository;
     private final PlaceRepository placeRepository;
+    private final com.littleescape.api.repository.SavedAppointmentRepository savedAppointmentRepository;
+    private final com.littleescape.api.repository.LikedAppointmentRepository likedAppointmentRepository;
 
     // 1인 가구 타겟에 맞지 않는 키워드
     private static final String[] BAD_KEYWORDS = {
         "어린이", "유아", "강좌", "교실", "모집", "시니어", "동호회"
     };
+
+    /**
+     * 가중치 기반 미션 선택
+     * 사용자가 저장한 약속의 카테고리를 분석하여 선호 카테고리에 가중치 부여
+     *
+     * @param userId 사용자 ID
+     * @param candidates 미션 후보 리스트
+     * @return 선택된 미션
+     */
+    private MissionTemplate selectMissionWithCategoryWeight(Long userId, List<MissionTemplate> candidates) {
+        // 카테고리별 가중치 조회
+        java.util.Map<com.littleescape.api.domain.type.MissionCategory, Double> weights = getCategoryWeights(userId);
+
+        // 가중치 적용된 후보 리스트 생성
+        List<MissionTemplate> weightedCandidates = new ArrayList<>();
+        for (MissionTemplate mission : candidates) {
+            Double weight = weights.getOrDefault(mission.getCategory(), 1.0);
+
+            // 가중치만큼 리스트에 중복 추가 (예: 가중치 2.0이면 2번 추가)
+            int repeatCount = (int) Math.ceil(weight);
+            for (int i = 0; i < repeatCount; i++) {
+                weightedCandidates.add(mission);
+            }
+        }
+
+        log.info("가중치 적용 전 후보: {}개 → 적용 후: {}개",
+                candidates.size(), weightedCandidates.size());
+
+        // 가중치 적용된 리스트에서 랜덤 선택
+        Collections.shuffle(weightedCandidates);
+        return weightedCandidates.get(0);
+    }
 
     /**
      * 태그 충돌 검증 메서드
@@ -170,11 +204,11 @@ public class AppointmentService {
                 );
             }
 
-            // 2-4. 랜덤으로 하나 선정
-            Collections.shuffle(candidates);
-            selectedMission = candidates.get(0);
-            
-            log.info("자동 선정된 미션: {} (ID: {})", selectedMission.getTitle(), selectedMission.getId());
+            // 2-4. 가중치 기반 랜덤 선정 (저장한 약속 카테고리 우선)
+            selectedMission = selectMissionWithCategoryWeight(userId, candidates);
+
+            log.info("자동 선정된 미션: {} (ID: {}, 카테고리: {})",
+                    selectedMission.getTitle(), selectedMission.getId(), selectedMission.getCategory());
         }
 
         // 3. 선정된 미션을 Appointment에 연결
@@ -815,8 +849,13 @@ public class AppointmentService {
      */
     @Transactional(readOnly = true)
     public List<FeedResponse> getPublicFeed(int page, int size) {
+        return getPublicFeed(null, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public List<FeedResponse> getPublicFeed(Long userId, int page, int size) {
         log.info("=== 공개 피드 조회 시작 (생동감 모드) ===");
-        log.info("페이지: {}, 사이즈: {}", page, size);
+        log.info("페이지: {}, 사이즈: {}, 사용자: {}", page, size, userId);
 
         Pageable pageable = PageRequest.of(page, size);
 
@@ -837,7 +876,33 @@ public class AppointmentService {
 
         // 상태별 필터링 로직 제거 - 모든 상태 허용
         List<FeedResponse> feedResponses = appointments.stream()
-            .map(FeedResponse::from)
+            .map(appointment -> {
+                FeedResponse response = FeedResponse.from(appointment, userId);
+
+                // 사용자별 좋아요/저장 상태 설정
+                if (userId != null) {
+                    boolean isLiked = likedAppointmentRepository.existsByUserIdAndAppointmentId(userId, appointment.getId());
+                    boolean isSaved = savedAppointmentRepository.existsByUserIdAndAppointmentId(userId, appointment.getId());
+
+                    // Reflection을 사용하여 필드 설정 (DTO에 setter 추가 필요)
+                    return new FeedResponse(
+                        response.getAppointmentId(),
+                        response.getMissionTitle(),
+                        response.getPlaceName(),
+                        response.getProofImageUrls(),
+                        response.getProofComment(),
+                        response.getUserNickname(),
+                        response.getCompletedAt(),
+                        response.getReviewKeywords(),
+                        response.getStatus(),
+                        response.getScheduledAt(),
+                        isLiked,
+                        isSaved
+                    );
+                }
+
+                return response;
+            })
             .collect(Collectors.toList());
 
         log.info("피드 개수 (전체): {}", feedResponses.size());
@@ -1037,7 +1102,163 @@ public class AppointmentService {
         Appointment saved = appointmentRepository.save(appointment);
         
         log.warn("⚠️ [개발용] 약속 날짜 변경 완료: {} → {}, 상태: {}", appointmentId, now, saved.getStatus());
-        
+
         return saved;
+    }
+
+    // ========================================
+    // 저장 기능 (Scrap/Bookmark)
+    // ========================================
+
+    /**
+     * 약속 좋아요/좋아요 취소 (토글 방식)
+     * ESC 키보드 버튼으로 피드 게시물에 반응
+     *
+     * @param userId 사용자 ID
+     * @param appointmentId 좋아요할 약속 ID
+     * @return 좋아요 여부 (true: 좋아요됨, false: 좋아요 취소됨)
+     */
+    @Transactional
+    public boolean toggleLikeAppointment(Long userId, Long appointmentId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new RuntimeException("약속을 찾을 수 없습니다."));
+
+        // 이미 좋아요되어 있는지 확인
+        java.util.Optional<com.littleescape.api.domain.LikedAppointment> existing =
+                likedAppointmentRepository.findByUserIdAndAppointmentId(userId, appointmentId);
+
+        if (existing.isPresent()) {
+            // 이미 좋아요되어 있으면 삭제 (좋아요 취소)
+            likedAppointmentRepository.delete(existing.get());
+            log.info("약속 좋아요 취소 - 사용자: {}, 약속: {}", userId, appointmentId);
+            return false;
+        } else {
+            // 좋아요되어 있지 않으면 새로 좋아요
+            com.littleescape.api.domain.LikedAppointment likedAppointment =
+                    new com.littleescape.api.domain.LikedAppointment(user, appointment);
+            likedAppointmentRepository.save(likedAppointment);
+            log.info("약속 좋아요 완료 - 사용자: {}, 약속: {}", userId, appointmentId);
+            return true;
+        }
+    }
+
+    /**
+     * 약속 저장/저장 취소 (토글 방식)
+     * 저장된 약속의 카테고리는 추후 추천 가중치 계산에 활용됨
+     *
+     * @param userId 사용자 ID
+     * @param appointmentId 저장할 약속 ID
+     * @return 저장 여부 (true: 저장됨, false: 저장 취소됨)
+     */
+    @Transactional
+    public boolean toggleSaveAppointment(Long userId, Long appointmentId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new RuntimeException("약속을 찾을 수 없습니다."));
+
+        // 이미 저장되어 있는지 확인
+        java.util.Optional<com.littleescape.api.domain.SavedAppointment> existing =
+                savedAppointmentRepository.findByUserIdAndAppointmentId(userId, appointmentId);
+
+        if (existing.isPresent()) {
+            // 이미 저장되어 있으면 삭제 (저장 취소)
+            savedAppointmentRepository.delete(existing.get());
+            log.info("약속 저장 취소 - 사용자: {}, 약속: {}", userId, appointmentId);
+            return false;
+        } else {
+            // 저장되어 있지 않으면 새로 저장
+            com.littleescape.api.domain.SavedAppointment savedAppointment =
+                    new com.littleescape.api.domain.SavedAppointment(user, appointment);
+            savedAppointmentRepository.save(savedAppointment);
+            log.info("약속 저장 완료 - 사용자: {}, 약속: {}", userId, appointmentId);
+            return true;
+        }
+    }
+
+    /**
+     * 사용자가 저장한 약속 목록 조회
+     *
+     * @param userId 사용자 ID
+     * @return 저장된 약속 목록 (FeedResponse 형식)
+     */
+    @Transactional(readOnly = true)
+    public List<FeedResponse> getSavedAppointments(Long userId) {
+        List<com.littleescape.api.domain.SavedAppointment> savedAppointments =
+                savedAppointmentRepository.findAllByUserIdOrderByCreatedAtDesc(userId);
+
+        return savedAppointments.stream()
+                .map(sa -> {
+                    Appointment appointment = sa.getAppointment();
+                    FeedResponse response = FeedResponse.from(appointment, userId);
+
+                    // 저장된 목록이므로 isSavedByMe는 항상 true
+                    boolean isLiked = likedAppointmentRepository.existsByUserIdAndAppointmentId(userId, appointment.getId());
+
+                    return new FeedResponse(
+                        response.getAppointmentId(),
+                        response.getMissionTitle(),
+                        response.getPlaceName(),
+                        response.getProofImageUrls(),
+                        response.getProofComment(),
+                        response.getUserNickname(),
+                        response.getCompletedAt(),
+                        response.getReviewKeywords(),
+                        response.getStatus(),
+                        response.getScheduledAt(),
+                        isLiked,
+                        true  // isSavedByMe는 항상 true
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 사용자가 저장한 약속들의 카테고리별 가중치 계산
+     * 추천 알고리즘에서 활용
+     *
+     * @param userId 사용자 ID
+     * @return 카테고리별 가중치 맵 (예: {FOOD: 2.0, ACTIVITY: 1.5, ...})
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<com.littleescape.api.domain.type.MissionCategory, Double> getCategoryWeights(Long userId) {
+        List<Object[]> categoryStats = savedAppointmentRepository.findCategoryStatsByUserId(userId);
+
+        // 기본 가중치 (모든 카테고리 1.0)
+        java.util.Map<com.littleescape.api.domain.type.MissionCategory, Double> weights = new java.util.HashMap<>();
+        for (com.littleescape.api.domain.type.MissionCategory category : com.littleescape.api.domain.type.MissionCategory.values()) {
+            weights.put(category, 1.0);
+        }
+
+        if (categoryStats.isEmpty()) {
+            log.info("저장한 약속이 없어 기본 가중치 반환");
+            return weights;
+        }
+
+        // 총 저장 횟수 계산
+        long totalCount = categoryStats.stream()
+                .mapToLong(row -> (Long) row[1])
+                .sum();
+
+        // 카테고리별 가중치 계산 (비율 기반)
+        for (Object[] row : categoryStats) {
+            com.littleescape.api.domain.type.MissionCategory category =
+                    (com.littleescape.api.domain.type.MissionCategory) row[0];
+            Long count = (Long) row[1];
+
+            // 가중치 = 1.0 + (해당 카테고리 비율)
+            // 예: FOOD를 60% 저장했다면 가중치 1.6
+            double weight = 1.0 + ((double) count / totalCount);
+            weights.put(category, weight);
+
+            log.info("카테고리 가중치 계산 - {}: {}회 저장 ({}%), 가중치: {}",
+                    category, count, String.format("%.1f", (double) count / totalCount * 100), weight);
+        }
+
+        return weights;
     }
 }

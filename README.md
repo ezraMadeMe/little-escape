@@ -569,6 +569,109 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 
 ---
 
+## 🚀 v2.6 주요 업데이트 (2026.01.23)
+
+### 1. 💚 피드 상태 영속화 (Like & Save Persistence)
+- **좋아요/저장 상태 백엔드 영속화:**
+  - LikedAppointment, SavedAppointment 엔티티 추가 (N:M 관계)
+  - 페이지 새로고침 후에도 상태 유지
+  - FeedResponse DTO에 `isLikedByMe`, `isSavedByMe` 필드 추가
+- **Optimistic Update 패턴:**
+  - 클릭 즉시 UI 업데이트
+  - API 실패 시 자동 롤백
+  - 사용자 경험 향상
+- **EscLikeButton 리팩토링:**
+  - Uncontrolled → Controlled Component
+  - 부모 컴포넌트에서 상태 관리
+  - 애니메이션 효과 유지 (💚 이모지)
+
+### 2. 🗄️ 저장한 일탈 페이지 구현
+- **SavedAppointments 페이지:**
+  - 저장한 약속 그리드 레이아웃
+  - 썸네일 이미지, 미션 제목, 장소명 표시
+  - 호버 시 삭제 버튼 표시
+  - 저장 취소 기능 (Optimistic Update)
+- **마이페이지 연동:**
+  - "저장한 일탈" 메뉴 항목 추가
+  - 카운트 및 안내 문구
+  - 빈 상태 처리
+
+### 3. 🧭 네비게이션 및 라우팅 대규모 개선
+- **MissionDetail BottomNav 표시:**
+  - MissionDetail을 MainLayout 내부로 이동
+  - 하단 네비게이션이 모든 페이지에서 일관되게 표시
+  - pb-24 추가로 콘텐츠 겹침 방지
+- **리스트 항목 클릭 버그 수정:**
+  - Appointments: `/chat/:id` → `/mission/:id` (잘못된 경로 수정)
+  - SavedAppointments: TODO 주석 → `/mission/:id` 네비게이션 구현
+  - 과거 약속 클릭 시 해당 약속의 상세 정보 정상 표시
+- **스마트 뒤로가기 버튼:**
+  - 하드코딩된 `/mypage` → `location.state?.from` 또는 `navigate(-1)`
+  - 브라우저 히스토리 활용
+  - 사용자가 온 경로로 정확히 복귀
+- **에러/완료 후 리다이렉트 개선:**
+  - 약속 완료/에러 시 `/mypage` → `/appointments`로 이동
+  - 더 직관적인 사용자 흐름
+
+### 4. 🛡️ Route Guards 개선
+- **RequireOnboarded 로직 수정:**
+  - 약속이 있는 사용자는 온보딩 완료 여부와 무관하게 피드/마이페이지 접근 허용
+  - 약속 보유자의 무한 리다이렉트 버그 해결
+- **GlobalRedirectWrapper 예외 경로 추가:**
+  - `/appointments`, `/reviews` 추가
+  - 사용자 경험 개선
+
+### 5. 🎨 UI/UX 최적화
+- **Debug Overlay 개선:**
+  - 토글 버튼(🛠️) 추가 (우측 상단 고정)
+  - localStorage로 표시/숨김 상태 저장
+  - 개발 환경에서만 활성화
+- **MainLayout 개선:**
+  - 상단 배너 제거 → FAB(Floating Action Button)로 대체
+  - 진행 중인 약속 알림 FAB (우측 하단)
+  - 티켓 아이콘 + 펄스 애니메이션
+  - Glow 효과 (네온 스타일)
+- **MissionDetail 스크롤 최적화:**
+  - 스크롤 방향 감지 (아래로 스크롤 시 버튼 숨김)
+  - Spring 애니메이션으로 부드러운 전환
+  - 콘텐츠 읽기에 집중
+- **D-Day 배지 디자인 개선:**
+  - 버튼처럼 보이지 않도록 수정
+  - `bg-electric-lime/20`, `text-electric-lime`
+  - `cursor-default`, `select-none`
+- **Appointments 다크 테마 적용:**
+  - 모든 색상을 네온 다크 테마로 통일
+  - 상태 배지, 필터 버튼, 로딩 스피너
+  - 일관된 브랜드 경험
+
+### 6. 🔧 기술적 개선
+- **RouteGuards 모듈화:**
+  - `frontend/src/routes/RouteGuards.tsx` 파일 분리
+  - RequireNewUser, RequireAppointment, RequireOnboarded, SmartRedirect
+  - 재사용 가능한 라우트 가드 컴포넌트
+- **Toast 시스템:**
+  - `frontend/src/utils/toast.ts` 유틸 추가
+  - 일관된 알림 메시지 표시
+- **타입 안전성 강화:**
+  - FeedItem 인터페이스에 `isLikedByMe`, `isSavedByMe` 추가
+  - 백엔드-프론트엔드 타입 동기화
+
+### 7. 🐛 주요 버그 수정
+- **버그 1: 리스트 항목 클릭 시 현재 약속 표시**
+  - 증상: 과거 약속 클릭 시 현재 진행 중인 약속이 표시됨
+  - 원인: URL 파라미터 무시, localStorage만 참조
+  - 해결: 리스트에서 올바른 ID를 URL에 전달하도록 수정
+- **버그 2: 약속 보유자 무한 리다이렉트**
+  - 증상: 약속이 있는데도 온보딩 페이지로 계속 이동
+  - 원인: RequireOnboarded가 온보딩 미완료 시 무조건 차단
+  - 해결: 약속 보유자는 온보딩 여부와 무관하게 접근 허용
+- **버그 3: 저장한 일탈 클릭 시 무반응**
+  - 증상: SavedAppointments에서 항목 클릭 시 아무 동작 없음
+  - 원인: TODO 주석만 있고 네비게이션 미구현
+  - 해결: `/mission/${item.appointmentId}` 네비게이션 구현
+
+---
+
 ## 🎯 다음 개발 계획 (Roadmap)
 
 ### Phase 1: 피드 기능 고도화

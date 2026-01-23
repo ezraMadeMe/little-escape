@@ -97,12 +97,14 @@ public class AppointmentController {
 
     @GetMapping("/feed")
     public ResponseEntity<List<FeedResponse>> getPublicFeed(
+            @AuthenticationPrincipal String userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        log.info("공개 피드 조회 요청 - 페이지: {}, 사이즈: {}", page, size);
+        log.info("공개 피드 조회 요청 - 사용자: {}, 페이지: {}, 사이즈: {}", userId, page, size);
 
-        List<FeedResponse> feed = appointmentService.getPublicFeed(page, size);
+        Long userIdLong = userId != null ? Long.parseLong(userId) : null;
+        List<FeedResponse> feed = appointmentService.getPublicFeed(userIdLong, page, size);
 
         return ResponseEntity.ok(feed);
     }
@@ -221,6 +223,70 @@ public class AppointmentController {
         appointmentService.bulkDeleteAppointments(Long.parseLong(userId), appointmentIds);
 
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * 약속 저장/저장 취소 (토글 방식)
+     * 피드에서 마음에 드는 약속을 저장하여 추후 추천 가중치에 활용
+     */
+    @PostMapping("/{id}/save")
+    public ResponseEntity<java.util.Map<String, Object>> toggleSaveAppointment(
+            @AuthenticationPrincipal String userId,
+            @PathVariable Long id) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.info("약속 저장/취소 요청 - 사용자: {}, 약속 ID: {}", userId, id);
+
+        boolean isSaved = appointmentService.toggleSaveAppointment(Long.parseLong(userId), id);
+
+        return ResponseEntity.ok(java.util.Map.of(
+            "isSaved", isSaved,
+            "message", isSaved ? "저장되었습니다" : "저장 취소되었습니다"
+        ));
+    }
+
+    /**
+     * 약속 좋아요/좋아요 취소 (토글 방식)
+     * ESC 키보드 버튼으로 피드 게시물에 반응
+     */
+    @PostMapping("/{id}/like")
+    public ResponseEntity<java.util.Map<String, Object>> toggleLikeAppointment(
+            @AuthenticationPrincipal String userId,
+            @PathVariable Long id) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.info("약속 좋아요/취소 요청 - 사용자: {}, 약속 ID: {}", userId, id);
+
+        boolean isLiked = appointmentService.toggleLikeAppointment(Long.parseLong(userId), id);
+
+        return ResponseEntity.ok(java.util.Map.of(
+            "isLiked", isLiked,
+            "message", isLiked ? "좋아요!" : "좋아요 취소"
+        ));
+    }
+
+    /**
+     * 사용자가 저장한 약속 목록 조회
+     */
+    @GetMapping("/saved")
+    public ResponseEntity<List<FeedResponse>> getSavedAppointments(
+            @AuthenticationPrincipal String userId) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.info("저장한 약속 목록 조회 - 사용자: {}", userId);
+
+        List<FeedResponse> savedAppointments = appointmentService.getSavedAppointments(Long.parseLong(userId));
+
+        return ResponseEntity.ok(savedAppointments);
     }
 
     // ========================================

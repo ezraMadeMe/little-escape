@@ -216,7 +216,7 @@ const Appointments = () => {
       case AppointmentStatus.COMPLETED:
         return <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">완료</span>;
       case AppointmentStatus.CANCELLED:
-        return <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">취소됨</span>;
+        return <span className="px-2 py-1 bg-charcoal-lighter text-text-gray text-xs rounded-full">취소됨</span>;
       default:
         return null;
     }
@@ -224,19 +224,19 @@ const Appointments = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+      <div className="min-h-screen bg-deep-charcoal flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-electric-lime"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7]">
+    <div className="min-h-screen bg-deep-charcoal text-off-white">
       <div className="max-w-md mx-auto">
         {/* 헤더 */}
-        <div className="bg-[#FDFBF7] border-b border-gray-100 px-4 py-4">
+        <div className="bg-deep-charcoal border-b border-charcoal-lighter px-4 py-4">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-xl font-bold text-gray-900">내 약속</h1>
+            <h1 className="text-xl font-bold text-off-white">내 약속</h1>
 
             <div className="flex items-center gap-2">
               {/* 즐겨찾기 필터 */}
@@ -244,8 +244,8 @@ const Appointments = () => {
                 onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
                   showFavoritesOnly
-                    ? 'bg-yellow-100 text-yellow-700'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-electric-lime/20 text-electric-lime'
+                    : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
                 }`}
               >
                 ⭐ {showFavoritesOnly ? '전체보기' : '즐겨찾기'}
@@ -258,7 +258,7 @@ const Appointments = () => {
                   setSelectedIds(new Set());
                 }}
                 className={`p-2 rounded-full transition ${
-                  isSelectionMode ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  isSelectionMode ? 'bg-accent-pink/20 text-accent-pink' : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
                 }`}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -274,8 +274,8 @@ const Appointments = () => {
               onClick={() => setFilter('all')}
               className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
                 filter === 'all'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-electric-lime text-deep-charcoal'
+                  : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
               }`}
             >
               전체 ({appointments.length})
@@ -284,8 +284,8 @@ const Appointments = () => {
               onClick={() => setFilter('active')}
               className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
                 filter === 'active'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-electric-lime text-deep-charcoal'
+                  : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
               }`}
             >
               진행 중
@@ -294,8 +294,8 @@ const Appointments = () => {
               onClick={() => setFilter('completed')}
               className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
                 filter === 'completed'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-electric-lime text-deep-charcoal'
+                  : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
               }`}
             >
               완료
@@ -304,8 +304,8 @@ const Appointments = () => {
               onClick={() => setFilter('cancelled')}
               className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
                 filter === 'cancelled'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-electric-lime text-deep-charcoal'
+                  : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
               }`}
             >
               취소
@@ -315,15 +315,15 @@ const Appointments = () => {
 
         {/* 다중 선택 모드 안내 */}
         {isSelectionMode && (
-          <div className="bg-purple-50 border-b border-purple-100 px-4 py-3">
+          <div className="bg-accent-pink/10 border-b border-accent-pink/20 px-4 py-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-purple-700">
+              <span className="text-sm text-accent-pink">
                 {selectedIds.size > 0 ? `${selectedIds.size}개 선택됨` : '삭제할 약속을 선택하세요'}
               </span>
               {selectedIds.size > 0 && (
                 <button
                   onClick={handleBulkDelete}
-                  className="px-4 py-1.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition"
+                  className="px-4 py-1.5 bg-accent-pink text-deep-charcoal text-sm font-semibold rounded-lg hover:bg-accent-pink/90 transition"
                 >
                   삭제하기
                 </button>
@@ -348,13 +348,13 @@ const Appointments = () => {
           {appointments.length === 0 ? (
             <div className="text-center py-20 px-4">
               <div className="text-6xl mb-4">📅</div>
-              <p className="text-gray-600">약속이 없어요</p>
-              <p className="text-sm text-gray-400 mt-2">새로운 약속을 잡아보세요!</p>
+              <p className="text-text-gray">약속이 없어요</p>
+              <p className="text-sm text-text-gray-dark mt-2">새로운 약속을 잡아보세요!</p>
             </div>
           ) : filteredAppointments.length === 0 && !upcomingAppointment ? (
             <div className="text-center py-20 px-4">
               <div className="text-6xl mb-4">🔍</div>
-              <p className="text-gray-600">
+              <p className="text-text-gray">
                 {showFavoritesOnly ? '즐겨찾기한 약속이 없어요' : '해당하는 약속이 없어요'}
               </p>
             </div>
@@ -362,7 +362,7 @@ const Appointments = () => {
             <>
               {filteredAppointments.length > 0 && (
                 <div className="px-4 pt-2 pb-1">
-                  <h2 className="text-sm font-semibold text-gray-500">지난 약속</h2>
+                  <h2 className="text-sm font-semibold text-text-gray">지난 약속</h2>
                 </div>
               )}
               {filteredAppointments.map((appointment) => (
@@ -375,7 +375,7 @@ const Appointments = () => {
                   onToggleFavorite={handleToggleFavorite}
                   onSwipeRight={() => handleSwipeRight(appointment.id)}
                 onSwipeLeft={() => handleSwipeLeft(appointment.id)}
-                onClick={() => !isSelectionMode && navigate(`/chat/${appointment.id}`)}
+                onClick={() => !isSelectionMode && navigate(`/mission/${appointment.id}`)}
                 getStatusBadge={getStatusBadge}
                 onDevUnlockTomorrow={handleDevUnlockTomorrow}
                 onDevUnlockNow={handleDevUnlockNow}
@@ -477,7 +477,7 @@ const SwipeableAppointmentItem = ({
         dragElastic={0.2}
         onDrag={(event, info) => setDragX(info.offset.x)}
         onDragEnd={handleDragEnd}
-        className="bg-[#FDFBF7] border-b border-gray-100 cursor-pointer"
+        className="bg-charcoal-soft border-b border-charcoal-lighter cursor-pointer"
       >
         <div
           onClick={isSelectionMode ? onToggleSelection : onClick}
@@ -504,7 +504,7 @@ const SwipeableAppointmentItem = ({
               {appointment.isFavorite ? (
                 <span className="text-yellow-500 text-xl">★</span>
               ) : (
-                <span className="text-gray-300 text-xl">☆</span>
+                <span className="text-charcoal-lighter text-xl">☆</span>
               )}
             </button>
           )}
@@ -512,24 +512,24 @@ const SwipeableAppointmentItem = ({
           {/* 내용 */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between mb-1">
-              <h3 className="font-bold text-gray-900 truncate">
+              <h3 className="font-bold text-off-white truncate">
                 {appointment.missionTitle || '미션 미선택'}
               </h3>
               {getStatusBadge(appointment.status)}
             </div>
 
-            <p className="text-sm text-gray-600 mb-1">
+            <p className="text-sm text-text-gray mb-1">
               {formatDateTime(appointment.scheduledAt)}
             </p>
 
             {appointment.status === AppointmentStatus.ACCEPTED && (
-              <span className="text-xs font-semibold text-purple-600">
+              <span className="text-xs font-semibold text-electric-lime">
                 {calculateDday(appointment.scheduledAt)}
               </span>
             )}
 
             {appointment.placeName && (
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-text-gray-dark mt-1">
                 📍 {appointment.placeName}
               </p>
             )}
