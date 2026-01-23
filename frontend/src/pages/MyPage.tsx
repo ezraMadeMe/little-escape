@@ -70,6 +70,13 @@ const MyPage = () => {
 
   const menuItems = [
     {
+      icon: '📂',
+      title: '저장한 일탈',
+      description: '마음에 든 약속 모아보기',
+      onClick: () => navigate('/mypage/saved'),
+      highlight: true, // 새 기능 강조
+    },
+    {
       icon: '✏️',
       title: '프로필 수정',
       description: '닉네임, 프로필 사진 변경하기',

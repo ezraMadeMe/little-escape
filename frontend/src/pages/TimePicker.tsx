@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { createAppointment } from '../api/appointmentApi';
 import { ChevronLeft } from 'lucide-react';
+import { showToast } from '../utils/toast';
 
 const TimePicker = () => {
   const navigate = useNavigate();
@@ -43,9 +44,31 @@ const TimePicker = () => {
     };
   };
 
+  // 약속 상태 초기화 함수
+  const resetAppointmentState = () => {
+    console.log('🔄 약속 상태 초기화');
+    setSelectedDate(null);
+    setSelectedTime(null);
+    localStorage.removeItem('appointmentId');
+    localStorage.removeItem('selected_mission');
+    console.log('✅ 약속 관련 데이터 싹 제거 완료');
+  };
+
+  // 뒤로 가기 핸들러
+  const handleGoBack = () => {
+    if (selectedDate || selectedTime) {
+      if (confirm('선택한 시간 정보가 초기화됩니다. 뒤로 가시겠어요?')) {
+        resetAppointmentState();
+        navigate('/location');
+      }
+    } else {
+      navigate('/location');
+    }
+  };
+
   const handleConfirm = async () => {
     if (!selectedDate || !selectedTime) {
-      alert('날짜와 시간을 모두 선택해주세요.');
+      showToast('약속 시간을 정해야 추천해줄 수 있어!');
       return;
     }
 
@@ -101,7 +124,7 @@ const TimePicker = () => {
       {/* Header */}
       <header className="container-solotion py-6">
         <button
-          onClick={() => navigate('/location')}
+          onClick={handleGoBack}
           className="mb-4 text-text-gray hover:text-off-white transition flex items-center gap-2"
         >
           <ChevronLeft size={20} />
@@ -229,12 +252,16 @@ const TimePicker = () => {
           transition={{ delay: 0.3, duration: 0.5 }}
           onClick={handleConfirm}
           disabled={!selectedDate || !selectedTime || isLoading}
-          className="btn-primary w-full text-xl py-4 disabled:opacity-50 disabled:cursor-not-allowed"
+          className={`w-full text-xl py-4 font-bold rounded-solotion transition-all ${
+            !selectedDate || !selectedTime || isLoading
+              ? 'bg-charcoal-lighter text-text-gray cursor-not-allowed'
+              : 'btn-primary hover:scale-105 active:scale-95'
+          }`}
         >
           {isLoading
             ? '약속 생성 중...'
             : selectedDate && selectedTime
-            ? `${formatDate(selectedDate).short} ${selectedTime}에 출발하기 🚀`
+            ? `좋아, 나갈게 🚀`
             : '날짜와 시간을 선택해주세요'}
         </motion.button>
       </footer>

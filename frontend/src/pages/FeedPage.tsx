@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MessageCircle, Bookmark, Clock } from 'lucide-react';
-import { getPublicFeed, FeedItem } from '../api/appointmentApi';
+import { MessageCircle, Bookmark, Clock, Calendar } from 'lucide-react';
+import { getPublicFeed, FeedItem, toggleSaveAppointment, toggleLikeAppointment } from '../api/appointmentApi';
 import { formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
+import EscLikeButton from '../components/EscLikeButton';
+import ScrollToTopButton from '../components/ScrollToTopButton';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
+import { showToast } from '../utils/toast';
 
 const FeedPage = () => {
+  const navigate = useNavigate();
   const [feeds, setFeeds] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
@@ -15,16 +21,16 @@ const FeedPage = () => {
     loadFeeds();
   }, []);
 
-  const loadFeeds = async () => {
+  const loadFeeds = async (pageNum: number = page) => {
     try {
       setLoading(true);
-      const data = await getPublicFeed(page, 20);
+      const data = await getPublicFeed(pageNum, 20);
 
       if (data.length < 20) {
         setHasMore(false);
       }
 
-      setFeeds(prev => page === 0 ? data : [...prev, ...data]);
+      setFeeds(prev => pageNum === 0 ? data : [...prev, ...data]);
     } catch (error) {
       console.error('피드 로딩 실패:', error);
     } finally {
@@ -34,8 +40,99 @@ const FeedPage = () => {
 
   const loadMore = () => {
     if (!loading && hasMore) {
-      setPage(prev => prev + 1);
-      loadFeeds();
+      const nextPage = page + 1;
+      setPage(nextPage);
+      loadFeeds(nextPage);
+    }
+  };
+
+  // Infinite Scroll 훅 사용
+  const observerTarget = useInfiniteScroll({
+    onLoadMore: loadMore,
+    hasMore,
+    loading,
+    threshold: 0.5,
+  });
+
+  // 좋아요 토글 핸들러
+  const handleToggleLike = async (appointmentId: number) => {
+    try {
+      // 낙관적 업데이트 (Optimistic Update)
+      setFeeds(prev =>
+        prev.map(feed =>
+          feed.appointmentId === appointmentId
+            ? { ...feed, isLikedByMe: !feed.isLikedByMe }
+            : feed
+        )
+      );
+
+      const isLiked = await toggleLikeAppointment(appointmentId);
+
+      // API 응답과 동기화
+      setFeeds(prev =>
+        prev.map(feed =>
+          feed.appointmentId === appointmentId
+            ? { ...feed, isLikedByMe: isLiked }
+            : feed
+        )
+      );
+
+      if (isLiked) {
+        showToast('좋아요! 💚');
+      }
+    } catch (error) {
+      console.error('좋아요 토글 실패:', error);
+      // 실패 시 원래 상태로 롤백
+      setFeeds(prev =>
+        prev.map(feed =>
+          feed.appointmentId === appointmentId
+            ? { ...feed, isLikedByMe: !feed.isLikedByMe }
+            : feed
+        )
+      );
+      showToast('좋아요 중 오류가 발생했어요');
+    }
+  };
+
+  // 북마크 토글 핸들러
+  const handleToggleSave = async (appointmentId: number) => {
+    try {
+      // 낙관적 업데이트
+      setFeeds(prev =>
+        prev.map(feed =>
+          feed.appointmentId === appointmentId
+            ? { ...feed, isSavedByMe: !feed.isSavedByMe }
+            : feed
+        )
+      );
+
+      const isSaved = await toggleSaveAppointment(appointmentId);
+
+      // API 응답과 동기화
+      setFeeds(prev =>
+        prev.map(feed =>
+          feed.appointmentId === appointmentId
+            ? { ...feed, isSavedByMe: isSaved }
+            : feed
+        )
+      );
+
+      if (isSaved) {
+        showToast('저장한 일탈 목록에 추가했어요 📂');
+      } else {
+        showToast('저장 목록에서 제거했어요');
+      }
+    } catch (error) {
+      console.error('북마크 토글 실패:', error);
+      // 실패 시 원래 상태로 롤백
+      setFeeds(prev =>
+        prev.map(feed =>
+          feed.appointmentId === appointmentId
+            ? { ...feed, isSavedByMe: !feed.isSavedByMe }
+            : feed
+        )
+      );
+      showToast('저장하는 중 오류가 발생했어요');
     }
   };
 
@@ -63,8 +160,16 @@ const FeedPage = () => {
       {/* Header */}
       <header className="bg-charcoal-soft/95 backdrop-blur-lg border-b border-charcoal-lighter sticky top-0 z-10">
         <div className="container-solotion py-4">
-          <h1 className="text-off-white text-2xl font-extra-bold">피드</h1>
-          <p className="text-text-gray text-sm mt-1">다른 사람들의 작은 일탈</p>
+          <div className="flex items-center justify-between">
+            <h1 className="text-off-white text-2xl font-extra-bold">잘 쉰 사람들 목록</h1>
+            <button
+              onClick={() => navigate('/appointments')}
+              className="flex items-center gap-2 px-4 py-2 bg-charcoal-lighter hover:bg-charcoal-lighter/80 text-off-white rounded-lg transition"
+            >
+              <Calendar size={18} />
+              <span className="text-sm font-bold">나의 쉼</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -77,9 +182,9 @@ const FeedPage = () => {
             className="text-center py-20"
           >
             <div className="text-6xl mb-4">🌍</div>
-            <p className="text-text-gray mb-2">아직 공개된 인증샷이 없어요</p>
+            <p className="text-text-gray mb-2">아직 제대로 쉰 사람이 없어요</p>
             <p className="text-text-gray-dark text-sm">
-              먼저 미션을 완료하고 인증해보세요!
+              쉬었음과 함께 제대로 쉬어요
             </p>
           </motion.div>
         ) : (
@@ -220,16 +325,36 @@ const FeedPage = () => {
                 )}
 
                 {/* Action Buttons */}
-                <div className="flex items-center gap-4 pt-3 border-t border-charcoal-lighter">
-                  <button className="flex items-center gap-1 text-text-gray hover:text-electric-lime transition">
-                    <MessageCircle size={18} />
-                    <span className="text-sm">댓글</span>
-                  </button>
+                <div className="flex items-center justify-between pt-3 border-t border-charcoal-lighter">
+                  <div className="flex items-center gap-4">
+                    <button className="flex items-center gap-1 text-text-gray hover:text-electric-lime transition">
+                      <MessageCircle size={18} />
+                      <span className="text-sm">댓글</span>
+                    </button>
 
-                  <button className="flex items-center gap-1 text-text-gray hover:text-electric-lime transition">
-                    <Bookmark size={18} />
-                    <span className="text-sm">저장</span>
-                  </button>
+                    <button
+                      onClick={() => handleToggleSave(feed.appointmentId)}
+                      className={`flex items-center gap-1 transition ${
+                        feed.isSavedByMe
+                          ? 'text-electric-lime'
+                          : 'text-text-gray hover:text-electric-lime'
+                      }`}
+                    >
+                      <Bookmark
+                        size={18}
+                        fill={feed.isSavedByMe ? 'currentColor' : 'none'}
+                      />
+                      <span className="text-sm">
+                        {feed.isSavedByMe ? '저장됨' : '저장'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* ESC 좋아요 버튼 */}
+                  <EscLikeButton
+                    isLiked={feed.isLikedByMe}
+                    onLike={() => handleToggleLike(feed.appointmentId)}
+                  />
                 </div>
               </div>
             </motion.div>
@@ -237,17 +362,36 @@ const FeedPage = () => {
           })
         )}
 
-        {/* Load More Button */}
+        {/* Infinite Scroll Observer Target */}
         {hasMore && feeds.length > 0 && (
-          <button
-            onClick={loadMore}
-            disabled={loading}
-            className="btn-secondary w-full disabled:opacity-50"
-          >
-            {loading ? '로딩 중...' : '더보기'}
-          </button>
+          <div ref={observerTarget} className="py-8 flex justify-center">
+            {loading && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center gap-3 text-text-gray"
+              >
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                  className="w-6 h-6 border-2 border-electric-lime/30 border-t-electric-lime rounded-full"
+                />
+                <span className="text-sm">더 많은 피드를 불러오는 중...</span>
+              </motion.div>
+            )}
+          </div>
+        )}
+
+        {/* 더 이상 피드가 없을 때 */}
+        {!hasMore && feeds.length > 0 && (
+          <div className="py-8 text-center text-text-gray-dark text-sm">
+            모든 피드를 확인했어요 ✨
+          </div>
         )}
       </div>
+
+      {/* Scroll to Top FAB */}
+      <ScrollToTopButton threshold={300} />
     </div>
   );
 };

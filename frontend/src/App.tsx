@@ -1,11 +1,14 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { ReactNode, useEffect } from 'react';
 
 // Layouts
 import MainLayout from './layouts/MainLayout';
 
 // Components
 import DebugOverlay from './components/DebugOverlay';
+
+// Route Guards
+import { RequireNewUser, RequireAppointment, RequireOnboarded, SmartRedirect } from './routes/RouteGuards';
 
 // Pages
 import FeedPage from './pages/FeedPage';
@@ -31,6 +34,7 @@ import MagicLogin from './pages/MagicLogin';
 import Onboarding from './pages/Onboarding';
 import ProfileEdit from './pages/ProfileEdit';
 import Contact from './pages/Contact';
+import SavedAppointments from './pages/SavedAppointments';
 
 // 보호된 라우트 컴포넌트
 const ProtectedRoute = ({ children }: { children: ReactNode }) => {
@@ -41,51 +45,51 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   return <>{children}</>;
 };
 
-// 미션 라우트 가드 (약속 ID 검증)
-const MissionGuard = ({ children }: { children: ReactNode }) => {
-  const appointmentId = localStorage.getItem('appointmentId');
+/**
+ * 글로벌 리다이렉트 래퍼
+ * 앱 실행 시 사용자 상태를 체크하여 적절한 페이지로 리다이렉트
+ */
+const GlobalRedirectWrapper = ({ children }: { children: ReactNode }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  // appointmentId가 없거나 유효하지 않으면 /feed로 리다이렉트
-  if (!appointmentId || appointmentId === 'null' || appointmentId === 'undefined') {
-    console.warn('⚠️ [MissionGuard] 유효하지 않은 약속 ID -> /feed로 리다이렉트');
-    return <Navigate to="/feed" replace />;
-  }
+  useEffect(() => {
+    const appointmentId = localStorage.getItem('appointmentId');
+    const onboardingComplete = localStorage.getItem('onboarding_complete');
+    const currentPath = location.pathname;
+
+    console.log('=== GlobalRedirectWrapper 체크 ===');
+    console.log('현재 경로:', currentPath);
+    console.log('약속 ID:', appointmentId);
+    console.log('온보딩 완료:', onboardingComplete === 'true');
+
+    // 예외 경로: 피드, 마이페이지, 약속 목록, 로그인 등은 체크 안 함
+    const exemptPaths = ['/feed', '/mypage', '/appointments', '/reviews', '/login', '/oauth/callback', '/auth/callback', '/magic-login', '/dev-console', '/profile-edit', '/contact', '/mypage/saved'];
+    if (exemptPaths.some(path => currentPath.startsWith(path))) {
+      console.log('✅ 예외 경로 - 리다이렉트 skip');
+      return;
+    }
+
+    // 1순위: 약속 있음 -> 온보딩이나 다른 곳에 있으면 미션으로 납치
+    if (appointmentId && appointmentId !== 'null' && appointmentId !== 'undefined') {
+      if (currentPath.startsWith('/chat') || currentPath.startsWith('/onboarding') || currentPath === '/location' || currentPath === '/time-picker') {
+        console.log('🎯 약속 있는데 온보딩 접근 시도 -> /mission으로 납치!');
+        navigate(`/mission/${appointmentId}`, { replace: true });
+        return;
+      }
+    }
+
+    // 2순위: 가입 완료 -> 온보딩 접근 시 피드로 튕김
+    if (onboardingComplete === 'true') {
+      if (currentPath.startsWith('/chat') || currentPath.startsWith('/onboarding')) {
+        console.log('⚠️ 이미 가입한 유저가 온보딩 접근 -> /feed로 튕김!');
+        navigate('/feed', { replace: true });
+        return;
+      }
+    }
+  }, [location.pathname, navigate]);
 
   return <>{children}</>;
-};
-
-// 랜딩 페이지 가드 (자동 로그인 체크)
-const LandingGuard = () => {
-  const token = localStorage.getItem('token');
-  const onboardingComplete = localStorage.getItem('onboarding_complete');
-  const userLocation = localStorage.getItem('user_location');
-
-  console.log('=== LandingGuard 체크 ===');
-  console.log('토큰 존재:', !!token);
-  console.log('온보딩 완료:', onboardingComplete === 'true');
-  console.log('위치 설정:', !!userLocation);
-
-  // 1. 토큰 없음 -> 로그인 페이지로 이동
-  if (!token || token === 'null' || token === 'undefined') {
-    console.log('🚫 토큰 없음 -> 로그인 페이지로 이동');
-    return <Navigate to="/login" replace />;
-  }
-
-  // 2. 토큰 있음 + 온보딩 미완료 -> 온보딩 채팅으로 이동
-  if (onboardingComplete !== 'true') {
-    console.log('📝 온보딩 미완료 -> 채팅 온보딩으로 이동');
-    return <Navigate to="/chat" replace />;
-  }
-
-  // 3. 토큰 있음 + 온보딩 완료 + 위치 미설정 -> 위치 설정 페이지로 이동
-  if (!userLocation) {
-    console.log('📍 위치 미설정 -> 위치 설정 페이지로 이동');
-    return <Navigate to="/location" replace />;
-  }
-
-  // 4. 토큰 있음 + 온보딩 완료 + 위치 설정 완료 -> 피드 페이지로 이동 (자동 로그인)
-  console.log('✅ 자동 로그인 성공 -> 피드 페이지로 이동');
-  return <Navigate to="/feed" replace />;
 };
 
 function App() {
@@ -94,7 +98,8 @@ function App() {
       {/* Debug Overlay - 개발 모드 전용 */}
       <DebugOverlay />
 
-      <Routes>
+      <GlobalRedirectWrapper>
+        <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/oauth/callback" element={<OAuthCallback />} />
@@ -111,11 +116,11 @@ function App() {
           }
         />
 
-        {/* Main Entry Point - Landing Guard (자동 로그인 체크) */}
+        {/* Main Entry Point - Smart Redirect */}
         <Route
           index
           path="/"
-          element={<LandingGuard />}
+          element={<SmartRedirect />}
         />
 
         {/* Location Setting Route */}
@@ -138,53 +143,75 @@ function App() {
           }
         />
 
-        {/* Missions Route - Without Bottom Navigation (Full Screen) */}
+        {/* Missions Route - Without Bottom Navigation (Full Screen) - 약속 필수 */}
         <Route
           path="/missions"
           element={
             <ProtectedRoute>
-              <MissionGuard>
+              <RequireAppointment>
                 <MissionList />
-              </MissionGuard>
+              </RequireAppointment>
             </ProtectedRoute>
           }
         />
 
-        {/* Main App - With Bottom Navigation */}
-        <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+        {/* Main App - With Bottom Navigation (온보딩 완료 필수) */}
+        <Route element={
+          <ProtectedRoute>
+            <RequireOnboarded>
+              <MainLayout />
+            </RequireOnboarded>
+          </ProtectedRoute>
+        }>
           {/* Bottom Nav Routes */}
           <Route index path="feed" element={<FeedPage />} />
           <Route path="reviews" element={<Reviews />} />
           <Route path="appointments" element={<Appointments />} />
           <Route path="mypage" element={<MyPage />} />
+
+          {/* Mission Detail - Now with Bottom Nav */}
+          <Route
+            path="mission/:appointmentId"
+            element={
+              <RequireAppointment>
+                <MissionDetail />
+              </RequireAppointment>
+            }
+          />
         </Route>
 
-        {/* Chat Routes - Without Bottom Navigation */}
+        {/* Chat Routes - Without Bottom Navigation (뉴비 전용) */}
         <Route
           path="/chat/:id"
           element={
             <ProtectedRoute>
-              <ChatAppointment />
+              <RequireNewUser>
+                <ChatAppointment />
+              </RequireNewUser>
             </ProtectedRoute>
           }
         />
-        
-        {/* Dev: 온보딩 채팅 (파라미터 없이 직접 접근) */}
+
+        {/* Dev: 온보딩 채팅 (파라미터 없이 직접 접근) - 뉴비 전용 */}
         <Route
           path="/chat"
           element={
             <ProtectedRoute>
-              <ChatAppointment />
+              <RequireNewUser>
+                <ChatAppointment />
+              </RequireNewUser>
             </ProtectedRoute>
           }
         />
-        
-        {/* Dev: 온보딩 채팅 (Alias) */}
+
+        {/* Dev: 온보딩 채팅 (Alias) - 뉴비 전용 */}
         <Route
           path="/appointment"
           element={
             <ProtectedRoute>
-              <ChatAppointment />
+              <RequireNewUser>
+                <ChatAppointment />
+              </RequireNewUser>
             </ProtectedRoute>
           }
         />
@@ -206,28 +233,26 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/mypage/saved"
+          element={
+            <ProtectedRoute>
+              <SavedAppointments />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Dev Tools - God Mode Simulation */}
         <Route path="/dev-console" element={<DevConsole />} />
 
-        {/* Legacy Routes - 호환성 유지 */}
+        {/* Legacy Routes - 호환성 유지 (약속 필수) */}
         <Route
           path="/pick-mission/:appointmentId"
           element={
             <ProtectedRoute>
-              <MissionGuard>
+              <RequireAppointment>
                 <PickMission />
-              </MissionGuard>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/mission/:appointmentId"
-          element={
-            <ProtectedRoute>
-              <MissionGuard>
-                <MissionDetail />
-              </MissionGuard>
+              </RequireAppointment>
             </ProtectedRoute>
           }
         />
@@ -235,13 +260,14 @@ function App() {
           path="/mission-proof/:appointmentId"
           element={
             <ProtectedRoute>
-              <MissionGuard>
+              <RequireAppointment>
                 <MissionProof />
-              </MissionGuard>
+              </RequireAppointment>
             </ProtectedRoute>
           }
         />
-      </Routes>
+        </Routes>
+      </GlobalRedirectWrapper>
     </BrowserRouter>
   );
 }

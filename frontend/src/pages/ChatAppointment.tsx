@@ -12,7 +12,7 @@ interface ChatMessage {
 }
 
 // 온보딩 단계
-type OnboardingStep = 'welcome' | 'nickname' | 'mbti' | 'solo-level' | 'complete';
+type OnboardingStep = 'welcome' | 'nickname' | 'mbti' | 'location' | 'preference' | 'complete';
 
 // 고유 ID 생성 함수
 const generateUniqueId = () => {
@@ -39,7 +39,8 @@ const ChatAppointment = () => {
   const [userData, setUserData] = useState({
     nickname: '',
     mbti: '',
-    soloLevel: 5,
+    defaultLocation: '',
+    preference: '', // 'OUTDOOR' or 'INDOOR'
   });
 
   // 자동 스크롤
@@ -123,39 +124,47 @@ const ChatAppointment = () => {
     addUserMessage(`${mbti}야.`);
     setShowChoices(false);
 
-    const response = mbti === 'I' 
-      ? '그렇겠지. 눈에 보이더라.' 
+    const response = mbti === 'I'
+      ? '그렇겠지. 눈에 보이더라.'
       : '오, 의외인데? 괜찮아.';
-    
+
     await addManagerMessage(response, 800);
-    setCurrentStep('solo-level');
-    await addManagerMessage('혼자 밥 먹는 거 레벨 몇? (1~10)', 500);
+    setCurrentStep('location');
+    await addManagerMessage('주로 어디서 출발해? (사는 곳이나 직장)', 500);
     setShowInput(true);
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
-  // 혼자 밥 먹기 레벨 처리
-  const handleSoloLevelSubmit = async () => {
-    const level = parseInt(inputValue.trim());
-    if (isNaN(level) || level < 1 || level > 10) {
-      await addManagerMessage('1부터 10 사이로 말해봐.', 500);
-      return;
-    }
+  // 위치 입력 처리
+  const handleLocationSubmit = async () => {
+    if (!inputValue.trim()) return;
 
-    const updatedUserData = { ...userData, soloLevel: level };
-    setUserData(updatedUserData);
-    addUserMessage(`레벨 ${level}`);
+    const location = inputValue.trim();
+    setUserData((prev) => ({ ...prev, defaultLocation: location }));
+    addUserMessage(location);
     setInputValue('');
     setShowInput(false);
 
-    let response = '';
-    if (level >= 8) {
-      response = '오... 프로네. 마음에 든다.';
-    } else if (level >= 5) {
-      response = '그 정도면 할 만하겠네.';
-    } else {
-      response = '괜찮아. 천천히 익숙해지면 돼.';
-    }
+    // localStorage에 default_location 저장
+    localStorage.setItem('default_location', location);
+    console.log('✅ 기본 위치 저장:', location);
+
+    await addManagerMessage(`${location}? 알았어.`, 800);
+    setCurrentStep('preference');
+    await addManagerMessage('야외가 좋아, 실내가 좋아?', 500);
+    setShowChoices(true);
+  };
+
+  // 선호 장소 선택 처리
+  const handlePreferenceSelect = async (preference: 'OUTDOOR' | 'INDOOR') => {
+    const updatedUserData = { ...userData, preference };
+    setUserData(updatedUserData);
+    addUserMessage(preference === 'OUTDOOR' ? '야외가 좋아.' : '실내가 좋아.');
+    setShowChoices(false);
+
+    const response = preference === 'OUTDOOR'
+      ? '오, 활동적이네. 좋아.'
+      : '실내파구나. 알겠어.';
 
     await addManagerMessage(response, 800);
     setCurrentStep('complete');
@@ -216,8 +225,8 @@ const ChatAppointment = () => {
     if (e.key === 'Enter') {
       if (currentStep === 'nickname') {
         handleNicknameSubmit();
-      } else if (currentStep === 'solo-level') {
-        handleSoloLevelSubmit();
+      } else if (currentStep === 'location') {
+        handleLocationSubmit();
       }
     }
   };
@@ -325,6 +334,28 @@ const ChatAppointment = () => {
           </motion.div>
         )}
 
+        {/* Preference 선택 버튼 */}
+        {showChoices && currentStep === 'preference' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-end gap-3"
+          >
+            <button
+              onClick={() => handlePreferenceSelect('OUTDOOR')}
+              className="px-6 py-3 bg-charcoal-soft text-off-white rounded-2xl hover:bg-charcoal-lighter transition-all border border-electric-lime/30 hover:border-electric-lime"
+            >
+              야외
+            </button>
+            <button
+              onClick={() => handlePreferenceSelect('INDOOR')}
+              className="px-6 py-3 bg-charcoal-soft text-off-white rounded-2xl hover:bg-charcoal-lighter transition-all border border-electric-lime/30 hover:border-electric-lime"
+            >
+              실내
+            </button>
+          </motion.div>
+        )}
+
         <div ref={messagesEndRef} />
       </main>
 
@@ -382,14 +413,14 @@ const ChatAppointment = () => {
         )}
       </AnimatePresence>
 
-      {/* 입력창 */}
+      {/* 입력창 - 모바일 CSS 최적화 */}
       {showInput && (
         <motion.div
           initial={{ y: 100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="fixed bottom-0 left-0 right-0 bg-charcoal-soft border-t border-charcoal-lighter p-4"
+          className="fixed bottom-0 left-0 right-0 bg-charcoal-soft border-t border-charcoal-lighter p-4 safe-area-inset-bottom"
         >
-          <div className="container-solotion flex gap-3 items-center">
+          <div className="container-solotion flex gap-2 sm:gap-3 items-center">
             <input
               ref={inputRef}
               type="text"
@@ -399,22 +430,22 @@ const ChatAppointment = () => {
               placeholder={
                 currentStep === 'nickname'
                   ? '닉네임 입력...'
-                  : currentStep === 'solo-level'
-                  ? '1~10 숫자 입력...'
+                  : currentStep === 'location'
+                  ? '지역 입력 (예: 강남, 홍대)...'
                   : '입력...'
               }
-              className="flex-1 bg-charcoal-lighter text-off-white px-4 py-3 rounded-full border border-charcoal-lighter focus:border-electric-lime focus:outline-none transition-colors placeholder-text-gray-dark"
+              className="flex-1 min-w-0 bg-charcoal-lighter text-off-white px-4 py-3 rounded-full border border-charcoal-lighter focus:border-electric-lime focus:outline-none transition-colors placeholder-text-gray-dark"
             />
             <button
               onClick={() => {
                 if (currentStep === 'nickname') {
                   handleNicknameSubmit();
-                } else if (currentStep === 'solo-level') {
-                  handleSoloLevelSubmit();
+                } else if (currentStep === 'location') {
+                  handleLocationSubmit();
                 }
               }}
               disabled={!inputValue.trim()}
-              className="bg-electric-lime text-deep-charcoal px-6 py-3 rounded-full font-bold hover:bg-electric-lime/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-shrink-0 bg-electric-lime text-deep-charcoal px-4 sm:px-6 py-3 rounded-full font-bold hover:bg-electric-lime/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[60px] text-sm sm:text-base"
             >
               전송
             </button>

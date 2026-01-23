@@ -21,8 +21,14 @@ public class FeedResponse {
     private List<String> reviewKeywords;
     private AppointmentStatus status;  // ACCEPTED, ARRIVED, COMPLETED 등
     private LocalDateTime scheduledAt;
+    private Boolean isLikedByMe;  // 현재 사용자가 좋아요 했는지 여부
+    private Boolean isSavedByMe;  // 현재 사용자가 저장했는지 여부
 
     public static FeedResponse from(Appointment appointment) {
+        return from(appointment, null);
+    }
+
+    public static FeedResponse from(Appointment appointment, Long currentUserId) {
         // 사용자 닉네임 (익명 처리 옵션)
         String userNickname = appointment.getUser() != null
             ? maskNickname(appointment.getUser().getNickname())
@@ -48,7 +54,9 @@ public class FeedResponse {
             appointment.getCompletedAt(),
             appointment.getReviewKeywords(),
             appointment.getStatus(),
-            appointment.getScheduledAt()
+            appointment.getScheduledAt(),
+            false,  // isLikedByMe - will be set by service layer
+            false   // isSavedByMe - will be set by service layer
         );
     }
 

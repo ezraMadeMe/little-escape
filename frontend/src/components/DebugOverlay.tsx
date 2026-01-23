@@ -10,6 +10,11 @@ const DebugOverlay = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const [isVisible, setIsVisible] = useState(() => {
+    const saved = localStorage.getItem('debug_overlay_visible');
+    return saved === null ? true : saved === 'true';
+  });
+
   const [localStorageData, setLocalStorageData] = useState({
     onboarding_complete: '',
     user_location: '',
@@ -18,6 +23,13 @@ const DebugOverlay = () => {
 
   const [appointmentStatus, setAppointmentStatus] = useState<string>('N/A');
   const [isLoading, setIsLoading] = useState(false);
+
+  // 가시성 토글
+  const toggleVisibility = () => {
+    const newVisibility = !isVisible;
+    setIsVisible(newVisibility);
+    localStorage.setItem('debug_overlay_visible', String(newVisibility));
+  };
 
   // 로컬 스토리지 실시간 업데이트
   const refreshLocalStorage = () => {
@@ -90,11 +102,24 @@ const DebugOverlay = () => {
   };
 
   return (
-    <div
-      className="fixed top-0 right-0 z-[9999] bg-black/80 text-white text-xs p-3 max-w-sm border-l border-b border-gray-600 shadow-lg"
-      style={{ fontFamily: 'monospace' }}
-    >
-      <div className="font-bold text-sm mb-2 text-yellow-400">🛠️ DEBUG OVERLAY</div>
+    <>
+      {/* 토글 버튼 (항상 보임) */}
+      <button
+        onClick={toggleVisibility}
+        className="fixed top-4 right-4 z-[10000] bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-3 py-2 rounded-lg shadow-lg transition"
+        style={{ fontFamily: 'monospace' }}
+        title={isVisible ? 'Debug Overlay 숨기기' : 'Debug Overlay 보기'}
+      >
+        🛠️
+      </button>
+
+      {/* 디버그 오버레이 */}
+      {isVisible && (
+        <div
+          className="fixed top-16 right-4 z-[9999] bg-black/90 text-white text-xs p-3 max-w-sm border border-gray-600 rounded-lg shadow-lg"
+          style={{ fontFamily: 'monospace' }}
+        >
+          <div className="font-bold text-sm mb-2 text-yellow-400">🛠️ DEBUG OVERLAY</div>
 
       {/* 현재 경로 */}
       <div className="mb-2">
@@ -165,7 +190,9 @@ const DebugOverlay = () => {
           [Go Home] 피드로 이동
         </button>
       </div>
-    </div>
+        </div>
+      )}
+    </>
   );
 };
 
