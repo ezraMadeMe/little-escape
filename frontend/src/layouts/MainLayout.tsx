@@ -11,7 +11,8 @@ const MainLayout = () => {
     // CRITICAL: localStorage에서 appointmentId 확인 (useNextAppointment보다 더 즉각적)
     const savedAppointmentId = localStorage.getItem('appointmentId');
 
-    if (savedAppointmentId) {
+    // FIX: null 문자열 및 빈 값 명시적 체크
+    if (savedAppointmentId && savedAppointmentId !== 'null' && savedAppointmentId !== 'undefined') {
       // Case A: 약속 ID 있음 -> 기존 약속 확인 페이지로
       console.log('✅ 기존 약속 존재 -> 상세 페이지로 이동:', savedAppointmentId);
       navigate(`/mission/${savedAppointmentId}`);

@@ -683,6 +683,7 @@ public class AppointmentService {
         appointment.setStatus(AppointmentStatus.COMPLETED);
         appointment.setCompletedAt(LocalDateTime.now());
         appointment.setProofComment(request.proofComment());
+        appointment.setPublic(true);  // 완료된 약속은 자동으로 피드에 공개
 
         // 다중 이미지 URL 저장
         appointment.getProofImageUrls().clear();
@@ -807,39 +808,161 @@ public class AppointmentService {
     }
 
     /**
-     * 공개 피드 조회 (인증샷이 있는 완료된 약속만)
+     * 공개 피드 조회 (SCHEDULED, ARRIVED, COMPLETED 모두 포함)
      * @param page 페이지 번호 (0부터 시작)
      * @param size 페이지 크기
      * @return 피드 리스트
      */
     @Transactional(readOnly = true)
     public List<FeedResponse> getPublicFeed(int page, int size) {
-        log.info("=== 공개 피드 조회 시작 ===");
+        log.info("=== 공개 피드 조회 시작 (생동감 모드) ===");
         log.info("페이지: {}, 사이즈: {}", page, size);
 
         Pageable pageable = PageRequest.of(page, size);
 
+        // SCHEDULED(예정), ARRIVED(도착/진행중), COMPLETED(완료) 상태 모두 조회
+        List<AppointmentStatus> feedStatuses = List.of(
+            AppointmentStatus.ACCEPTED,  // 예정된 약속
+            AppointmentStatus.ARRIVED,   // 도착/진행 중
+            AppointmentStatus.COMPLETED  // 완료
+        );
+
         List<Appointment> appointments = appointmentRepository
-            .findAllByStatusAndIsPublicTrueOrderByCompletedAtDesc(
-                AppointmentStatus.COMPLETED,
+            .findAllByStatusInAndIsPublicTrueOrderByUpdatedAtDesc(
+                feedStatuses,
                 pageable
             );
 
         log.info("조회된 공개 약속 개수: {}", appointments.size());
 
-        // 인증샷(proofImageUrls)이 없는 데이터는 제외
+        // 상태별 필터링 로직 제거 - 모든 상태 허용
         List<FeedResponse> feedResponses = appointments.stream()
-            .filter(appointment ->
-                appointment.getProofImageUrls() != null &&
-                !appointment.getProofImageUrls().isEmpty()
-            )
             .map(FeedResponse::from)
             .collect(Collectors.toList());
 
-        log.info("인증샷이 있는 피드 개수: {}", feedResponses.size());
+        log.info("피드 개수 (전체): {}", feedResponses.size());
         log.info("=== 공개 피드 조회 완료 ===");
 
         return feedResponses;
+    }
+
+    /**
+     * 미션 교체 (Swap) - 사용자가 현재 미션이 마음에 들지 않을 때 다른 미션으로 교체
+     * @param userId 사용자 ID
+     * @param appointmentId 약속 ID
+     * @return 교체된 약속 정보
+     */
+    @Transactional
+    public AppointmentResponse swapMission(Long userId, Long appointmentId) {
+        log.info("=== 미션 교체 시작 ===");
+        log.info("사용자 ID: {}, 약속 ID: {}", userId, appointmentId);
+
+        // 1. 약속 조회 및 권한 검증
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new RuntimeException("약속을 찾을 수 없습니다."));
+
+        if (!appointment.getUser().getId().equals(userId)) {
+            throw new RuntimeException("권한이 없습니다.");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+
+        // 2. 기존 미션 ID 저장 (중복 방지용)
+        Long previousMissionId = appointment.getMissionTemplate() != null
+                ? appointment.getMissionTemplate().getId()
+                : null;
+
+        log.info("기존 미션 ID: {}", previousMissionId);
+
+        // 3. 시간/날씨 조건 분석
+        List<TimeOfDay> targetTimes = analyzeTimeOfDay(appointment.getScheduledAt());
+        List<LocationType> targetLocations = analyzeLocation();
+
+        log.info("분석된 시간대: {}, 장소 타입: {}", targetTimes, targetLocations);
+
+        // 4. 조건에 맞는 미션 후보 조회 (기존 미션 제외)
+        List<MissionTemplate> candidates = missionTemplateRepository
+                .findAllByTimeOfDayInAndLocationTypeIn(targetTimes, targetLocations);
+
+        log.info("초기 후보 미션: {}개", candidates.size());
+
+        // 5. 기존 미션 제외
+        if (previousMissionId != null) {
+            candidates = candidates.stream()
+                    .filter(mission -> !mission.getId().equals(previousMissionId))
+                    .collect(Collectors.toList());
+            log.info("기존 미션 제외 후 후보: {}개", candidates.size());
+        }
+
+        // 6. 사용자 태그 필터링
+        String userTags = user.getTags();
+        if (userTags != null && !userTags.trim().isEmpty()) {
+            log.info("🏷️ 사용자 태그 필터링 적용: {}", userTags);
+            List<MissionTemplate> filteredCandidates = candidates.stream()
+                    .filter(mission -> !hasTagConflict(userTags, mission.getTags()))
+                    .collect(Collectors.toList());
+
+            log.info("태그 필터링 후 미션 후보: {}개", filteredCandidates.size());
+
+            if (!filteredCandidates.isEmpty()) {
+                candidates = filteredCandidates;
+            } else {
+                log.warn("⚠️ 태그 필터링 후 미션 후보가 0개 - 필터링 무시");
+            }
+        }
+
+        // 7. 후보가 없으면 에러
+        if (candidates.isEmpty()) {
+            throw new IllegalStateException("교체 가능한 미션을 찾을 수 없습니다. 현재 미션을 유지해주세요.");
+        }
+
+        // 8. 랜덤으로 새 미션 선택
+        Collections.shuffle(candidates);
+        MissionTemplate newMission = candidates.get(0);
+
+        log.info("새로 선택된 미션: {} (ID: {})", newMission.getTitle(), newMission.getId());
+
+        // 9. 약속의 미션 및 장소 업데이트
+        appointment.updateMission(newMission);
+
+        // 10. 장소 조건부 매칭
+        if (newMission.getIsPlaceRequired() != null && newMission.getIsPlaceRequired()) {
+            log.info("🏠 장소가 필요한 미션 - 장소 재매칭 시작");
+
+            // 사용자의 최근 위치 정보 가져오기 (위치 정보가 있다면)
+            // TODO: User 엔티티에 lastLatitude, lastLongitude 필드 추가 필요
+            // 현재는 Place만 교체하고 위치는 기존 정보 활용
+            Place newPlace = findQualityPlace(newMission.getCategory());
+
+            if (newPlace != null) {
+                appointment.updatePlace(newPlace);
+                log.info("✅ 새 장소: {} (카테고리: {})", newPlace.getName(), newPlace.getCategory());
+            } else {
+                log.error("❌ 장소 매칭 실패! 카테고리: {}", newMission.getCategory());
+                throw new IllegalStateException("적합한 장소를 찾을 수 없습니다.");
+            }
+        } else {
+            log.info("🌍 장소가 필요 없는 미션 - 어디서든 수행 가능");
+            appointment.setPlace(null);
+        }
+
+        // 11. 저장
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+
+        log.info("=== 미션 교체 완료 ===");
+        log.info("새 미션: {} (ID: {})", newMission.getTitle(), newMission.getId());
+        log.info("새 장소: {}", savedAppointment.getPlace() != null ? savedAppointment.getPlace().getName() : "없음");
+
+        // visitCount 계산 (newMission은 이미 위에서 선언됨)
+        Long visitCount = 0L;
+        if (newMission != null) {
+            visitCount = appointmentRepository.countByUserIdAndMissionTemplateId(
+                userId, newMission.getId()
+            );
+        }
+
+        return AppointmentResponse.from(savedAppointment, visitCount);
     }
 
     // ========================================

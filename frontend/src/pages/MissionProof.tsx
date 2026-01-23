@@ -99,22 +99,36 @@ function MissionProof() {
       return;
     }
 
+    // 검증: 리뷰 최소 10자
+    if (proofComment.trim().length < 10) {
+      alert('리뷰는 최소 10자 이상 작성해주세요. 친구에게 말하듯 편하게 적어봐!');
+      return;
+    }
+
+    // 검증: 키워드 최소 1개
+    if (selectedKeywords.length === 0) {
+      alert('감성 키워드를 최소 1개 선택해주세요!');
+      return;
+    }
+
     try {
       setIsSubmitting(true);
-
-      const keywords = selectedKeywords.length > 0
-        ? selectedKeywords
-        : ['완료했어'];
 
       await completeAppointment(
         Number(appointmentId),
         proofComment.trim(),
-        keywords,
+        selectedKeywords,
         imageFiles
       );
 
+      // 쿨타임 계산용 타임스탬프 저장
+      localStorage.setItem('last_mission_completed_at', new Date().toISOString());
+      // 완료된 약속 ID 제거 (상태 초기화)
+      localStorage.removeItem('appointmentId');
+
       alert('미션 인증이 완료되었습니다!');
-      navigate('/mypage');
+      // 피드로 이동하여 인증샷 확인 (뒤로가기 방지)
+      navigate('/feed', { replace: true });
     } catch (error) {
       alert('인증에 실패했습니다. 다시 시도해주세요.');
     } finally {
@@ -327,7 +341,10 @@ function MissionProof() {
 
         {/* 키워드 선택 섹션 */}
         <div>
-          <h2 className="text-xl font-bold text-off-white mb-4">이 미션, 어떠셨나요?</h2>
+          <h2 className="text-xl font-bold text-off-white mb-2">이 미션, 어떠셨나요?</h2>
+          <p className="text-sm text-text-gray mb-4">
+            <span className="text-electric-lime">*</span> 최소 1개 선택 필수
+          </p>
           <div className="flex flex-wrap gap-2">
             {REVIEW_KEYWORDS.map((keyword) => (
               <button
@@ -347,7 +364,8 @@ function MissionProof() {
 
         {/* 사진 업로드 섹션 */}
         <div>
-          <h2 className="text-xl font-bold text-off-white mb-4">인증샷 업로드</h2>
+          <h2 className="text-xl font-bold text-off-white mb-2">인증샷 업로드</h2>
+          <p className="text-sm text-text-gray mb-4">선택 사항 (없어도 괜찮아)</p>
           <input
             type="file"
             ref={fileInputRef}
@@ -363,7 +381,7 @@ function MissionProof() {
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            <span className="text-sm font-semibold">사진 추가</span>
+            <span className="text-sm font-semibold">사진 추가 (선택)</span>
           </button>
 
           <div className="grid grid-cols-3 gap-2 mt-4">
@@ -393,14 +411,22 @@ function MissionProof() {
 
         {/* 텍스트 후기 섹션 */}
         <div>
-          <h2 className="text-xl font-bold text-off-white mb-4">더 남기고 싶은 말이 있나요?</h2>
+          <h2 className="text-xl font-bold text-off-white mb-2">더 남기고 싶은 말이 있나요?</h2>
+          <p className="text-sm text-text-gray mb-4">
+            <span className="text-electric-lime">*</span> 10자 이상 적어줘 (친구에게 말하듯)
+          </p>
           <textarea
             value={proofComment}
             onChange={(e) => setProofComment(e.target.value)}
-            placeholder="선택 사항입니다"
+            placeholder="10자 이상 적어줘 (친구에게 말하듯)"
             className="w-full h-32 px-4 py-3 bg-charcoal-lighter text-off-white rounded-2xl focus:outline-none focus:ring-2 focus:ring-electric-lime/50 transition resize-none placeholder-text-gray-dark"
           />
-          <p className="text-sm text-text-gray mt-2">{proofComment.length}자</p>
+          <p className="text-sm text-text-gray mt-2">
+            {proofComment.length}자
+            {proofComment.length > 0 && proofComment.length < 10 && (
+              <span className="text-accent-pink ml-2">(최소 10자 필요)</span>
+            )}
+          </p>
         </div>
       </div>
 

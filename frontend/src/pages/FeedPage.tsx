@@ -83,38 +83,80 @@ const FeedPage = () => {
             </p>
           </motion.div>
         ) : (
-          feeds.map((feed, index) => (
-            <motion.div
-              key={`${feed.appointmentId}-${index}`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-              className="card overflow-hidden"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-charcoal-lighter">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-electric-lime to-neon-purple rounded-full flex items-center justify-center">
-                    <span className="text-deep-charcoal text-sm font-bold">
-                      {feed.userNickname.charAt(0)}
+          feeds.map((feed, index) => {
+            // 상태별 스타일링
+            const isScheduled = feed.status === 'ACCEPTED';
+            const isArrived = feed.status === 'ARRIVED';
+            const isCompleted = feed.status === 'COMPLETED';
+
+            return (
+              <motion.div
+                key={`${feed.appointmentId}-${index}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className={`card overflow-hidden ${
+                  isScheduled
+                    ? 'border-2 border-electric-lime/30'
+                    : isArrived
+                    ? 'border-2 border-accent-pink/30'
+                    : ''
+                }`}
+              >
+                {/* 상태 배지 (라이브 느낌) */}
+                {(isScheduled || isArrived) && (
+                  <div
+                    className={`px-4 py-2 text-sm font-bold flex items-center gap-2 ${
+                      isScheduled
+                        ? 'bg-electric-lime/10 text-electric-lime'
+                        : 'bg-accent-pink/10 text-accent-pink'
+                    }`}
+                  >
+                    {isArrived && <span className="animate-pulse">🔴</span>}
+                    <span>
+                      {isScheduled && `🚀 ${feed.userNickname}님이 ${feed.placeName || '목적지'}로 출발 준비 중!`}
+                      {isArrived && `🔥 ${feed.userNickname}님이 ${feed.missionTitle} 수행 중!`}
                     </span>
                   </div>
-                  <div>
-                    <div className="font-bold text-sm text-off-white">
-                      {feed.userNickname}
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-text-gray">
-                      <Clock size={12} />
-                      <span>
-                        {formatDistanceToNow(new Date(feed.completedAt), {
-                          addSuffix: true,
-                          locale: ko,
-                        })}
+                )}
+
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b border-charcoal-lighter">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-electric-lime to-neon-purple rounded-full flex items-center justify-center">
+                      <span className="text-deep-charcoal text-sm font-bold">
+                        {feed.userNickname.charAt(0)}
                       </span>
+                    </div>
+                    <div>
+                      <div className="font-bold text-sm text-off-white">
+                        {feed.userNickname}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-text-gray">
+                        <Clock size={12} />
+                        <span>
+                          {(() => {
+                            const dateStr = isCompleted ? feed.completedAt : feed.scheduledAt;
+                            if (!dateStr) return '시간 정보 없음';
+
+                            try {
+                              const date = new Date(dateStr);
+                              if (isNaN(date.getTime())) return '시간 정보 없음';
+
+                              return formatDistanceToNow(date, {
+                                addSuffix: true,
+                                locale: ko,
+                              });
+                            } catch (error) {
+                              console.error('날짜 파싱 오류:', dateStr, error);
+                              return '시간 정보 없음';
+                            }
+                          })()}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
               {/* Content */}
               <div className="p-4">
@@ -129,15 +171,23 @@ const FeedPage = () => {
                   </p>
                 </div>
 
-                {/* Comment */}
-                {feed.proofComment && (
+                {/* 진행 중 상태일 때 다른 메시지 */}
+                {(isScheduled || isArrived) && (
+                  <p className="text-text-gray text-sm mb-3 leading-relaxed italic">
+                    {isScheduled && '곧 출발합니다. 응원해주세요! 💪'}
+                    {isArrived && '지금 미션을 수행하고 있어요. 곧 인증샷이 올라올 거예요!'}
+                  </p>
+                )}
+
+                {/* Comment (완료된 경우만) */}
+                {isCompleted && feed.proofComment && (
                   <p className="text-text-gray text-sm mb-3 leading-relaxed">
                     {feed.proofComment}
                   </p>
                 )}
 
-                {/* Keywords */}
-                {feed.reviewKeywords && feed.reviewKeywords.length > 0 && (
+                {/* Keywords (완료된 경우만) */}
+                {isCompleted && feed.reviewKeywords && feed.reviewKeywords.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
                     {feed.reviewKeywords.map((keyword, idx) => (
                       <span
@@ -150,8 +200,8 @@ const FeedPage = () => {
                   </div>
                 )}
 
-                {/* Images */}
-                {feed.proofImageUrls && feed.proofImageUrls.length > 0 && (
+                {/* Images (완료된 경우만) */}
+                {isCompleted && feed.proofImageUrls && feed.proofImageUrls.length > 0 && (
                   <div className="mb-3 rounded-lg overflow-hidden">
                     <img
                       src={`${import.meta.env.VITE_API_BASE_URL}${feed.proofImageUrls[0]}`}
@@ -183,7 +233,8 @@ const FeedPage = () => {
                 </div>
               </div>
             </motion.div>
-          ))
+            );
+          })
         )}
 
         {/* Load More Button */}

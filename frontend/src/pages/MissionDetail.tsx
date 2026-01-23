@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAppointmentDetail, completeAppointment, markAsArrived } from '../api/appointmentApi';
+import { getAppointmentDetail, completeAppointment, markAsArrived, swapMission } from '../api/appointmentApi';
 import { Appointment } from '../types/appointment';
 import { PlanB } from '../types/mission';
 import { supabase } from '../lib/supabaseClient';
@@ -56,15 +56,24 @@ function MissionDetail() {
 
   // 감성 키워드 옵션
   const EMOTION_KEYWORDS = [
-    '힐링됐어', '재밌었어', '새로웠어', '설렜어', 
+    '힐링됐어', '재밌었어', '새로웠어', '설렜어',
     '편안했어', '뿌듯했어', '감동적이었어', '즐거웠어'
   ];
 
   // 도착 인증 로딩 상태
   const [isArrivingLoading, setIsArrivingLoading] = useState<boolean>(false);
 
+  // 도착 인증 성공 모달 상태
+  const [showArrivalSuccessModal, setShowArrivalSuccessModal] = useState<boolean>(false);
+
   // Plan B 모달 상태
   const [showPlanBModal, setShowPlanBModal] = useState<boolean>(false);
+
+  // 미션 교체 로딩 상태
+  const [isSwapping, setIsSwapping] = useState<boolean>(false);
+
+  // 긍정 강화 토스트 상태
+  const [showPositiveToast, setShowPositiveToast] = useState<boolean>(false);
 
   // 가이드 파싱
   const parseGuide = (guideJson?: string): GuideStep[] => {
@@ -147,6 +156,98 @@ function MissionDetail() {
     return now >= scheduled;
   };
 
+  // 점진적 블라인드 로직 (Progressive Unlock)
+  const getUnlockProgress = (scheduledAt: string): {
+    progress: number; // 0~100 (%)
+    blurAmount: number; // blur-[0~10]px
+    opacity: number; // 0~1
+    message: string;
+  } => {
+    const now = new Date();
+    const scheduled = new Date(scheduledAt);
+    const totalMs = 24 * 60 * 60 * 1000; // 24시간을 밀리초로
+    const remainingMs = scheduled.getTime() - now.getTime();
+
+    // 이미 D-Day 지남 또는 당일
+    if (remainingMs <= 0) {
+      return { progress: 100, blurAmount: 0, opacity: 1, message: '완전 공개!' };
+    }
+
+    // 진행률 계산 (0~100%)
+    const progress = Math.max(0, Math.min(100, ((totalMs - remainingMs) / totalMs) * 100));
+
+    // 단계별 점진적 공개
+    if (progress >= 75) {
+      // 75%~100%: 거의 다 공개 (blur 약함)
+      return {
+        progress,
+        blurAmount: 2,
+        opacity: 0.9,
+        message: '곧 공개돼. 조금만 기다려봐.',
+      };
+    } else if (progress >= 50) {
+      // 50%~75%: 반쯤 공개 (힌트 1개 노출)
+      return {
+        progress,
+        blurAmount: 5,
+        opacity: 0.6,
+        message: '반은 공개됐어. 어디인지 감 오지?',
+      };
+    } else if (progress >= 25) {
+      // 25%~50%: 약간 공개 (흐릿하게 보임)
+      return {
+        progress,
+        blurAmount: 8,
+        opacity: 0.3,
+        message: '조금씩 보이기 시작해.',
+      };
+    } else {
+      // 0%~25%: 거의 비공개
+      return {
+        progress,
+        blurAmount: 10,
+        opacity: 0.1,
+        message: '🔒 아직 멀었어. 24시간 전부터 공개돼.',
+      };
+    }
+  };
+
+  // 미션 교체 핸들러
+  const handleSwapMission = async () => {
+    if (!appointment) return;
+
+    setIsSwapping(true);
+    try {
+      // 1. Swap API 호출
+      const updatedAppointment = await swapMission(appointment.id);
+
+      // 2. 약속 데이터 갱신
+      setAppointment(updatedAppointment);
+
+      // 3. 모달 닫기
+      setShowPlanBModal(false);
+
+      // 4. 성공 토스트 메시지
+      alert('새로운 루트로 변경 완료! 🎉');
+    } catch (err) {
+      console.error('미션 교체 실패:', err);
+      alert('미션 교체에 실패했어. 다시 시도해봐.');
+    } finally {
+      setIsSwapping(false);
+    }
+  };
+
+  // 원래대로 할게 핸들러 (긍정 강화)
+  const handleKeepOriginal = () => {
+    setShowPlanBModal(false);
+    setShowPositiveToast(true);
+
+    // 3초 후 토스트 자동 숨김
+    setTimeout(() => {
+      setShowPositiveToast(false);
+    }, 3000);
+  };
+
   // 도착 인증 (백엔드 API 호출)
   const handleArrivalCheck = async () => {
     if (!appointment) return;
@@ -161,8 +262,43 @@ function MissionDetail() {
       const updatedAppointment = await getAppointmentDetail(appointment.id);
       setAppointment(updatedAppointment);
 
-      // 3. 성공 토스트 메시지
-      alert('도착 인증 완료! 🎉\n이제 상세 코스를 볼 수 있어.');
+      // 3. 폭죽 효과 (Dynamic Import로 성능 최적화)
+      const confetti = (await import('canvas-confetti')).default;
+
+      // 화면 중앙에서 폭죽 발사 (3초간)
+      const duration = 3000;
+      const end = Date.now() + duration;
+
+      const colors = ['#D4FF00', '#00FF88', '#FF6B00', '#FF0088'];
+
+      (function frame() {
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0 },
+          colors: colors,
+        });
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1 },
+          colors: colors,
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      })();
+
+      // 4. 햅틱 피드백 (모바일만)
+      if (navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]); // 징- 징-
+      }
+
+      // 5. 성공 모달 표시
+      setShowArrivalSuccessModal(true);
     } catch (err) {
       console.error('도착 인증 실패:', err);
       alert('도착 인증에 실패했어. 다시 시도해봐.');
@@ -229,8 +365,8 @@ function MissionDetail() {
         return;
       }
 
-      const keywords = selectedKeywords.length > 0 
-        ? selectedKeywords 
+      const keywords = selectedKeywords.length > 0
+        ? selectedKeywords
         : ['완료했어'];
 
       await completeAppointment(
@@ -248,21 +384,6 @@ function MissionDetail() {
       setIsUploading(false);
     }
   };
-
-  // 약속 취소 (향후 취소 버튼 추가 시 사용)
-  // const handleCancelAppointment = async () => {
-  //   if (!appointment) return;
-  //   if (!confirm('정말 이 약속을 취소할 거야?')) return;
-
-  //   try {
-  //     await cancelAppointment(appointment.id);
-  //     alert('약속이 취소됐어.');
-  //     navigate('/appointments');
-  //   } catch (error) {
-  //     console.error('약속 취소 실패:', error);
-  //     alert('약속 취소에 실패했어.');
-  //   }
-  // };
 
   if (loading) {
     return (
@@ -286,10 +407,15 @@ function MissionDetail() {
                     appointment.status === 'COMPLETED' ||
                     appointment.status === 'IN_PROGRESS';
 
+  // Timeline Step 상태 계산
+  const isStep1Complete = true; // 준비는 항상 활성화
+  const isStep2Complete = isArrived;
+  const isStep3Unlocked = isArrived;
+
   return (
     <div className="min-h-screen bg-deep-charcoal flex flex-col">
       {/* ===== Header ===== */}
-      <header className="container-solotion py-6 flex items-center justify-between border-b border-charcoal-lighter">
+      <header className="px-4 sm:px-6 py-6 flex items-center justify-between border-b border-charcoal-lighter sticky top-0 z-20 bg-deep-charcoal/95 backdrop-blur-sm">
         <button
           onClick={() => navigate('/mypage')}
           className="flex items-center gap-2 text-text-gray hover:text-off-white transition-colors"
@@ -310,7 +436,7 @@ function MissionDetail() {
       </header>
 
       {/* ===== Main Content ===== */}
-      <main className="flex-1 container-solotion py-8 space-y-6 overflow-y-auto scrollbar-solotion pb-24">
+      <main className="flex-1 container-solotion py-8 space-y-8 overflow-y-auto scrollbar-solotion pb-24">
         {/* 미션 헤더 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -354,315 +480,412 @@ function MissionDetail() {
           </motion.div>
         )}
 
-        {/* 단계별 코스 가이드 - guide 필드가 있을 때만 표시 */}
-        {appointment.missionGuide && parseGuide(appointment.missionGuide).length > 0 && (
+        {/* ===== VERTICAL TIMELINE ===== */}
+        <div className="space-y-0">
+          {/* STEP 1: 준비 & 출발 (Ready) */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="card space-y-4"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+            className="flex gap-6 relative"
           >
-            <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
-              🗺️ 오늘의 코스
-            </h3>
-            <div className="space-y-4">
-              {parseGuide(appointment.missionGuide).map((step, index) => (
-                <div key={index} className="flex gap-4">
-                  {/* 스텝 번호와 아이콘 */}
-                  <div className="flex flex-col items-center">
-                    <div className="w-12 h-12 rounded-full bg-electric-lime/20 border-2 border-electric-lime flex items-center justify-center text-2xl">
-                      {ICON_MAP[step.icon] || '📍'}
-                    </div>
-                    {index < parseGuide(appointment.missionGuide).length - 1 && (
-                      <div className="w-0.5 h-full min-h-[40px] bg-electric-lime/30 mt-2"></div>
-                    )}
-                  </div>
+            {/* Timeline Node & Line */}
+            <div className="flex flex-col items-center">
+              {/* Node */}
+              <div
+                className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl border-4 transition-all duration-500 ${
+                  isStep1Complete
+                    ? 'bg-electric-lime border-electric-lime shadow-lg shadow-electric-lime/50'
+                    : 'bg-charcoal-lighter border-charcoal-lighter'
+                }`}
+              >
+                🎒
+              </div>
+              {/* Vertical Line */}
+              <div className="w-1 flex-1 min-h-[80px] bg-gradient-to-b from-electric-lime to-charcoal-lighter"></div>
+            </div>
 
-                  {/* 스텝 내용 */}
-                  <div className="flex-1 pb-4">
-                    <h4 className="text-off-white font-bold text-lg mb-1">
-                      {step.title}
-                    </h4>
-                    <p className="text-text-gray leading-relaxed">
-                      {step.desc}
+            {/* Content */}
+            <div className="flex-1 pb-12">
+              <div className="card space-y-4">
+                <h3 className="text-off-white text-2xl font-bold flex items-center gap-2">
+                  준비 & 출발
+                </h3>
+                <p className="text-text-gray">출발하기 전에 챙겨야 할 것들</p>
+                <ul className="space-y-2">
+                  {MOCK_PREPARATIONS.map((item, idx) => (
+                    <li key={idx} className="text-text-gray flex items-center gap-2">
+                      <span className="text-electric-lime">✓</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* STEP 2: 이동 & 도착 (Move) */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.3 }}
+            className="flex gap-6 relative"
+          >
+            {/* Timeline Node & Line */}
+            <div className="flex flex-col items-center">
+              {/* Node */}
+              <div
+                className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl border-4 transition-all duration-500 ${
+                  isStep2Complete
+                    ? 'bg-electric-lime border-electric-lime shadow-lg shadow-electric-lime/50'
+                    : unlocked
+                    ? 'bg-charcoal-soft border-electric-lime/50'
+                    : 'bg-charcoal-lighter border-charcoal-lighter'
+                }`}
+              >
+                {isStep2Complete ? '✅' : '📍'}
+              </div>
+              {/* Vertical Line */}
+              <div
+                className={`w-1 flex-1 min-h-[80px] transition-all duration-500 ${
+                  isStep2Complete
+                    ? 'bg-gradient-to-b from-electric-lime to-charcoal-lighter'
+                    : 'bg-charcoal-lighter'
+                }`}
+              ></div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 pb-12">
+              <div
+                className={`card space-y-4 transition-all duration-500 ${
+                  unlocked ? 'opacity-100' : 'opacity-50'
+                }`}
+              >
+                <h3 className="text-off-white text-2xl font-bold flex items-center gap-2">
+                  이동 & 도착
+                </h3>
+
+                {unlocked ? (
+                  <>
+                    <p className="text-text-gray text-lg font-semibold">
+                      {appointment.placeName || '장소 정보 없음'}
                     </p>
+                    <p className="text-text-gray-dark text-sm">
+                      {appointment.placeAddress || '주소 정보 없음'}
+                    </p>
+
+                    {/* 지도 버튼 - 카카오맵 통일 */}
+                    <div className="w-full">
+                      <a
+                        href={
+                          appointment.latitude && appointment.longitude
+                            ? `https://map.kakao.com/link/to/${encodeURIComponent(appointment.placeName || '목적지')},${appointment.latitude},${appointment.longitude}`
+                            : `https://map.kakao.com/link/search/${encodeURIComponent(appointment.placeName || '')}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-primary flex items-center justify-center gap-2 text-sm w-full"
+                      >
+                        🗺️ 카카오맵으로 길찾기
+                      </a>
+                    </div>
+
+                    {/* 도착 인증 버튼 */}
+                    {!isArrived && (
+                      <button
+                        onClick={handleArrivalCheck}
+                        disabled={isArrivingLoading}
+                        className="btn-outline w-full mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isArrivingLoading ? (
+                          <>
+                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                                fill="none"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              />
+                            </svg>
+                            <span>인증 중...</span>
+                          </>
+                        ) : (
+                          <>📍 도착 인증하기</>
+                        )}
+                      </button>
+                    )}
+
+                    {isArrived && (
+                      <div className="bg-electric-lime/10 border border-electric-lime/30 rounded-solotion p-3 text-center">
+                        <p className="text-electric-lime font-bold">✅ 도착 인증 완료!</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="relative">
+                    {/* 점진적 블라인드 처리 */}
+                    {(() => {
+                      const unlockStatus = getUnlockProgress(appointment.scheduledAt);
+                      return (
+                        <>
+                          {/* 흐릿한 장소 정보 (힌트) */}
+                          <div
+                            className="space-y-3 transition-all duration-700"
+                            style={{
+                              filter: `blur(${unlockStatus.blurAmount}px)`,
+                              opacity: unlockStatus.opacity,
+                            }}
+                          >
+                            <p className="text-text-gray text-lg font-semibold select-none">
+                              {appointment.placeName || '장소 정보 없음'}
+                            </p>
+                            <p className="text-text-gray-dark text-sm select-none">
+                              {appointment.placeAddress || '주소 정보 없음'}
+                            </p>
+                          </div>
+
+                          {/* 진행 바 */}
+                          <div className="mt-6 space-y-2">
+                            <div className="w-full bg-charcoal-lighter rounded-full h-2 overflow-hidden">
+                              <div
+                                className="bg-electric-lime h-full transition-all duration-500"
+                                style={{ width: `${unlockStatus.progress}%` }}
+                              />
+                            </div>
+                            <p className="text-text-gray text-xs text-center">
+                              {unlockStatus.message}
+                            </p>
+                          </div>
+
+                          {/* 잠금 아이콘 */}
+                          <div className="text-center py-4">
+                            <div className="text-4xl mb-2">
+                              {unlockStatus.progress >= 75 ? '🔓' : unlockStatus.progress >= 50 ? '🔐' : '🔒'}
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* 준비물 섹션 - 항상 보임 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="card space-y-3"
-        >
-          <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
-            🎒 준비물
-          </h3>
-          <ul className="space-y-2">
-            {MOCK_PREPARATIONS.map((item, idx) => (
-              <li key={idx} className="text-text-gray flex items-center gap-2">
-                <span className="text-electric-lime">•</span>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </motion.div>
-
-        {/* 모임 장소 - 항상 보임 (지하철역만) */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="card space-y-4"
-        >
-          <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
-            📍 모임 장소
-          </h3>
-          {unlocked ? (
-            <>
-              <p className="text-text-gray text-lg">
-                {appointment.placeName || '장소 정보 없음'}
-              </p>
-              <p className="text-text-gray-dark">
-                {appointment.placeAddress || '주소 정보 없음'}
-              </p>
-
-              {/* 카카오맵/네이버맵 링크 버튼 */}
-              <div className="grid grid-cols-2 gap-3 mt-4">
-                {appointment.placeUrl && (
-                  <a
-                    href={appointment.placeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-primary flex items-center justify-center gap-2 text-base"
-                  >
-                    🗺️ 카카오맵
-                  </a>
                 )}
-                <a
-                  href={`https://map.naver.com/v5/search/${encodeURIComponent(appointment.placeName || '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-secondary flex items-center justify-center gap-2 text-base"
-                >
-                  🗺️ 네이버맵
-                </a>
-              </div>
-
-              {/* 도착 인증 버튼 */}
-              {!isArrived && (
-                <button
-                  onClick={handleArrivalCheck}
-                  disabled={isArrivingLoading}
-                  className="btn-outline w-full mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isArrivingLoading ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      <span>인증 중...</span>
-                    </>
-                  ) : (
-                    <>📍 도착 인증하기</>
-                  )}
-                </button>
-              )}
-              {isArrived && (
-                <div className="bg-electric-lime/10 border border-electric-lime/30 rounded-solotion p-3 mt-4 text-center">
-                  <p className="text-electric-lime font-bold">✅ 도착 인증 완료!</p>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-8">
-              <div className="text-6xl mb-4">🔒</div>
-              <p className="text-text-gray">D-Day가 되면 공개돼.</p>
-            </div>
-          )}
-        </motion.div>
-
-        {/* 상세 코스 - 도착 인증 후에만 보임 (Progressive Disclosure) */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="card space-y-3 relative"
-        >
-          <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
-            🗺️ 상세 코스
-          </h3>
-          {isArrived ? (
-            <motion.div
-              initial={{ opacity: 0, filter: 'blur(10px)' }}
-              animate={{ opacity: 1, filter: 'blur(0px)' }}
-              transition={{ duration: 0.5 }}
-              className="text-text-gray whitespace-pre-line"
-            >
-              {MOCK_DETAILED_COURSE}
-            </motion.div>
-          ) : (
-            <div className="relative">
-              <div className="blur-md select-none text-text-gray whitespace-pre-line">
-                {MOCK_DETAILED_COURSE}
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center bg-charcoal-soft/80 rounded-solotion">
-                <div className="text-center">
-                  <div className="text-4xl mb-2">🔒</div>
-                  <p className="text-off-white font-bold">도착 인증 후 공개</p>
-                </div>
               </div>
             </div>
-          )}
-        </motion.div>
-
-        {/* 할 일 - 도착 인증 후에만 보임 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="card space-y-3 relative"
-        >
-          <h3 className="text-off-white text-xl font-bold flex items-center gap-2">
-            ✅ 할 일
-          </h3>
-          {isArrived ? (
-            <motion.ul
-              initial={{ opacity: 0, filter: 'blur(10px)' }}
-              animate={{ opacity: 1, filter: 'blur(0px)' }}
-              transition={{ duration: 0.5 }}
-              className="space-y-2"
-            >
-              {MOCK_TASKS.map((task, idx) => (
-                <li key={idx} className="text-text-gray flex items-start gap-2">
-                  <span className="text-electric-lime mt-1">•</span>
-                  <span>{task}</span>
-                </li>
-              ))}
-            </motion.ul>
-          ) : (
-            <div className="relative">
-              <ul className="space-y-2 blur-md select-none">
-                {MOCK_TASKS.map((task, idx) => (
-                  <li key={idx} className="text-text-gray flex items-start gap-2">
-                    <span className="text-electric-lime mt-1">•</span>
-                    <span>{task}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="absolute inset-0 flex items-center justify-center bg-charcoal-soft/80 rounded-solotion">
-                <div className="text-center">
-                  <div className="text-4xl mb-2">🔒</div>
-                  <p className="text-off-white font-bold">도착 인증 후 공개</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </motion.div>
-
-        {/* 인증 섹션 */}
-        {unlocked && appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="card space-y-6"
-          >
-            <h3 className="text-off-white text-xl font-bold">📸 인증하기</h3>
-
-            {/* 이미지 업로드 */}
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageSelect}
-                className="hidden"
-              />
-
-              {!previewUrl ? (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full h-48 border-2 border-dashed border-charcoal-lighter rounded-solotion hover:border-electric-lime transition-all flex flex-col items-center justify-center gap-3"
-                >
-                  <div className="text-5xl">📷</div>
-                  <p className="text-text-gray">사진 추가</p>
-                </button>
-              ) : (
-                <div className="relative">
-                  <img
-                    src={previewUrl}
-                    alt="Preview"
-                    className="w-full h-64 object-cover rounded-solotion"
-                  />
-                  <button
-                    onClick={handleRemoveImage}
-                    className="absolute top-2 right-2 bg-charcoal-soft/90 text-off-white p-2 rounded-solotion hover:bg-charcoal-lighter"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* 코멘트 */}
-            <textarea
-              value={proofComment}
-              onChange={(e) => setProofComment(e.target.value)}
-              placeholder="오늘의 작은 일탈은 어땠어?"
-              className="input w-full h-32 resize-none"
-            />
-
-            {/* 감성 키워드 선택 */}
-            <div>
-              <label className="block text-sm font-medium text-text-gray mb-2">
-                어땠어? (선택사항)
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {EMOTION_KEYWORDS.map((keyword) => (
-                  <button
-                    key={keyword}
-                    type="button"
-                    onClick={() => {
-                      if (selectedKeywords.includes(keyword)) {
-                        setSelectedKeywords(selectedKeywords.filter(k => k !== keyword));
-                      } else {
-                        setSelectedKeywords([...selectedKeywords, keyword]);
-                      }
-                    }}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                      selectedKeywords.includes(keyword)
-                        ? 'bg-electric-lime text-deep-charcoal'
-                        : 'bg-charcoal-soft text-text-gray hover:bg-charcoal-lighter'
-                    }`}
-                  >
-                    {keyword}
-                  </button>
-                ))}
-              </div>
-              {selectedKeywords.length === 0 && (
-                <p className="text-xs text-text-gray-dark mt-2">
-                  * 선택하지 않으면 기본 키워드로 저장돼
-                </p>
-              )}
-            </div>
-
-            {/* 완료 버튼 */}
-            <button
-              onClick={handleComplete}
-              disabled={isUploading || !proofImageFile}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isUploading ? '업로드 중...' : '✅ 완료'}
-            </button>
           </motion.div>
-        )}
+
+          {/* STEP 3: 미션 수행 (Action) */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.4 }}
+            className="flex gap-6 relative"
+          >
+            {/* Timeline Node (No Line - Last Step) */}
+            <div className="flex flex-col items-center">
+              {/* Node */}
+              <div
+                className={`w-14 h-14 rounded-full flex items-center justify-center text-3xl border-4 transition-all duration-500 ${
+                  isStep3Unlocked
+                    ? 'bg-electric-lime border-electric-lime shadow-lg shadow-electric-lime/50'
+                    : 'bg-charcoal-lighter border-charcoal-lighter'
+                }`}
+              >
+                🔥
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1">
+              <div
+                className={`card space-y-6 relative transition-all duration-500 ${
+                  isStep3Unlocked ? 'opacity-100' : 'opacity-50'
+                }`}
+              >
+                <h3 className="text-off-white text-2xl font-bold flex items-center gap-2">
+                  미션 수행
+                </h3>
+
+                {isStep3Unlocked ? (
+                  <>
+                    {/* 단계별 코스 가이드 */}
+                    {appointment.missionGuide && parseGuide(appointment.missionGuide).length > 0 && (
+                      <div className="space-y-4">
+                        <h4 className="text-electric-lime text-lg font-bold">🗺️ 오늘의 코스</h4>
+                        <div className="space-y-4">
+                          {parseGuide(appointment.missionGuide).map((step, index) => (
+                            <div key={index} className="flex gap-4">
+                              <div className="flex flex-col items-center">
+                                <div className="w-10 h-10 rounded-full bg-electric-lime/20 border-2 border-electric-lime flex items-center justify-center text-xl">
+                                  {ICON_MAP[step.icon] || '📍'}
+                                </div>
+                                {index < parseGuide(appointment.missionGuide).length - 1 && (
+                                  <div className="w-0.5 h-full min-h-[40px] bg-electric-lime/30 mt-2"></div>
+                                )}
+                              </div>
+                              <div className="flex-1 pb-4">
+                                <h5 className="text-off-white font-bold mb-1">{step.title}</h5>
+                                <p className="text-text-gray text-sm leading-relaxed">{step.desc}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 상세 코스 */}
+                    <div className="space-y-3">
+                      <h4 className="text-electric-lime text-lg font-bold">🗺️ 상세 코스</h4>
+                      <motion.div
+                        initial={{ opacity: 0, filter: 'blur(10px)' }}
+                        animate={{ opacity: 1, filter: 'blur(0px)' }}
+                        transition={{ duration: 0.5 }}
+                        className="text-text-gray whitespace-pre-line text-sm bg-charcoal-soft/50 p-4 rounded-lg"
+                      >
+                        {MOCK_DETAILED_COURSE}
+                      </motion.div>
+                    </div>
+
+                    {/* 할 일 */}
+                    <div className="space-y-3">
+                      <h4 className="text-electric-lime text-lg font-bold">✅ 할 일</h4>
+                      <motion.ul
+                        initial={{ opacity: 0, filter: 'blur(10px)' }}
+                        animate={{ opacity: 1, filter: 'blur(0px)' }}
+                        transition={{ duration: 0.5 }}
+                        className="space-y-2"
+                      >
+                        {MOCK_TASKS.map((task, idx) => (
+                          <li key={idx} className="text-text-gray flex items-start gap-2 text-sm">
+                            <span className="text-electric-lime mt-1">•</span>
+                            <span>{task}</span>
+                          </li>
+                        ))}
+                      </motion.ul>
+                    </div>
+
+                    {/* 인증 섹션 */}
+                    {unlocked && appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+                      <div className="space-y-6 pt-4 border-t border-charcoal-lighter">
+                        <h4 className="text-electric-lime text-lg font-bold">📸 인증하기</h4>
+
+                        {/* 이미지 업로드 */}
+                        <div>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageSelect}
+                            className="hidden"
+                          />
+
+                          {!previewUrl ? (
+                            <button
+                              onClick={() => fileInputRef.current?.click()}
+                              className="w-full h-48 border-2 border-dashed border-charcoal-lighter rounded-solotion hover:border-electric-lime transition-all flex flex-col items-center justify-center gap-3"
+                            >
+                              <div className="text-5xl">📷</div>
+                              <p className="text-text-gray">사진 추가</p>
+                            </button>
+                          ) : (
+                            <div className="relative">
+                              <img
+                                src={previewUrl}
+                                alt="Preview"
+                                className="w-full h-64 object-cover rounded-solotion"
+                              />
+                              <button
+                                onClick={handleRemoveImage}
+                                className="absolute top-2 right-2 bg-charcoal-soft/90 text-off-white p-2 rounded-solotion hover:bg-charcoal-lighter"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 코멘트 */}
+                        <textarea
+                          value={proofComment}
+                          onChange={(e) => setProofComment(e.target.value)}
+                          placeholder="오늘의 작은 일탈은 어땠어?"
+                          className="input w-full h-32 resize-none"
+                        />
+
+                        {/* 감성 키워드 선택 */}
+                        <div>
+                          <label className="block text-sm font-medium text-text-gray mb-2">
+                            어땠어? (선택사항)
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {EMOTION_KEYWORDS.map((keyword) => (
+                              <button
+                                key={keyword}
+                                type="button"
+                                onClick={() => {
+                                  if (selectedKeywords.includes(keyword)) {
+                                    setSelectedKeywords(selectedKeywords.filter((k) => k !== keyword));
+                                  } else {
+                                    setSelectedKeywords([...selectedKeywords, keyword]);
+                                  }
+                                }}
+                                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                                  selectedKeywords.includes(keyword)
+                                    ? 'bg-electric-lime text-deep-charcoal'
+                                    : 'bg-charcoal-soft text-text-gray hover:bg-charcoal-lighter'
+                                }`}
+                              >
+                                {keyword}
+                              </button>
+                            ))}
+                          </div>
+                          {selectedKeywords.length === 0 && (
+                            <p className="text-xs text-text-gray-dark mt-2">
+                              * 선택하지 않으면 기본 키워드로 저장돼
+                            </p>
+                          )}
+                        </div>
+
+                        {/* 완료 버튼 */}
+                        <button
+                          onClick={handleComplete}
+                          disabled={isUploading || !proofImageFile}
+                          className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isUploading ? '업로드 중...' : '✅ 완료'}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="relative">
+                    {/* Blurred Content */}
+                    <div className="blur-md select-none pointer-events-none space-y-4">
+                      <div className="h-20 bg-charcoal-lighter/50 rounded-lg"></div>
+                      <div className="h-32 bg-charcoal-lighter/50 rounded-lg"></div>
+                      <div className="h-24 bg-charcoal-lighter/50 rounded-lg"></div>
+                    </div>
+                    {/* Lock Overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center bg-charcoal-soft/90 rounded-solotion">
+                      <div className="text-center space-y-3">
+                        <div className="text-6xl">🔒</div>
+                        <p className="text-off-white font-bold text-lg">도착하면 잠금 해제</p>
+                        <p className="text-text-gray text-sm">장소에 도착한 후 인증해봐</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </div>
 
         {/* 완료 상태 표시 */}
         {appointment.status === 'COMPLETED' && (
@@ -677,8 +900,23 @@ function MissionDetail() {
         )}
       </main>
 
+      {/* ===== Feed Button (약속 구경) ===== */}
+      <motion.button
+        onClick={() => navigate('/feed')}
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        className="fixed bottom-24 right-4 sm:right-6 z-40"
+      >
+        <div className="bg-electric-lime text-deep-charcoal px-5 sm:px-6 py-3 sm:py-4 rounded-full shadow-2xl font-bold text-sm sm:text-base whitespace-nowrap flex items-center gap-2">
+          <span>📸</span>
+          <span>약속 구경</span>
+        </div>
+      </motion.button>
+
       {/* ===== Escape FAB (Floating Action Button) ===== */}
-      {/* 완료/취소된 미션에서는 숨김 */}
       {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
         <motion.button
           onClick={() => setShowPlanBModal(true)}
@@ -693,31 +931,26 @@ function MissionDetail() {
           <div className="relative">
             {/* 네온 글로우 효과 */}
             <div className="absolute inset-0 bg-electric-lime/30 blur-xl rounded-full animate-pulse"></div>
-            
+
             {/* 메인 버튼 */}
             <div className="relative backdrop-blur-xl bg-charcoal-soft/80 border-2 border-electric-lime/50 rounded-full shadow-2xl overflow-hidden">
               {/* 호버 시 배경 효과 */}
               <div className="absolute inset-0 bg-gradient-to-br from-electric-lime/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              
+
               {/* 버튼 콘텐츠 */}
               <div className="relative px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-2 sm:gap-3">
                 {/* 비상구 아이콘 */}
                 <div className="text-2xl animate-bounce">
-                  <svg 
-                    className="w-6 h-6 sm:w-7 sm:h-7 text-electric-lime" 
-                    fill="none" 
-                    stroke="currentColor" 
+                  <svg
+                    className="w-6 h-6 sm:w-7 sm:h-7 text-electric-lime"
+                    fill="none"
+                    stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2.5} 
-                      d="M17 8l4 4m0 0l-4 4m4-4H3"
-                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
                 </div>
-                
+
                 {/* 텍스트 라벨 */}
                 <span className="text-off-white font-bold text-sm sm:text-base whitespace-nowrap">
                   다른 거 할래
@@ -727,6 +960,94 @@ function MissionDetail() {
           </div>
         </motion.button>
       )}
+
+      {/* ===== Arrival Success Modal ===== */}
+      <AnimatePresence>
+        {showArrivalSuccessModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+            onClick={() => setShowArrivalSuccessModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0, y: 50 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0, y: 50 }}
+              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-charcoal-soft rounded-solotion-lg max-w-md w-full overflow-hidden border-2 border-electric-lime/50 shadow-2xl"
+            >
+              {/* 콘텐츠 */}
+              <div className="p-8 space-y-6 text-center">
+                {/* 대형 이모지 애니메이션 */}
+                <motion.div
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+                  className="text-8xl"
+                >
+                  🎉
+                </motion.div>
+
+                {/* 타이틀 */}
+                <motion.h3
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="text-off-white text-3xl font-extra-bold"
+                >
+                  오, 진짜 왔네?
+                </motion.h3>
+
+                {/* 설명 */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="space-y-2"
+                >
+                  <p className="text-text-gray text-lg leading-relaxed">
+                    생각보다 빠르네. 이제 블라인드를 걷어줄게.
+                  </p>
+                  <p className="text-electric-lime text-base font-semibold">
+                    확인해봐.
+                  </p>
+                </motion.div>
+
+                {/* 버튼 */}
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.5 }}
+                  onClick={() => setShowArrivalSuccessModal(false)}
+                  className="btn-primary w-full py-4 text-lg font-bold"
+                >
+                  미션 확인하기 🔥
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ===== 긍정 강화 토스트 ===== */}
+      <AnimatePresence>
+        {showPositiveToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-8 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none"
+          >
+            <div className="bg-electric-lime text-deep-charcoal px-6 py-4 rounded-solotion-lg shadow-2xl border-2 border-electric-lime flex items-center gap-3">
+              <span className="text-2xl">👍</span>
+              <p className="font-extra-bold text-lg">잘 생각했어! 이 코스가 너한테 딱이야</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ===== Plan B Modal ===== */}
       <AnimatePresence>
@@ -760,9 +1081,7 @@ function MissionDetail() {
               <div className="p-6 space-y-4">
                 <div className="text-center space-y-3">
                   {/* 츤데레 멘트 */}
-                  <div className="text-electric-lime text-lg font-semibold italic">
-                    "{MOCK_PLAN_B.reason}"
-                  </div>
+                  <div className="text-electric-lime text-lg font-semibold italic">"{MOCK_PLAN_B.reason}"</div>
                   <h3 className="text-off-white text-2xl font-extra-bold">{MOCK_PLAN_B.title}</h3>
                 </div>
 
@@ -779,19 +1098,17 @@ function MissionDetail() {
 
                 {/* 버튼들 */}
                 <div className="flex flex-col gap-3 pt-4">
-                  {MOCK_PLAN_B.placeUrl && (
-                    <a
-                      href={MOCK_PLAN_B.placeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-primary text-center flex items-center justify-center gap-2 py-3"
-                    >
-                      🗺️ 여기로 갈래!
-                    </a>
-                  )}
-                  <button 
-                    onClick={() => setShowPlanBModal(false)} 
-                    className="btn-ghost hover:bg-charcoal-lighter/50"
+                  <button
+                    onClick={handleSwapMission}
+                    disabled={isSwapping}
+                    className="btn-primary text-center flex items-center justify-center gap-2 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSwapping ? '교체 중...' : '🔄 이걸로 할래!'}
+                  </button>
+                  <button
+                    onClick={handleKeepOriginal}
+                    disabled={isSwapping}
+                    className="btn-ghost hover:bg-charcoal-lighter/50 disabled:opacity-50"
                   >
                     아니야, 원래대로 할게
                   </button>

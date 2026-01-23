@@ -43,38 +43,40 @@ const Header = () => {
 
   return (
     // 배경색/그림자 제거, 배경 블러 처리만 살짝 (유리 느낌)
-    <header className="fixed top-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-transparent backdrop-blur-sm">
-      {/* 로고 - 메인 화면(오늘의 미션)으로 이동 */}
-      <Link
-        to="/missions"
-        className="font-bold text-xl text-purple-600 cursor-pointer hover:text-purple-700 transition-colors"
-      >
-        Little Escape
-      </Link>
+    <header className="fixed top-0 left-0 right-0 w-full z-50 bg-transparent backdrop-blur-sm">
+      <div className="max-w-md mx-auto flex justify-between items-center px-6 h-16">
+        {/* 로고 - 메인 화면(오늘의 미션)으로 이동 */}
+        <Link
+          to="/missions"
+          className="font-bold text-xl text-purple-600 cursor-pointer hover:text-purple-700 transition-colors"
+        >
+          Little Escape
+        </Link>
 
-      {/* 우측 유저 영역 */}
-      <div>
-        {user ? (
-          <div 
-            // 클릭 시 약속 리스트(또는 마이페이지)로 이동
-            onClick={() => navigate('/mypage')} 
-            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition"
-          >
-            <span className="text-gray-800 font-medium text-sm">{user.nickname}</span>
-            <img
-              src={user.profileImageUrl || "https://via.placeholder.com/150"}
-              alt="Profile"
-              className="w-9 h-9 rounded-full border border-gray-200 object-cover"
-            />
-          </div>
-        ) : (
-          <button
-            onClick={() => navigate('/login')}
-            className="text-sm font-medium text-gray-500 hover:text-purple-600"
-          >
-            로그인
-          </button>
-        )}
+        {/* 우측 유저 영역 */}
+        <div>
+          {user ? (
+            <div
+              // 클릭 시 약속 리스트(또는 마이페이지)로 이동
+              onClick={() => navigate('/mypage')}
+              className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition"
+            >
+              <span className="text-gray-800 font-medium text-sm">{user.nickname}</span>
+              <img
+                src={user.profileImageUrl || "https://via.placeholder.com/150"}
+                alt="Profile"
+                className="w-9 h-9 rounded-full border border-gray-200 object-cover"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => navigate('/login')}
+              className="text-sm font-medium text-gray-500 hover:text-purple-600"
+            >
+              로그인
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

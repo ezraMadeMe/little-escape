@@ -4,6 +4,9 @@ import { ReactNode } from 'react';
 // Layouts
 import MainLayout from './layouts/MainLayout';
 
+// Components
+import DebugOverlay from './components/DebugOverlay';
+
 // Pages
 import FeedPage from './pages/FeedPage';
 import Reviews from './pages/Reviews';
@@ -17,6 +20,7 @@ import DevConsole from './pages/DevConsole';
 
 // Legacy Pages (필요시 유지)
 import MissionList from './pages/MissionList';
+import TimePicker from './pages/TimePicker';
 import AuthCallback from './pages/AuthCallback';
 import OAuthCallback from './pages/OAuthCallback';
 import PickMission from './pages/PickMission';
@@ -34,6 +38,19 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   if (!token) {
     return <Navigate to="/login" replace />;
   }
+  return <>{children}</>;
+};
+
+// 미션 라우트 가드 (약속 ID 검증)
+const MissionGuard = ({ children }: { children: ReactNode }) => {
+  const appointmentId = localStorage.getItem('appointmentId');
+
+  // appointmentId가 없거나 유효하지 않으면 /feed로 리다이렉트
+  if (!appointmentId || appointmentId === 'null' || appointmentId === 'undefined') {
+    console.warn('⚠️ [MissionGuard] 유효하지 않은 약속 ID -> /feed로 리다이렉트');
+    return <Navigate to="/feed" replace />;
+  }
+
   return <>{children}</>;
 };
 
@@ -74,6 +91,9 @@ const LandingGuard = () => {
 function App() {
   return (
     <BrowserRouter>
+      {/* Debug Overlay - 개발 모드 전용 */}
+      <DebugOverlay />
+
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
@@ -108,12 +128,24 @@ function App() {
           }
         />
 
+        {/* Time Picker Route */}
+        <Route
+          path="/time-picker"
+          element={
+            <ProtectedRoute>
+              <TimePicker />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Missions Route - Without Bottom Navigation (Full Screen) */}
         <Route
           path="/missions"
           element={
             <ProtectedRoute>
-              <MissionList />
+              <MissionGuard>
+                <MissionList />
+              </MissionGuard>
             </ProtectedRoute>
           }
         />
@@ -183,7 +215,9 @@ function App() {
           path="/pick-mission/:appointmentId"
           element={
             <ProtectedRoute>
-              <PickMission />
+              <MissionGuard>
+                <PickMission />
+              </MissionGuard>
             </ProtectedRoute>
           }
         />
@@ -191,7 +225,9 @@ function App() {
           path="/mission/:appointmentId"
           element={
             <ProtectedRoute>
-              <MissionDetail />
+              <MissionGuard>
+                <MissionDetail />
+              </MissionGuard>
             </ProtectedRoute>
           }
         />
@@ -199,7 +235,9 @@ function App() {
           path="/mission-proof/:appointmentId"
           element={
             <ProtectedRoute>
-              <MissionProof />
+              <MissionGuard>
+                <MissionProof />
+              </MissionGuard>
             </ProtectedRoute>
           }
         />
