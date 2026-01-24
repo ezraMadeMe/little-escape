@@ -35,6 +35,8 @@ import Onboarding from './pages/Onboarding';
 import ProfileEdit from './pages/ProfileEdit';
 import Contact from './pages/Contact';
 import SavedAppointments from './pages/SavedAppointments';
+import SavedDetail from './pages/SavedDetail';
+import ArchivedAppointmentDetail from './pages/ArchivedAppointmentDetail';
 
 // 보호된 라우트 컴포넌트
 const ProtectedRoute = ({ children }: { children: ReactNode }) => {
@@ -64,14 +66,21 @@ const GlobalRedirectWrapper = ({ children }: { children: ReactNode }) => {
     console.log('온보딩 완료:', onboardingComplete === 'true');
 
     // 예외 경로: 피드, 마이페이지, 약속 목록, 로그인 등은 체크 안 함
-    const exemptPaths = ['/feed', '/mypage', '/appointments', '/reviews', '/login', '/oauth/callback', '/auth/callback', '/magic-login', '/dev-console', '/profile-edit', '/contact', '/mypage/saved'];
+    const exemptPaths = ['/feed', '/mypage', '/appointments', '/reviews', '/mission', '/login', '/oauth/callback', '/auth/callback', '/magic-login', '/dev-console', '/profile-edit', '/contact', '/mypage/saved', '/saved/detail'];
     if (exemptPaths.some(path => currentPath.startsWith(path))) {
       console.log('✅ 예외 경로 - 리다이렉트 skip');
       return;
     }
 
+    // 약속 ID 유효성 검사
+    const isValidAppointmentId = appointmentId && 
+                                 appointmentId !== 'null' && 
+                                 appointmentId !== 'undefined' && 
+                                 appointmentId.trim() !== '' && 
+                                 !isNaN(Number(appointmentId));
+
     // 1순위: 약속 있음 -> 온보딩이나 다른 곳에 있으면 미션으로 납치
-    if (appointmentId && appointmentId !== 'null' && appointmentId !== 'undefined') {
+    if (isValidAppointmentId) {
       if (currentPath.startsWith('/chat') || currentPath.startsWith('/onboarding') || currentPath === '/location' || currentPath === '/time-picker') {
         console.log('🎯 약속 있는데 온보딩 접근 시도 -> /mission으로 납치!');
         navigate(`/mission/${appointmentId}`, { replace: true });
@@ -178,6 +187,12 @@ function App() {
               </RequireAppointment>
             }
           />
+
+          {/* Archived Appointment Detail - Now with Bottom Nav */}
+          <Route
+            path="archived/:appointmentId"
+            element={<ArchivedAppointmentDetail />}
+          />
         </Route>
 
         {/* Chat Routes - Without Bottom Navigation (뉴비 전용) */}
@@ -238,6 +253,14 @@ function App() {
           element={
             <ProtectedRoute>
               <SavedAppointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/saved/detail/:appointmentId"
+          element={
+            <ProtectedRoute>
+              <SavedDetail />
             </ProtectedRoute>
           }
         />

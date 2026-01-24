@@ -7,6 +7,8 @@ export enum AppointmentStatus {
   CANCELLED = 'CANCELLED',
   COMPLETED = 'COMPLETED',
   NO_SHOW = 'NO_SHOW',
+  ARRIVED = 'ARRIVED',
+  IN_PROGRESS = 'IN_PROGRESS',
 }
 
 export interface Appointment {
@@ -17,6 +19,7 @@ export interface Appointment {
   status: AppointmentStatus;
   scheduledAt: string;
   createdAt: string;
+  completedAt?: string; // 완료 시각
   placeName?: string;
   placeAddress?: string;
   placeUrl?: string;
@@ -33,4 +36,6 @@ export interface Appointment {
   isFavorite?: boolean; // 즐겨찾기 여부
   unlockToken?: string; // 미션 공개용 UUID 토큰
   missionGuide?: string; // JSON 형식 단계별 가이드
+  rating?: number; // 별점 (0.0 ~ 5.0)
+  missionDescription?: string; // 미션 상세 설명
 }

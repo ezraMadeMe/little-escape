@@ -85,6 +85,27 @@ Ngrok 실행: ngrok http 8080
 
 Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 
+### 3. Super Admin Mock 모드 (개발 전용)
+백엔드 없이 프론트엔드 전체 플로우를 테스트할 수 있는 개발자 모드입니다.
+
+**빠른 시작:**
+1. 로그인 페이지(`/login`)로 이동
+2. 화면 하단의 **"🔓 Super Admin (개발 전용)"** 버튼 클릭
+3. 자동으로 Mock 토큰이 생성되고 피드 페이지로 이동
+
+**특징:**
+- ngrok 무료 버전 1포트 제약 해결 (프론트엔드만 열면 됨)
+- 20개 Mock 피드, 3개 Mock 약속 자동 생성
+- 실제 API 호출 없이 전체 UI/UX 확인 가능
+- 모바일 디바이스에서도 테스트 가능
+
+**참고:** 상세한 사용법은 `SUPER_ADMIN_GUIDE.md` 참조
+
+**위치 권한 참고사항:**
+- Geolocation API는 HTTPS 연결에서만 동작합니다 (localhost 제외)
+- 실제 디바이스에서 위치 기능 테스트 시 ngrok HTTPS URL 필수
+- 또는 로컬 인증서 발급 (mkcert 등) 후 HTTPS로 개발 서버 실행
+
 ---
 
 ## 🚀 v1.2 주요 업데이트 (2026.01.12)
@@ -584,6 +605,90 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
   - Uncontrolled → Controlled Component
   - 부모 컴포넌트에서 상태 관리
   - 애니메이션 효과 유지 (💚 이모지)
+
+---
+
+## 🚀 v2.7 주요 업데이트 (2026.01.24)
+
+### 1. 🗄️ 아카이브 상세 페이지 (Archive Detail Page)
+- **완료/취소된 약속 전용 상세 페이지:**
+  - 진행 중인 약속과 차별화된 아카이브 스타일 UI
+  - 중앙 배치 상태 배지 (✓ 완료된 약속 / × 취소된 약속)
+  - 아카이브 아이콘 헤더 및 장식적인 하단 디테일
+  - 완료된 약속의 인증 사진, 리뷰 키워드, 별점 표시
+- **스마트 라우팅:**
+  - 완료/취소 약속: `/archived/:appointmentId`
+  - 진행 중인 약속: `/mission/:appointmentId`
+  - Appointments 페이지에서 자동 분기
+
+### 2. 📸 다중 이미지 업로드 시스템 개선
+- **5장 제한 및 UI 피드백:**
+  - 5장 초과 시 명확한 안내 메시지
+  - 현재 업로드된 사진 수 실시간 표시 (예: "사진 추가 (3/5)")
+  - 파일 타입 및 크기 검증 (이미지만, 5MB 이하)
+  - 이미지 슬롯 UI 개선 (남은 슬롯 수만큼만 표시)
+- **스와이프 형태 다중 이미지 조회:**
+  - ImageCarousel 컴포넌트로 여러 장 사진 표시
+  - 피드 및 약속 상세 페이지에서 활용
+  - Backend 다중 이미지 업로드 API 정상 동작 확인
+
+### 3. 🔓 Super Admin Mock 모드
+- **백엔드 없는 개발 환경 구축:**
+  - ngrok 무료 버전 1포트 제약 해결
+  - Mock 데이터 시스템으로 전체 플로우 테스트 가능
+  - 개발 환경에서만 표시되는 Super Admin 버튼
+- **Mock 데이터 시스템:**
+  - `utils/mockData.ts`: Mock 데이터 생성 유틸리티
+  - 20개 피드, 3개 약속 (진행중 1, 완료 2) 자동 생성
+  - 랜덤 데이터로 다양한 시나리오 테스트
+- **API 요청 인터셉션:**
+  - Mock 모드 감지 시 백엔드 호출 우회
+  - 300ms 지연으로 실제 API 응답 시뮬레이션
+  - 지원 엔드포인트: 피드, 약속, 유저 정보 등
+- **상세 문서화:**
+  - `SUPER_ADMIN_GUIDE.md`: 사용 가이드
+  - Mock 데이터 커스터마이징 방법
+  - 테스트 시나리오 및 트러블슈팅
+
+### 4. 📍 위치 권한 처리 개선
+- **HTTPS 필수 요구사항 검증:**
+  - Geolocation API는 HTTPS에서만 동작 (localhost 제외)
+  - HTTPS 미사용 시 명확한 안내 메시지
+  - 실제 디바이스 테스트를 위한 ngrok HTTPS URL 안내
+- **에러 처리 강화:**
+  - 위치 권한 거부 시 상세한 안내
+  - Timeout 15초로 증가
+  - GPS 정확도 향상 옵션 (enableHighAccuracy)
+  - 상세한 콘솔 로깅
+
+### 5. 📲 모바일 앱 스타일 뒤로가기 처리
+- **루트 페이지 뒤로가기 두 번 = 앱 종료:**
+  - 네이티브 앱과 동일한 UX 제공
+  - popstate 이벤트 핸들링
+  - 2초 이내 두 번 뒤로가기 감지
+- **루트 페이지 정의:**
+  - `/feed`, `/appointments`, `/reviews`, `/mypage`
+  - 루트 페이지가 아닌 경우 일반 뒤로가기 동작
+- **사용자 친화적 토스트 알림:**
+  - 첫 번째: "뒤로가기 버튼을 한 번 더 누르면 종료됩니다"
+  - 두 번째: 앱 종료 또는 안내 메시지
+- **PWA 호환성:**
+  - window.history 조작으로 히스토리 스택 관리
+  - PWA 환경에서 최적화된 동작
+
+### 6. 🔧 기술적 개선사항
+- **TypeScript 타입 안전성 강화:**
+  - `Appointment` 인터페이스에 `completedAt` 필드 추가
+  - FeedItem 타입 정확성 개선
+- **컴포넌트 모듈화:**
+  - `ArchivedAppointmentDetail.tsx`: 아카이브 상세 페이지
+  - `useBackButtonHandler.ts`: 뒤로가기 핸들러 Hook
+- **프로덕션 빌드 안전성:**
+  - Super Admin 버튼은 개발 환경에서만 표시
+  - `import.meta.env.DEV` 조건부 렌더링
+- **React Router v6 최적화:**
+  - `useNavigate` 훅 활용
+  - window.location 대신 React Router 네비게이션
 
 ### 2. 🗄️ 저장한 일탈 페이지 구현
 - **SavedAppointments 페이지:**

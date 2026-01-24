@@ -89,25 +89,25 @@ const ProfileEdit = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7]">
+    <div className="min-h-screen bg-deep-charcoal text-off-white">
       <div className="max-w-md mx-auto">
         {/* 헤더 */}
-        <div className="bg-[#FDFBF7] border-b border-gray-100 px-4 py-4 flex items-center">
+        <div className="bg-deep-charcoal border-b border-charcoal-lighter px-4 py-4 flex items-center">
           <button
             onClick={() => navigate(-1)}
-            className="mr-4"
+            className="mr-4 text-off-white hover:text-electric-lime transition-colors"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="text-xl font-bold text-gray-900">프로필 수정</h1>
+          <h1 className="text-xl font-bold text-off-white">프로필 수정</h1>
         </div>
 
         <div className="p-6">
           {/* 프로필 이미지 */}
           <div className="mb-8">
-            <label className="block text-sm font-semibold text-gray-700 mb-3 text-center">
+            <label className="block text-sm font-semibold text-text-gray mb-3 text-center">
               프로필 사진
             </label>
             <div className="flex flex-col items-center">
@@ -116,11 +116,11 @@ const ProfileEdit = () => {
                   <img
                     src={profilePreview}
                     alt="Profile"
-                    className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-lg"
+                    className="w-28 h-28 rounded-full object-cover border-4 border-charcoal-lighter shadow-lg"
                   />
                 ) : (
-                  <div className="w-28 h-28 rounded-full bg-gray-200 flex items-center justify-center shadow-lg">
-                    <svg className="w-14 h-14 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-28 h-28 rounded-full bg-charcoal-lighter flex items-center justify-center shadow-lg">
+                    <svg className="w-14 h-14 text-text-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                   </div>
@@ -135,7 +135,7 @@ const ProfileEdit = () => {
               />
               <label
                 htmlFor="profile-image-edit"
-                className="px-6 py-2 bg-purple-100 text-purple-700 text-sm font-semibold rounded-lg cursor-pointer hover:bg-purple-200 transition"
+                className="px-6 py-2 bg-charcoal-lighter text-electric-lime text-sm font-semibold rounded-lg cursor-pointer hover:bg-charcoal-lighter/80 transition"
               >
                 사진 변경
               </label>
@@ -144,42 +144,42 @@ const ProfileEdit = () => {
 
           {/* 닉네임 */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              닉네임 <span className="text-red-500">*</span>
+            <label className="block text-sm font-semibold text-text-gray mb-2">
+              닉네임 <span className="text-accent-pink">*</span>
             </label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="flex-1 px-4 py-3 bg-charcoal-lighter text-off-white border-none rounded-lg focus:outline-none focus:ring-2 focus:ring-electric-lime"
                 placeholder="닉네임을 입력하세요"
               />
               <button
                 onClick={handleNicknameCheck}
-                className="px-4 py-3 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition"
+                className="px-4 py-3 bg-charcoal-lighter text-electric-lime text-sm font-semibold rounded-lg hover:bg-charcoal-lighter/80 transition"
               >
                 중복 체크
               </button>
             </div>
             {nicknameError && (
-              <p className="text-xs text-red-500 mt-1">{nicknameError}</p>
+              <p className="text-xs text-accent-pink mt-1">{nicknameError}</p>
             )}
           </div>
 
           {/* 이메일 */}
           <div className="mb-8">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-text-gray mb-2">
               이메일 (선택)
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+              className="w-full px-4 py-3 bg-charcoal-lighter text-off-white border-none rounded-lg focus:outline-none focus:ring-2 focus:ring-electric-lime"
               placeholder="example@email.com"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-text-gray-dark mt-1">
               월간 리포트 수신 등에 사용됩니다.
             </p>
           </div>
@@ -188,7 +188,7 @@ const ProfileEdit = () => {
           <button
             onClick={handleSubmit}
             disabled={loading || !nickname.trim()}
-            className="w-full py-4 bg-gradient-to-br from-purple-500 to-pink-500 text-white font-bold rounded-xl hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-4 bg-gradient-to-br from-electric-lime to-neon-purple text-deep-charcoal font-bold rounded-xl hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? '저장 중...' : '저장하기'}
           </button>

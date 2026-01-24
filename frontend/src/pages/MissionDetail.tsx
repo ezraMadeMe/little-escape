@@ -1,10 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAppointmentDetail, completeAppointment, markAsArrived, swapMission } from '../api/appointmentApi';
+import { getAppointmentDetail, completeAppointment, markAsArrived, swapMission, deleteAppointment } from '../api/appointmentApi';
 import { Appointment } from '../types/appointment';
 import { PlanB } from '../types/mission';
 import { supabase } from '../lib/supabaseClient';
+import MissionReview from '../components/MissionReview';
+import { showToast } from '../utils/toast';
+import { Trash2, Bookmark } from 'lucide-react';
 
 // 가이드 스텝 인터페이스
 interface GuideStep {
@@ -48,10 +51,11 @@ function MissionDetail() {
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [proofComment, setProofComment] = useState<string>('');
-  const [proofImageFile, setProofImageFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [proofImageFiles, setProofImageFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  const [rating, setRating] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 감성 키워드 옵션
@@ -74,10 +78,6 @@ function MissionDetail() {
 
   // 긍정 강화 토스트 상태
   const [showPositiveToast, setShowPositiveToast] = useState<boolean>(false);
-
-  // 스크롤 감지 상태
-  const [isScrollingDown, setIsScrollingDown] = useState<boolean>(false);
-  const [lastScrollY, setLastScrollY] = useState<number>(0);
 
   // 가이드 파싱
   const parseGuide = (guideJson?: string): GuideStep[] => {
@@ -103,8 +103,10 @@ function MissionDetail() {
         setAppointment(data);
       } catch (err) {
         console.error('약속 로딩 실패:', err);
-        alert('약속 정보를 불러오는데 실패했어.');
-        navigate('/appointments');
+        // 약속을 찾을 수 없는 경우 (404, 400 등) -> 로컬 스토리지 정리 및 이동
+        localStorage.removeItem('appointmentId');
+        alert('약속 정보를 찾을 수 없어. 다시 시작할게.');
+        navigate('/location', { replace: true });
       } finally {
         setLoading(false);
       }
@@ -112,28 +114,6 @@ function MissionDetail() {
 
     loadAppointment();
   }, [appointmentId, navigate]);
-
-  // 스크롤 감지 (Smart Scroll Buttons)
-  useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-
-      // 스크롤 방향 감지 (50px 이상 이동 시에만 반응)
-      if (Math.abs(currentScrollY - lastScrollY) > 50) {
-        if (currentScrollY > lastScrollY && currentScrollY > 100) {
-          // 아래로 스크롤 중
-          setIsScrollingDown(true);
-        } else {
-          // 위로 스크롤 중
-          setIsScrollingDown(false);
-        }
-        setLastScrollY(currentScrollY);
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
 
   // D-Day 계산
   const getDdayText = (scheduledAt: string): string => {
@@ -263,6 +243,26 @@ function MissionDetail() {
     }
   };
 
+  // 약속 삭제 핸들러
+  const handleDeleteAppointment = async () => {
+    if (!appointment) return;
+
+    const confirmed = window.confirm(
+      '정말 삭제하시겠습니까?\n이 작업은 복구할 수 없습니다.\n피드, 저장 목록에서도 모두 사라집니다.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await deleteAppointment(appointment.id);
+      showToast('약속이 완전히 삭제되었습니다.');
+      navigate('/feed', { replace: true });
+    } catch (err) {
+      console.error('약속 삭제 실패:', err);
+      alert('약속 삭제에 실패했어. 다시 시도해봐.');
+    }
+  };
+
   // 원래대로 할게 핸들러 (긍정 강화)
   const handleKeepOriginal = () => {
     setShowPlanBModal(false);
@@ -333,33 +333,47 @@ function MissionDetail() {
     }
   };
 
-  // 이미지 선택
+  // 이미지 선택 (다중)
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert('이미지 파일만 업로드 가능해.');
+    // 유효성 검사
+    const validFiles = files.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        alert(`${file.name}: 이미지 파일만 업로드 가능해.`);
+        return false;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`${file.name}: 이미지 크기는 5MB 이하여야 해.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) return;
+
+    // 최대 5장 제한 (기존 + 새 파일)
+    if (proofImageFiles.length + validFiles.length > 5) {
+      alert('이미지는 최대 5장까지 업로드할 수 있어.');
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert('이미지 크기는 5MB 이하여야 해.');
-      return;
-    }
+    setProofImageFiles(prev => [...prev, ...validFiles]);
 
-    setProofImageFile(file);
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    // 미리보기 생성
+    validFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrls(prev => [...prev, reader.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
-  const handleRemoveImage = () => {
-    setProofImageFile(null);
-    setPreviewUrl('');
+  const handleRemoveImage = (index: number) => {
+    setProofImageFiles(prev => prev.filter((_, i) => i !== index));
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -369,27 +383,39 @@ function MissionDetail() {
   const handleComplete = async () => {
     if (!appointment) return;
 
-    if (!proofImageFile) {
-      alert('인증 사진을 업로드해줘!');
+    if (proofImageFiles.length === 0) {
+      alert('인증 사진을 최소 1장 이상 업로드해줘!');
       return;
     }
 
     try {
       setIsUploading(true);
-
       const userId = appointment.userId || 'unknown';
       const timestamp = Date.now();
-      const fileExtension = proofImageFile.name.split('.').pop();
-      const filePath = `proofs/${userId}_${appointmentId}_${timestamp}.${fileExtension}`;
+      const uploadedUrls: string[] = [];
 
-      const { error: uploadError } = await supabase.storage
-        .from('mission-proofs')
-        .upload(filePath, proofImageFile);
+      // 병렬 업로드 처리
+      const uploadPromises = proofImageFiles.map(async (file, index) => {
+        const fileExtension = file.name.split('.').pop();
+        const filePath = `proofs/${userId}_${appointmentId}_${timestamp}_${index}.${fileExtension}`;
 
-      if (uploadError) {
-        alert('이미지 업로드에 실패했어. 다시 시도해봐.');
-        return;
-      }
+        const { error: uploadError } = await supabase.storage
+          .from('mission-proofs')
+          .upload(filePath, file);
+
+        if (uploadError) {
+          throw new Error(`이미지 ${file.name} 업로드 실패`);
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('mission-proofs')
+          .getPublicUrl(filePath);
+        
+        return publicUrl;
+      });
+
+      const results = await Promise.all(uploadPromises);
+      uploadedUrls.push(...results);
 
       const keywords = selectedKeywords.length > 0
         ? selectedKeywords
@@ -399,12 +425,15 @@ function MissionDetail() {
         appointment.id,
         proofComment.trim() || '',
         keywords,
-        []
+        [], // 빈 배열 (Supabase URL 사용)
+        rating,
+        uploadedUrls // 업로드된 URL 리스트 전달
       );
 
-      alert('수고했어!');
+      showToast('수고했어! 🎉');
       navigate('/appointments');
     } catch (err) {
+      console.error(err);
       alert('완료 처리에 실패했어. 다시 시도해봐.');
     } finally {
       setIsUploading(false);
@@ -464,8 +493,14 @@ function MissionDetail() {
           {getDdayText(appointment.scheduledAt)}
         </div>
 
-        {/* 빈 공간 (레이아웃 유지) */}
-        <div className="w-20"></div>
+        {/* 삭제 버튼 */}
+        <button
+          onClick={handleDeleteAppointment}
+          className="text-text-gray hover:text-accent-pink transition-colors"
+          aria-label="약속 삭제"
+        >
+          <Trash2 size={24} />
+        </button>
       </header>
 
       {/* ===== Main Content ===== */}
@@ -803,99 +838,6 @@ function MissionDetail() {
                         ))}
                       </motion.ul>
                     </div>
-
-                    {/* 인증 섹션 */}
-                    {unlocked && appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
-                      <div className="space-y-6 pt-4 border-t border-charcoal-lighter">
-                        <h4 className="text-electric-lime text-lg font-bold">📸 인증하기</h4>
-
-                        {/* 이미지 업로드 */}
-                        <div>
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageSelect}
-                            className="hidden"
-                          />
-
-                          {!previewUrl ? (
-                            <button
-                              onClick={() => fileInputRef.current?.click()}
-                              className="w-full h-48 border-2 border-dashed border-charcoal-lighter rounded-solotion hover:border-electric-lime transition-all flex flex-col items-center justify-center gap-3"
-                            >
-                              <div className="text-5xl">📷</div>
-                              <p className="text-text-gray">사진 추가</p>
-                            </button>
-                          ) : (
-                            <div className="relative">
-                              <img
-                                src={previewUrl}
-                                alt="Preview"
-                                className="w-full h-64 object-cover rounded-solotion"
-                              />
-                              <button
-                                onClick={handleRemoveImage}
-                                className="absolute top-2 right-2 bg-charcoal-soft/90 text-off-white p-2 rounded-solotion hover:bg-charcoal-lighter"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* 코멘트 */}
-                        <textarea
-                          value={proofComment}
-                          onChange={(e) => setProofComment(e.target.value)}
-                          placeholder="오늘의 작은 일탈은 어땠어?"
-                          className="input w-full h-32 resize-none"
-                        />
-
-                        {/* 감성 키워드 선택 */}
-                        <div>
-                          <label className="block text-sm font-medium text-text-gray mb-2">
-                            어땠어? (선택사항)
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            {EMOTION_KEYWORDS.map((keyword) => (
-                              <button
-                                key={keyword}
-                                type="button"
-                                onClick={() => {
-                                  if (selectedKeywords.includes(keyword)) {
-                                    setSelectedKeywords(selectedKeywords.filter((k) => k !== keyword));
-                                  } else {
-                                    setSelectedKeywords([...selectedKeywords, keyword]);
-                                  }
-                                }}
-                                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                                  selectedKeywords.includes(keyword)
-                                    ? 'bg-electric-lime text-deep-charcoal'
-                                    : 'bg-charcoal-soft text-text-gray hover:bg-charcoal-lighter'
-                                }`}
-                              >
-                                {keyword}
-                              </button>
-                            ))}
-                          </div>
-                          {selectedKeywords.length === 0 && (
-                            <p className="text-xs text-text-gray-dark mt-2">
-                              * 선택하지 않으면 기본 키워드로 저장돼
-                            </p>
-                          )}
-                        </div>
-
-                        {/* 완료 버튼 */}
-                        <button
-                          onClick={handleComplete}
-                          disabled={isUploading || !proofImageFile}
-                          className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isUploading ? '업로드 중...' : '✅ 완료'}
-                        </button>
-                      </div>
-                    )}
                   </>
                 ) : (
                   <div className="relative">
@@ -920,6 +862,141 @@ function MissionDetail() {
           </motion.div>
         </div>
 
+        {/* ===== Mission Completion Section (Full Width) ===== */}
+        {unlocked && appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="card border-2 border-electric-lime/20 shadow-[0_0_20px_rgba(204,255,0,0.05)] space-y-6"
+          >
+            <div className="flex items-center gap-3 pb-4 border-b border-charcoal-lighter">
+              <div className="w-10 h-10 rounded-full bg-electric-lime text-deep-charcoal flex items-center justify-center text-xl font-bold">
+                🎉
+              </div>
+              <h3 className="text-off-white text-2xl font-bold">미션 완료하기</h3>
+            </div>
+
+            {/* 이미지 업로드 */}
+            <div className="space-y-3">
+              <h4 className="text-off-white font-bold text-lg">📸 인증샷 남기기</h4>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+
+              {previewUrls.length === 0 ? (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full h-64 border-2 border-dashed border-charcoal-lighter rounded-solotion hover:border-electric-lime hover:bg-charcoal-lighter/10 transition-all flex flex-col items-center justify-center gap-4 group"
+                >
+                  <div className="w-16 h-16 rounded-full bg-charcoal-lighter flex items-center justify-center text-3xl group-hover:scale-110 transition-transform">
+                    📷
+                  </div>
+                  <div className="text-center">
+                    <p className="text-off-white font-bold">사진을 올려줘 (최대 5장)</p>
+                    <p className="text-text-gray text-sm">오늘의 기억을 저장할게</p>
+                  </div>
+                </button>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {previewUrls.map((url, index) => (
+                    <div key={index} className="relative aspect-square group">
+                      <img
+                        src={url}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-full object-cover rounded-solotion shadow-lg"
+                      />
+                      <button
+                        onClick={() => handleRemoveImage(index)}
+                        className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-red-500 transition-colors backdrop-blur-sm"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {previewUrls.length < 5 && (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="aspect-square border-2 border-dashed border-charcoal-lighter rounded-solotion hover:border-electric-lime hover:bg-charcoal-lighter/10 transition-all flex items-center justify-center"
+                    >
+                      <span className="text-4xl text-text-gray hover:text-electric-lime">+</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 리뷰 작성 컴포넌트 */}
+            <div className="space-y-3">
+              <h4 className="text-off-white font-bold text-lg">✍️ 후기 작성</h4>
+              <MissionReview
+                rating={rating}
+                onRatingChange={setRating}
+                content={proofComment}
+                onContentChange={setProofComment}
+              />
+            </div>
+
+            {/* 감성 키워드 선택 */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-off-white font-bold text-lg">🏷️ 키워드 선택</h4>
+                <span className="text-xs text-text-gray-dark">* 선택사항</span>
+              </div>
+              
+              <div className="flex flex-wrap gap-2">
+                {EMOTION_KEYWORDS.map((keyword) => (
+                  <button
+                    key={keyword}
+                    type="button"
+                    onClick={() => {
+                      if (selectedKeywords.includes(keyword)) {
+                        setSelectedKeywords(selectedKeywords.filter((k) => k !== keyword));
+                      } else {
+                        setSelectedKeywords([...selectedKeywords, keyword]);
+                      }
+                    }}
+                    className={`px-4 py-3 rounded-xl text-sm font-bold transition-all border ${
+                      selectedKeywords.includes(keyword)
+                        ? 'bg-electric-lime text-deep-charcoal border-electric-lime shadow-[0_0_10px_rgba(204,255,0,0.3)]'
+                        : 'bg-charcoal-lighter text-text-gray border-transparent hover:border-electric-lime/50'
+                    }`}
+                  >
+                    #{keyword}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 완료 버튼 */}
+            <div className="pt-4">
+              <button
+                onClick={handleComplete}
+                disabled={isUploading || proofImageFiles.length === 0}
+                className="btn-primary w-full py-4 text-lg font-extra-bold shadow-lg shadow-electric-lime/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+              >
+                {isUploading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    업로드 중...
+                  </span>
+                ) : (
+                  '미션 완료하고 기록하기 ✨'
+                )}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         {/* 완료 상태 표시 */}
         {appointment.status === 'COMPLETED' && (
           <div className="card bg-electric-lime/10 border-electric-lime/30">
@@ -932,76 +1009,6 @@ function MissionDetail() {
           </div>
         )}
       </main>
-
-      {/* ===== Feed Button (약속 구경) ===== */}
-      {/* ===== 하단 액션 버튼 그룹 (Smart Scroll) ===== */}
-      <motion.div
-        initial={{ x: 0 }}
-        animate={{ x: isScrollingDown ? '120%' : 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="fixed bottom-6 right-4 sm:right-6 z-40 flex flex-col gap-3"
-      >
-        {/* 피드 구경 버튼 */}
-        <motion.button
-          onClick={() => navigate('/feed')}
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="flex-1"
-        >
-          <div className="bg-electric-lime text-deep-charcoal px-5 sm:px-6 py-3 sm:py-4 rounded-full shadow-2xl font-bold text-sm sm:text-base whitespace-nowrap flex items-center justify-center gap-2">
-            <span>📸</span>
-            <span>피드 구경</span>
-          </div>
-        </motion.button>
-
-        {/* 다른 거 할래 버튼 */}
-        {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
-          <motion.button
-            onClick={() => setShowPlanBModal(true)}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.3, type: 'spring', stiffness: 200 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="flex-1 group"
-          >
-            {/* Glassmorphism 버튼 */}
-            <div className="relative">
-              {/* 네온 글로우 효과 */}
-              <div className="absolute inset-0 bg-electric-lime/30 blur-xl rounded-full animate-pulse"></div>
-
-              {/* 메인 버튼 */}
-              <div className="relative backdrop-blur-xl bg-charcoal-soft/80 border-2 border-electric-lime/50 rounded-full shadow-2xl overflow-hidden">
-                {/* 호버 시 배경 효과 */}
-                <div className="absolute inset-0 bg-gradient-to-br from-electric-lime/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-
-                {/* 버튼 콘텐츠 */}
-                <div className="relative px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-center gap-2 sm:gap-3">
-                  {/* 비상구 아이콘 */}
-                  <div className="text-2xl animate-bounce">
-                    <svg
-                      className="w-6 h-6 sm:w-7 sm:h-7 text-electric-lime"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                    </svg>
-                  </div>
-
-                  {/* 텍스트 라벨 */}
-                  <span className="text-off-white font-bold text-sm sm:text-base whitespace-nowrap">
-                    이거 말고
-                  </span>
-                </div>
-              </div>
-            </div>
-          </motion.button>
-        )}
-      </motion.div>
 
       {/* ===== Arrival Success Modal ===== */}
       <AnimatePresence>

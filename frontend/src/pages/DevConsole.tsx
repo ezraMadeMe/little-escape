@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { adminTimeTravel } from '../api/appointmentApi';
+import { showToast } from '../utils/toast';
 
 // API Types
 type Weather = 'SUNNY' | 'RAIN' | 'SNOW' | 'CLOUDY';
@@ -96,6 +98,7 @@ const DevConsole = () => {
   const [userMbti, setUserMbti] = useState<'I' | 'E'>('I');
   const [soloLevel, setSoloLevel] = useState<number>(3);
   const [forcedCategory, setForcedCategory] = useState<MissionCategory | ''>('');
+  const [timeTravelId, setTimeTravelId] = useState<string>('');
 
   // Random Scenario Generator
   const generateRandomScenario = () => {
@@ -419,6 +422,41 @@ const DevConsole = () => {
                   <option value="CULTURE">🎭 문화 (CULTURE)</option>
                 </select>
               </div>
+            </section>
+
+            {/* Section 4: Time Travel (Admin) */}
+            <section className="bg-white rounded-lg shadow p-6 border-2 border-red-200">
+              <h2 className="text-xl font-semibold text-red-600 mb-4 flex items-center gap-2">
+                ⏰ 타임 트래블 (관리자)
+              </h2>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  placeholder="약속 ID"
+                  value={timeTravelId}
+                  onChange={(e) => setTimeTravelId(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+                <button
+                  onClick={async () => {
+                    if (!timeTravelId) return;
+                    try {
+                      await adminTimeTravel(Number(timeTravelId));
+                      showToast('약속 시간이 현재로 변경되었습니다! 🕰️');
+                      setTimeTravelId('');
+                    } catch (error) {
+                      console.error(error);
+                      alert('타임 트래블 실패');
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium"
+                >
+                  현재로 당기기
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                * 해당 약속의 scheduledAt을 현재 시간으로 즉시 변경합니다.
+              </p>
             </section>
 
             {/* Action Buttons */}

@@ -75,6 +75,9 @@ public class Appointment extends BaseTimeEntity {
     @Column(name = "keyword")
     private java.util.List<String> reviewKeywords = new java.util.ArrayList<>();
 
+    @Column(name = "rating")
+    private Double rating;
+
     @Column(name = "is_favorite", nullable = false)
     private boolean isFavorite = false;
 

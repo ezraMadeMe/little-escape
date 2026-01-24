@@ -25,4 +25,7 @@ public interface LikedAppointmentRepository extends JpaRepository<LikedAppointme
 
     // 사용자 삭제 시 좋아요 레코드도 함께 삭제
     void deleteByUserId(Long userId);
+
+    // 약속 삭제 시 해당 약속을 좋아요한 모든 레코드 삭제
+    void deleteByAppointmentId(Long appointmentId);
 }

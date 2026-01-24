@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // 츤데레 온보딩 질문 시퀀스
@@ -45,7 +46,9 @@ const ONBOARDING_QUESTIONS = [
 ];
 
 const LoginPage: React.FC = () => {
+  const navigate = useNavigate();
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const isDev = import.meta.env.DEV; // 개발 환경 체크
 
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0);
@@ -91,6 +94,34 @@ const LoginPage: React.FC = () => {
     setShowOnboarding(true);
     setCurrentStep(0);
     setAnswers({});
+  };
+
+  // Super Admin 모드 (개발 전용)
+  const handleSuperAdminLogin = () => {
+    console.log('🔓 Super Admin 모드 활성화');
+
+    // Mock 토큰 생성
+    const mockToken = 'mock-dev-token-' + Date.now();
+
+    // localStorage에 필요한 데이터 설정
+    localStorage.setItem('token', mockToken);
+    localStorage.setItem('onboarding_complete', 'true');
+
+    // Mock 유저 정보 설정
+    localStorage.setItem('mock_user', JSON.stringify({
+      id: 999,
+      nickname: 'Super Admin',
+      email: 'admin@solotion.dev',
+      isOnboarded: true
+    }));
+
+    console.log('✅ Mock 토큰 설정 완료');
+    console.log('  - token:', mockToken);
+    console.log('  - onboarding_complete: true');
+
+    // 피드로 이동
+    console.log('🚀 피드 페이지로 이동...');
+    navigate('/feed', { replace: true });
   };
 
   return (
@@ -173,6 +204,16 @@ const LoginPage: React.FC = () => {
               >
                 친구 맺기 먼저 할래
               </button>
+
+              {/* Super Admin 버튼 (개발 환경 전용) */}
+              {isDev && (
+                <button
+                  onClick={handleSuperAdminLogin}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-solotion font-bold text-sm shadow-lg hover:shadow-[0_0_30px_rgba(168,85,247,0.5)] active:scale-95 transition-all duration-200 mt-4 border-2 border-purple-400"
+                >
+                  🔓 Super Admin (개발 전용)
+                </button>
+              )}
             </motion.div>
 
             {/* 하단 안내 문구 */}

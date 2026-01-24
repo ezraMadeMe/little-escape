@@ -108,8 +108,8 @@ const SavedAppointments = () => {
                 transition={{ delay: index * 0.05 }}
                 className="card p-0 overflow-hidden relative group cursor-pointer"
                 onClick={() => {
-                  // 저장한 일탈 상세 보기 (MissionDetail 재활용)
-                  navigate(`/mission/${item.appointmentId}`);
+                  // 저장한 일탈 상세 보기 (SavedDetail)
+                  navigate(`/saved/detail/${item.appointmentId}`);
                 }}
               >
                 {/* 썸네일 */}

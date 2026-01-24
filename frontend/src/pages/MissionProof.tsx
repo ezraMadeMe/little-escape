@@ -65,7 +65,14 @@ function MissionProof() {
     const files = e.target.files;
     if (!files) return;
 
-    const newFiles = Array.from(files).filter(file => {
+    // 5장 제한 체크
+    const remainingSlots = 5 - imageFiles.length;
+    if (remainingSlots === 0) {
+      alert('사진은 최대 5장까지 업로드 가능합니다.');
+      return;
+    }
+
+    const newFiles = Array.from(files).slice(0, remainingSlots).filter(file => {
       if (!file.type.startsWith('image/')) {
         alert('이미지 파일만 업로드 가능합니다.');
         return false;
@@ -76,6 +83,10 @@ function MissionProof() {
       }
       return true;
     });
+
+    if (newFiles.length + imageFiles.length > 5) {
+      alert(`사진은 최대 5장까지 업로드 가능합니다. ${remainingSlots}장만 추가됩니다.`);
+    }
 
     setImageFiles([...imageFiles, ...newFiles]);
 
@@ -365,7 +376,7 @@ function MissionProof() {
         {/* 사진 업로드 섹션 */}
         <div>
           <h2 className="text-xl font-bold text-off-white mb-2">인증샷 업로드</h2>
-          <p className="text-sm text-text-gray mb-4">선택 사항 (없어도 괜찮아)</p>
+          <p className="text-sm text-text-gray mb-4">최대 5장까지 업로드 가능 (선택 사항)</p>
           <input
             type="file"
             ref={fileInputRef}
@@ -376,12 +387,15 @@ function MissionProof() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-full h-32 border-2 border-dashed border-charcoal-lighter hover:border-electric-lime rounded-2xl flex flex-col items-center justify-center gap-2 transition text-text-gray hover:text-electric-lime"
+            disabled={imageFiles.length >= 5}
+            className="w-full h-32 border-2 border-dashed border-charcoal-lighter hover:border-electric-lime rounded-2xl flex flex-col items-center justify-center gap-2 transition text-text-gray hover:text-electric-lime disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-charcoal-lighter disabled:hover:text-text-gray"
           >
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            <span className="text-sm font-semibold">사진 추가 (선택)</span>
+            <span className="text-sm font-semibold">
+              {imageFiles.length >= 5 ? '사진이 가득 찼어요 (5/5)' : `사진 추가 (${imageFiles.length}/5)`}
+            </span>
           </button>
 
           <div className="grid grid-cols-3 gap-2 mt-4">
@@ -405,7 +419,10 @@ function MissionProof() {
           </div>
 
           {imagePreviews.length > 0 && (
-            <p className="text-sm text-text-gray mt-2">{imagePreviews.length}장의 사진이 선택되었습니다</p>
+            <p className="text-sm text-text-gray mt-2">
+              {imagePreviews.length}장의 사진이 선택되었습니다
+              {imagePreviews.length >= 5 && <span className="text-electric-lime ml-2">✓ 최대치</span>}
+            </p>
           )}
         </div>
 

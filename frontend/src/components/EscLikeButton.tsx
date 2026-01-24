@@ -3,77 +3,54 @@ import { motion } from 'framer-motion';
 
 interface EscLikeButtonProps {
   isLiked: boolean;
+  likeCount?: number;
   onLike: () => void;
 }
 
 const EscLikeButton = ({
   isLiked,
+  likeCount = 0,
   onLike
 }: EscLikeButtonProps) => {
   const [isAnimating, setIsAnimating] = useState(false);
 
   const handleClick = () => {
     setIsAnimating(true);
-
-    // 애니메이션 완료 후 플래그 리셋
     setTimeout(() => setIsAnimating(false), 600);
-
-    // 콜백 실행
     onLike();
   };
 
   return (
-    <motion.button
+    <button
       onClick={handleClick}
-      whileTap={{ scale: 0.9 }}
-      className={`relative group ${isLiked ? 'keycap-liked' : 'keycap-default'}`}
+      className={`
+        relative w-full py-4 rounded-xl font-bold text-sm tracking-wider
+        transition-all duration-200 active:scale-[0.98]
+        flex items-center justify-center px-6
+        ${isLiked
+          ? 'bg-brand-neon text-black shadow-[0_0_15px_#CCFF00] border-2 border-brand-neon'
+          : 'bg-transparent text-brand-neon border-2 border-brand-neon hover:bg-brand-neon/5'
+        }
+      `}
     >
-      {/* 키캡 본체 */}
-      <div
-        className={`
-          relative px-4 py-2 rounded-lg font-bold text-xs tracking-wider
-          transition-all duration-300 transform
-          ${isLiked
-            ? 'bg-gradient-to-br from-electric-lime to-neon-purple text-deep-charcoal shadow-lg shadow-electric-lime/50'
-            : 'bg-charcoal-lighter text-text-gray shadow-md border border-charcoal-lighter hover:border-electric-lime/30'
-          }
-          ${isLiked ? 'translate-y-0' : 'translate-y-[-2px]'}
-          group-hover:translate-y-0
-        `}
-        style={{
-          boxShadow: isLiked
-            ? '0 0 20px rgba(204, 255, 0, 0.5), inset 0 -2px 4px rgba(0,0,0,0.2)'
-            : 'inset 0 -3px 0 rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.3)',
-        }}
-      >
-        <span className="drop-shadow-sm">ESC</span>
-      </div>
+      <span className="text-center text-lg">ESC</span>
+      
+      <span className="absolute right-6 font-mono text-base">
+        {likeCount > 999 ? '999+' : likeCount}
+      </span>
 
-      {/* 키캡 그림자/베이스 */}
-      <div
-        className={`
-          absolute inset-0 rounded-lg -z-10 transition-all duration-300
-          ${isLiked
-            ? 'bg-electric-lime/20 blur-sm'
-            : 'bg-deep-charcoal/50'
-          }
-          ${isLiked ? 'translate-y-1' : 'translate-y-0'}
-          group-hover:translate-y-1
-        `}
-      />
-
-      {/* 좋아요 애니메이션 */}
+      {/* 좋아요 애니메이션 이모지 */}
       {isAnimating && (
         <motion.div
-          initial={{ scale: 1.5, y: -10, opacity: 1 }}
-          animate={{ scale: 1, y: -30, opacity: 0 }}
+          initial={{ scale: 0.5, y: 0, opacity: 0 }}
+          animate={{ scale: 1.5, y: -20, opacity: [0, 1, 0] }}
           transition={{ duration: 0.6 }}
-          className="absolute top-0 left-1/2 transform -translate-x-1/2 text-electric-lime text-xl"
+          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
         >
           💚
         </motion.div>
       )}
-    </motion.button>
+    </button>
   );
 };
 

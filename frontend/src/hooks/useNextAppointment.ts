@@ -27,6 +27,9 @@ export function useNextAppointment(): UseNextAppointmentReturn {
       console.log('🔍 [useNextAppointment] appointment state 업데이트 완료');
     } catch (error) {
       console.error('❌ [useNextAppointment] 가장 가까운 약속 조회 실패:', error);
+      // 에러 발생 시 (특히 404/400 등) 로컬 스토리지의 유효하지 않은 ID 제거
+      localStorage.removeItem('appointmentId');
+      setAppointment(null);
     } finally {
       setLoading(false);
       console.log('🔍 [useNextAppointment] loading 완료');

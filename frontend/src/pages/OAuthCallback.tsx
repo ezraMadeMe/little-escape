@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getMyInfo } from '../api/userApi';
+import { getNextAppointment } from '../api/appointmentApi';
 
 function OAuthCallback() {
   const navigate = useNavigate();
@@ -23,19 +24,36 @@ function OAuthCallback() {
           // 3. 온보딩 상태 확인
           const isOnboarded = user.isOnboarded || localStorage.getItem('onboarding_complete') === 'true';
 
+          // 4. 진행 중인 약속 확인 (최우선)
+          try {
+            const nextAppointment = await getNextAppointment();
+
+            if (nextAppointment) {
+              // 🎯 Priority 1: 진행 중인 약속이 있으면 무조건 약속 상세로!
+              console.log('🎯 진행 중인 약속 발견! -> 약속 상세로 이동:', nextAppointment.id);
+              localStorage.setItem('appointmentId', String(nextAppointment.id));
+              localStorage.setItem('onboarding_complete', 'true');
+              navigate(`/mission/${nextAppointment.id}`, { replace: true });
+              return;
+            }
+          } catch (appointmentError) {
+            console.log('ℹ️ 진행 중인 약속 없음 (정상)');
+          }
+
+          // 5. 약속이 없는 경우 온보딩 상태로 분기
           if (!isOnboarded) {
-            // 온보딩 미완료 -> 채팅 온보딩으로
+            // Priority 2: 온보딩 미완료 -> 채팅 온보딩으로
             console.log('📝 온보딩 미완료 -> 채팅 온보딩 시작');
             navigate('/chat', { replace: true });
           } else {
-            // 온보딩 완료 -> localStorage 플래그 설정 후 메인으로
-            console.log('✅ 온보딩 완료 -> 메인 화면으로');
+            // Priority 3: 온보딩 완료 + 약속 없음 -> 피드로
+            console.log('✅ 온보딩 완료 -> 피드로 이동');
             localStorage.setItem('onboarding_complete', 'true');
-            navigate('/missions', { replace: true });
+            navigate('/feed', { replace: true });
           }
         } catch (error) {
           console.error('❌ 유저 정보 조회 실패:', error);
-          
+
           // 에러 발생 시에도 토큰이 있으므로 채팅 온보딩으로 시도
           console.log('⚠️ 에러 발생, 채팅 온보딩으로 이동');
           navigate('/chat', { replace: true });
