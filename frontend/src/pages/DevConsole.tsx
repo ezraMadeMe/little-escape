@@ -6,7 +6,7 @@ import { showToast } from '../utils/toast';
 // API Types
 type Weather = 'SUNNY' | 'RAIN' | 'SNOW' | 'CLOUDY';
 type AirQuality = 'GOOD' | 'BAD' | 'WORST';
-type Congestion = 'LOW' | 'MEDIUM' | 'HIGH';
+type Congestion = 'LOW' | 'MEDIUM' | 'HIGH' | 'NORMAL'; // NORMAL 추가 (서울시 API 기본값)
 type MissionCategory = 'FOOD' | 'ACTIVITY' | 'RELAX' | 'CULTURE';
 
 interface SimulationRequest {
@@ -94,7 +94,7 @@ const DevConsole = () => {
   const [weather, setWeather] = useState<Weather>('SUNNY');
   const [temperature, setTemperature] = useState<number>(20);
   const [airQuality, setAirQuality] = useState<AirQuality>('GOOD');
-  const [congestion, setCongestion] = useState<Congestion>('LOW');
+  const [congestion, setCongestion] = useState<Congestion>('NORMAL');
   const [userMbti, setUserMbti] = useState<'I' | 'E'>('I');
   const [soloLevel, setSoloLevel] = useState<number>(3);
   const [forcedCategory, setForcedCategory] = useState<MissionCategory | ''>('');
@@ -128,7 +128,7 @@ const DevConsole = () => {
     setAirQuality(airQualities[Math.floor(Math.random() * airQualities.length)]);
 
     // Random congestion
-    const congestions: Congestion[] = ['LOW', 'MEDIUM', 'HIGH'];
+    const congestions: Congestion[] = ['LOW', 'NORMAL', 'MEDIUM', 'HIGH'];
     setCongestion(congestions[Math.floor(Math.random() * congestions.length)]);
 
     // Random MBTI
@@ -184,6 +184,15 @@ const DevConsole = () => {
           <p className="text-gray-600">
             추천 로직을 테스트하기 위한 환경 변수 통제 도구
           </p>
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h3 className="text-sm font-semibold text-blue-900 mb-2">📋 최근 업데이트 (피드 기능)</h3>
+            <ul className="text-xs text-blue-800 space-y-1">
+              <li>• 피드 조회: ACCEPTED(수락), ARRIVED(도착), COMPLETED(완료) 상태 포함</li>
+              <li>• 좋아요/저장 기능 추가 (LikedAppointment, SavedAppointment)</li>
+              <li>• 댓글 기능 추가 (Comment)</li>
+              <li>• 혼잡도 NORMAL 추가 (서울시 실시간 도시데이터 API 연동)</li>
+            </ul>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -332,8 +341,8 @@ const DevConsole = () => {
               {/* Congestion */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">혼잡도</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['LOW', 'MEDIUM', 'HIGH'] as Congestion[]).map((value) => (
+                <div className="grid grid-cols-4 gap-2">
+                  {(['LOW', 'NORMAL', 'MEDIUM', 'HIGH'] as Congestion[]).map((value) => (
                     <button
                       key={value}
                       onClick={() => setCongestion(value)}
@@ -343,7 +352,9 @@ const DevConsole = () => {
                           : 'border-gray-300 hover:border-blue-300'
                       }`}
                     >
-                      {value === 'LOW' ? '🤗 한적함' : value === 'MEDIUM' ? '🙂 보통' : '😵 터짐'}
+                      {value === 'LOW' ? '🤗 한적함' :
+                       value === 'NORMAL' ? '😊 여유' :
+                       value === 'MEDIUM' ? '🙂 보통' : '😵 터짐'}
                     </button>
                   ))}
                 </div>
