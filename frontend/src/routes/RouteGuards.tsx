@@ -1,5 +1,10 @@
 import { ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, useParams } from 'react-router-dom';
+
+// ID 유효성 검사 헬퍼 함수
+const isValidId = (id: string | null): boolean => {
+  return !!(id && id !== 'null' && id !== 'undefined' && id.trim() !== '' && !isNaN(Number(id)));
+};
 
 /**
  * 뉴비 전용 라우트 가드
@@ -12,7 +17,7 @@ export const RequireNewUser = ({ children }: { children: ReactNode }) => {
   const appointmentId = localStorage.getItem('appointmentId');
 
   // 약속이 있는 경우 -> 미션 상세 페이지로 강제 이동
-  if (appointmentId && appointmentId !== 'null' && appointmentId !== 'undefined') {
+  if (isValidId(appointmentId)) {
     console.warn('⚠️ [RequireNewUser] 약속이 있는 유저 -> /mission으로 리다이렉트');
     return <Navigate to={`/mission/${appointmentId}`} replace />;
   }
@@ -32,15 +37,35 @@ export const RequireNewUser = ({ children }: { children: ReactNode }) => {
  * 용도: /missions, /mission/:id 등
  */
 export const RequireAppointment = ({ children }: { children: ReactNode }) => {
+  const params = useParams();
   const appointmentId = localStorage.getItem('appointmentId');
 
-  // appointmentId가 없거나 유효하지 않으면 /feed로 리다이렉트
-  if (!appointmentId || appointmentId === 'null' || appointmentId === 'undefined') {
-    console.warn('⚠️ [RequireAppointment] 약속이 없는 유저 -> /feed로 리다이렉트');
-    return <Navigate to="/feed" replace />;
+  // URL 파라미터의 appointmentId 또는 localStorage의 appointmentId 확인
+  const urlAppointmentId = params.appointmentId;
+
+  console.log('🔍 [RequireAppointment] 체크');
+  console.log('  - URL appointmentId:', urlAppointmentId);
+  console.log('  - localStorage appointmentId:', appointmentId);
+
+  // URL에 appointmentId가 있으면 localStorage에 저장하고 통과
+  if (urlAppointmentId && isValidId(urlAppointmentId)) {
+    console.log('✅ [RequireAppointment] URL appointmentId 유효 -> 접근 허용');
+    // localStorage 동기화
+    if (appointmentId !== urlAppointmentId) {
+      localStorage.setItem('appointmentId', urlAppointmentId);
+    }
+    return <>{children}</>;
   }
 
-  return <>{children}</>;
+  // localStorage의 appointmentId가 유효하면 통과
+  if (isValidId(appointmentId)) {
+    console.log('✅ [RequireAppointment] localStorage appointmentId 유효 -> 접근 허용');
+    return <>{children}</>;
+  }
+
+  // 둘 다 없으면 /feed로 리다이렉트
+  console.warn('⚠️ [RequireAppointment] 약속이 없는 유저 -> /feed로 리다이렉트');
+  return <Navigate to="/feed" replace />;
 };
 
 /**
@@ -54,7 +79,7 @@ export const RequireOnboarded = ({ children }: { children: ReactNode }) => {
   const appointmentId = localStorage.getItem('appointmentId');
 
   // 예정된 약속이 있으면 온보딩 완료 여부와 관계없이 접근 허용
-  if (appointmentId && appointmentId !== 'null' && appointmentId !== 'undefined') {
+  if (isValidId(appointmentId)) {
     console.log('✅ [RequireOnboarded] 약속이 있는 유저 -> 접근 허용');
     return <>{children}</>;
   }
@@ -76,13 +101,11 @@ export const SmartRedirect = () => {
   const token = localStorage.getItem('token');
   const appointmentId = localStorage.getItem('appointmentId');
   const onboardingComplete = localStorage.getItem('onboarding_complete');
-  const userLocation = localStorage.getItem('user_location');
 
   console.log('=== SmartRedirect 체크 ===');
   console.log('토큰:', !!token);
   console.log('약속 ID:', appointmentId);
   console.log('온보딩 완료:', onboardingComplete === 'true');
-  console.log('위치 설정:', !!userLocation);
 
   // 1. 토큰 없음 -> 로그인 페이지
   if (!token || token === 'null' || token === 'undefined') {
@@ -90,25 +113,19 @@ export const SmartRedirect = () => {
     return <Navigate to="/login" replace />;
   }
 
-  // 2. 약속 있음 -> 미션 상세 페이지 (최우선!)
-  if (appointmentId && appointmentId !== 'null' && appointmentId !== 'undefined') {
-    console.log('🎯 약속 있음 -> /mission으로 "납치"');
+  // 2. Priority 1: 진행 중인 약속이 있으면 약속 상세로
+  if (isValidId(appointmentId)) {
+    console.log('🎯 진행 중인 약속 있음 -> /mission으로 이동');
     return <Navigate to={`/mission/${appointmentId}`} replace />;
   }
 
-  // 3. 온보딩 미완료 -> 온보딩 채팅
-  if (onboardingComplete !== 'true') {
-    console.log('📝 온보딩 미완료 -> /chat');
-    return <Navigate to="/chat" replace />;
+  // 3. Priority 2: 온보딩 완료 -> 피드로
+  if (onboardingComplete === 'true') {
+    console.log('✅ 온보딩 완료 -> /feed');
+    return <Navigate to="/feed" replace />;
   }
 
-  // 4. 위치 미설정 -> 위치 설정 페이지
-  if (!userLocation) {
-    console.log('📍 위치 미설정 -> /location');
-    return <Navigate to="/location" replace />;
-  }
-
-  // 5. 모든 조건 만족 -> 피드
-  console.log('✅ 기본 진입 -> /feed');
-  return <Navigate to="/feed" replace />;
+  // 4. Priority 3: 뉴비 -> 채팅 온보딩으로
+  console.log('📝 신규 유저 -> /chat');
+  return <Navigate to="/chat" replace />;
 };

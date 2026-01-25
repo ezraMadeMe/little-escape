@@ -2,15 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { getMyInfo, deleteUser } from '../api/userApi';
-import { createSuggestion } from '../api/suggestionApi';
 import { User } from '../types/user';
 
 const MyPage = () => {
   const navigate = useNavigate();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [showSuggestionModal, setShowSuggestionModal] = useState(false);
-  const [suggestionContent, setSuggestionContent] = useState('');
-  const [isSendingSuggestion, setIsSendingSuggestion] = useState(false);
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -48,33 +44,13 @@ const MyPage = () => {
     }
   };
 
-  const handleSendSuggestion = async () => {
-    if (!suggestionContent.trim()) {
-      alert('내용을 입력해주세요.');
-      return;
-    }
-
-    try {
-      setIsSendingSuggestion(true);
-      await createSuggestion(suggestionContent);
-      alert('제보가 접수되었습니다. 감사합니다! 🙏');
-      setSuggestionContent('');
-      setShowSuggestionModal(false);
-    } catch (error) {
-      console.error('제보 전송 실패:', error);
-      alert('제보 전송에 실패했습니다.');
-    } finally {
-      setIsSendingSuggestion(false);
-    }
-  };
-
-  const menuItems = [
+  const myActivityItems = [
     {
       icon: '📂',
       title: '저장한 일탈',
       description: '마음에 든 약속 모아보기',
       onClick: () => navigate('/mypage/saved'),
-      highlight: true, // 새 기능 강조
+      highlight: true,
     },
     {
       icon: '✏️',
@@ -82,23 +58,14 @@ const MyPage = () => {
       description: '닉네임, 프로필 사진 변경하기',
       onClick: () => navigate('/profile-edit'),
     },
+  ];
+
+  const devItems = [
     {
       icon: '📧',
       title: '문의하기',
       description: '1:1 문의를 남겨주세요',
       onClick: () => navigate('/contact'),
-    },
-    {
-      icon: '📄',
-      title: '이용약관',
-      description: '서비스 이용약관 확인하기',
-      onClick: () => alert('이용약관 페이지 준비 중입니다.'),
-    },
-    {
-      icon: '🔒',
-      title: '개인정보 처리방침',
-      description: '개인정보 보호정책 확인하기',
-      onClick: () => alert('개인정보 처리방침 페이지 준비 중입니다.'),
     },
   ];
 
@@ -140,10 +107,35 @@ const MyPage = () => {
           </div>
         </motion.div>
 
-        {/* 메뉴 섹션 */}
+        {/* 나의 활동 */}
         <div className="px-4 space-y-3 mb-6">
-          <h3 className="text-off-white text-lg font-bold">지원</h3>
-          {menuItems.map((item, index) => (
+          <h3 className="text-off-white text-lg font-bold">나의 활동</h3>
+          {myActivityItems.map((item, index) => (
+            <motion.button
+              key={index}
+              onClick={item.onClick}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="card w-full text-left clickable"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{item.icon}</span>
+                <div className="flex-1">
+                  <h4 className="text-off-white font-semibold">{item.title}</h4>
+                  <p className="text-text-gray text-sm mt-0.5">{item.description}</p>
+                </div>
+                <svg className="w-5 h-5 text-text-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </motion.button>
+          ))}
+        </div>
+
+        {/* 개발자에게 */}
+        <div className="px-4 space-y-3 mb-6">
+          <h3 className="text-off-white text-lg font-bold">개발자에게</h3>
+          {devItems.map((item, index) => (
             <motion.button
               key={index}
               onClick={item.onClick}
@@ -200,16 +192,6 @@ const MyPage = () => {
           </motion.button>
         </div>
 
-        {/* 제보 버튼 */}
-        <div className="px-4 text-center mt-8 mb-4">
-          <button
-            onClick={() => setShowSuggestionModal(true)}
-            className="text-sm text-brand-muted underline hover:text-electric-lime transition-colors"
-          >
-            사장님한테 훈수 두기 (코스 추천/버그 제보)
-          </button>
-        </div>
-
         {/* 버전 정보 */}
         <div className="px-4 text-center text-xs text-text-gray-dark mb-6">
           <p>작은 일탈 v1.2.0</p>
@@ -254,72 +236,6 @@ const MyPage = () => {
                 </button>
                 <button
                   onClick={() => setShowLogoutConfirm(false)}
-                  className="btn-ghost w-full"
-                >
-                  취소
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        </>
-      )}
-
-      {/* 제보 모달 */}
-      {showSuggestionModal && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 bg-black/80 z-50"
-            onClick={() => {
-              setShowSuggestionModal(false);
-              setSuggestionContent('');
-            }}
-          />
-          <motion.div
-            initial={{ opacity: 0, y: 100 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="fixed inset-x-0 bottom-0 z-50 bg-charcoal-soft rounded-t-3xl shadow-2xl max-w-md mx-auto border-t border-charcoal-lighter"
-          >
-            <div className="p-6">
-              <div className="w-12 h-1 bg-charcoal-lighter rounded-full mx-auto mb-6"></div>
-
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-2xl">💡</span>
-                  <h3 className="text-off-white text-xl font-extra-bold">
-                    훈수 두기
-                  </h3>
-                </div>
-                <p className="text-text-gray text-sm mb-4">
-                  추천하고 싶은 코스나 발견한 버그를 알려주세요.
-                </p>
-
-                <textarea
-                  value={suggestionContent}
-                  onChange={(e) => setSuggestionContent(e.target.value)}
-                  placeholder="야, 성수동에 OO카페는 꼭 넣어야지. 분위기 깡패임."
-                  className="w-full bg-charcoal-lighter text-off-white rounded-2xl p-4 min-h-[120px] resize-none focus:outline-none focus:ring-2 focus:ring-electric-lime/50 transition-all placeholder:text-text-gray-dark"
-                  maxLength={500}
-                />
-                <p className="text-text-gray-dark text-xs mt-2 text-right">
-                  {suggestionContent.length} / 500
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  onClick={handleSendSuggestion}
-                  disabled={isSendingSuggestion || !suggestionContent.trim()}
-                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSendingSuggestion ? '보내는 중...' : '보내기'}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowSuggestionModal(false);
-                    setSuggestionContent('');
-                  }}
                   className="btn-ghost w-full"
                 >
                   취소

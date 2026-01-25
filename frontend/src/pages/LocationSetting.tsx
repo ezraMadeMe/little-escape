@@ -24,49 +24,86 @@ const LocationSetting = () => {
   const [isLoadingGeo, setIsLoadingGeo] = useState(true);
   const [geoError, setGeoError] = useState<string | null>(null);
 
-  // Auto-fetch on mount
-  useEffect(() => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setSelectedLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            name: '현재 위치',
-          });
-          setIsLoadingGeo(false);
-        },
-        (error) => {
-          console.warn('위치 확인 실패:', error);
-
-          // 기본값: 성수동으로 자동 설정
-          setSelectedLocation({
-            lat: 37.5445,
-            lng: 127.0557,
-            name: '성수',
-          });
-          setIsLoadingGeo(false);
-
-          // 사용자 친화적 토스트 메시지 표시
-          showToast('위치를 찾을 수 없어 성수동으로 설정했어요.');
-          setGeoError('위치를 찾을 수 없어 성수동으로 설정했어요. 아래에서 다른 핫플을 선택할 수 있어요.');
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        }
-      );
-    } else {
+  // 위치 정보 가져오기 (권한 요청)
+  const handleGetCurrentLocation = () => {
+    if (!('geolocation' in navigator)) {
       setGeoError('브라우저가 위치 정보를 지원하지 않습니다.');
-      setSelectedLocation({
-        lat: 37.5445,
-        lng: 127.0557,
-        name: '성수',
-      });
       setIsLoadingGeo(false);
-      showToast('위치를 찾을 수 없어 성수동으로 설정했어요.');
+      return;
     }
+
+    // HTTPS 체크 (localhost와 127.0.0.1 제외)
+    const isSecureContext = window.isSecureContext;
+    const isLocalhost = window.location.hostname === 'localhost' ||
+                       window.location.hostname === '127.0.0.1';
+
+    if (!isSecureContext && !isLocalhost) {
+      setGeoError('위치 정보는 HTTPS 연결에서만 사용할 수 있습니다. HTTPS로 접속해주세요.');
+      setIsLoadingGeo(false);
+      console.error('❌ Geolocation requires HTTPS. Current protocol:', window.location.protocol);
+      showToast('HTTPS 연결이 필요합니다');
+      return;
+    }
+
+    setIsLoadingGeo(true);
+    setGeoError(null);
+
+    console.log('📍 위치 권한 요청 시작...');
+    console.log('  - Protocol:', window.location.protocol);
+    console.log('  - Secure context:', isSecureContext);
+    console.log('  - User agent:', navigator.userAgent);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        console.log('✅ 위치 확인 성공:', position.coords);
+        console.log('  - Latitude:', position.coords.latitude);
+        console.log('  - Longitude:', position.coords.longitude);
+        console.log('  - Accuracy:', position.coords.accuracy, 'm');
+
+        setSelectedLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          name: '현재 위치',
+        });
+        setIsLoadingGeo(false);
+        showToast('현재 위치를 확인했어요!');
+      },
+      (error) => {
+        console.error('❌ 위치 확인 실패:', error);
+        console.error('  - Error code:', error.code);
+        console.error('  - Error message:', error.message);
+        setIsLoadingGeo(false);
+
+        let errorMessage = '위치를 가져올 수 없습니다.';
+        let detailMessage = '';
+
+        if (error.code === error.PERMISSION_DENIED) {
+          errorMessage = '위치 권한이 거부되었습니다.';
+          detailMessage = '설정 > 사이트 설정 > 위치에서 권한을 허용해주세요.';
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMessage = '위치 정보를 사용할 수 없습니다.';
+          detailMessage = 'GPS가 켜져있는지, 실내가 아닌지 확인해주세요.';
+        } else if (error.code === error.TIMEOUT) {
+          errorMessage = '요청 시간이 초과되었습니다.';
+          detailMessage = '다시 시도해주세요.';
+        }
+
+        setGeoError(`${errorMessage} ${detailMessage}`);
+        showToast(errorMessage);
+
+        // 실패 시 기본값(성수)으로 자동 설정하지 않고, 사용자가 선택하도록 유도하거나 재시도 버튼 제공
+      },
+      {
+        enableHighAccuracy: true, // GPS 사용 (배터리 소모 증가)
+        timeout: 15000, // 15초로 증가 (모바일에서 GPS 잡는데 시간 소요)
+        maximumAge: 0, // 캐시 사용 안 함 (항상 최신 위치)
+      }
+    );
+  };
+
+  // 초기 로드 시 자동 시도
+  useEffect(() => {
+    handleGetCurrentLocation();
   }, []);
 
   // 핫플 선택
@@ -129,8 +166,42 @@ const LocationSetting = () => {
               <p className="text-text-gray">위치 확인 중...</p>
             </div>
           ) : geoError ? (
-            <div className="card bg-charcoal-soft p-6">
-              <p className="text-text-gray text-sm">{geoError}</p>
+            <div className="card bg-charcoal-soft p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">⚠️</span>
+                <div className="flex-1">
+                  <p className="text-off-white font-bold mb-1">위치 확인 실패</p>
+                  <p className="text-text-gray text-sm mb-2">{geoError}</p>
+
+                  {/* HTTPS 관련 에러인 경우 추가 안내 */}
+                  {geoError.includes('HTTPS') && (
+                    <div className="mt-3 p-3 bg-charcoal-lighter rounded-lg">
+                      <p className="text-xs text-text-gray-dark">
+                        💡 <strong>해결 방법:</strong><br/>
+                        1. HTTPS 도메인으로 접속하거나<br/>
+                        2. 아래 핫플 지역을 선택해주세요
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 권한 거부 시 추가 안내 */}
+                  {geoError.includes('권한') && (
+                    <div className="mt-3 p-3 bg-charcoal-lighter rounded-lg">
+                      <p className="text-xs text-text-gray-dark">
+                        💡 <strong>권한 허용 방법:</strong><br/>
+                        <strong>Chrome:</strong> 주소창 왼쪽 🔒 클릭 → 위치 → 허용<br/>
+                        <strong>Safari:</strong> 설정 → Safari → 위치 → 허용
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleGetCurrentLocation}
+                className="w-full py-3 bg-charcoal-lighter hover:bg-charcoal-soft border border-charcoal-lighter rounded-lg text-electric-lime font-bold transition-colors"
+              >
+                🔄 다시 시도하기
+              </button>
             </div>
           ) : selectedLocation?.name === '현재 위치' ? (
             <div

@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, Bookmark, Clock, Calendar } from 'lucide-react';
 import { getPublicFeed, FeedItem, toggleSaveAppointment, toggleLikeAppointment } from '../api/appointmentApi';
 import { formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import EscLikeButton from '../components/EscLikeButton';
-import ScrollToTopButton from '../components/ScrollToTopButton';
+import ImageCarousel from '../components/common/ImageCarousel';
+import ExpandableText from '../components/common/ExpandableText';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { showToast } from '../utils/toast';
+import { Comment, createComment, getComments, deleteComment } from '../api/commentApi';
 
 const FeedPage = () => {
   const navigate = useNavigate();
@@ -16,6 +18,11 @@ const FeedPage = () => {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+
+  // 댓글 확장 상태
+  const [expandedFeedId, setExpandedFeedId] = useState<number | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [currentComments, setCurrentComments] = useState<Comment[]>([]);
 
   useEffect(() => {
     loadFeeds();
@@ -54,6 +61,66 @@ const FeedPage = () => {
     threshold: 0.5,
   });
 
+  // 댓글창 토글
+  const handleToggleComment = async (appointmentId: number) => {
+    if (expandedFeedId === appointmentId) {
+      setExpandedFeedId(null);
+      setCommentText('');
+      setCurrentComments([]);
+    } else {
+      setExpandedFeedId(appointmentId);
+      setCommentText('');
+      try {
+        const comments = await getComments(appointmentId);
+        setCurrentComments(comments);
+      } catch (error) {
+        console.error('댓글 조회 실패:', error);
+        showToast('댓글을 불러오는데 실패했어요.');
+      }
+    }
+  };
+
+  // 댓글 전송
+  const handleSubmitComment = async (appointmentId: number) => {
+    if (!commentText.trim()) return;
+    
+    try {
+      const newComment = await createComment(appointmentId, commentText);
+      setCurrentComments(prev => [newComment, ...prev]);
+      setCommentText('');
+      
+      // 피드 목록의 댓글 수 업데이트
+      setFeeds(prev => prev.map(feed => 
+        feed.appointmentId === appointmentId 
+          ? { ...feed, commentCount: (feed.commentCount || 0) + 1 } 
+          : feed
+      ));
+    } catch (error) {
+      console.error('댓글 작성 실패:', error);
+      showToast('댓글 작성에 실패했어요.');
+    }
+  };
+
+  // 댓글 삭제
+  const handleDeleteComment = async (commentId: number, appointmentId: number) => {
+    if (!confirm('댓글을 삭제할까요?')) return;
+
+    try {
+      await deleteComment(commentId);
+      setCurrentComments(prev => prev.filter(c => c.id !== commentId));
+      
+      // 피드 목록의 댓글 수 업데이트
+      setFeeds(prev => prev.map(feed => 
+        feed.appointmentId === appointmentId 
+          ? { ...feed, commentCount: Math.max(0, (feed.commentCount || 0) - 1) } 
+          : feed
+      ));
+    } catch (error) {
+      console.error('댓글 삭제 실패:', error);
+      showToast('댓글 삭제에 실패했어요.');
+    }
+  };
+
   // 좋아요 토글 핸들러
   const handleToggleLike = async (appointmentId: number) => {
     try {
@@ -61,14 +128,18 @@ const FeedPage = () => {
       setFeeds(prev =>
         prev.map(feed =>
           feed.appointmentId === appointmentId
-            ? { ...feed, isLikedByMe: !feed.isLikedByMe }
+            ? {
+                ...feed,
+                isLikedByMe: !feed.isLikedByMe,
+                likeCount: (feed.likeCount || 0) + (feed.isLikedByMe ? -1 : 1)
+              }
             : feed
         )
       );
 
       const isLiked = await toggleLikeAppointment(appointmentId);
 
-      // API 응답과 동기화
+      // API 응답과 동기화 (카운트는 낙관적 상태 유지)
       setFeeds(prev =>
         prev.map(feed =>
           feed.appointmentId === appointmentId
@@ -86,7 +157,11 @@ const FeedPage = () => {
       setFeeds(prev =>
         prev.map(feed =>
           feed.appointmentId === appointmentId
-            ? { ...feed, isLikedByMe: !feed.isLikedByMe }
+            ? {
+                ...feed,
+                isLikedByMe: !feed.isLikedByMe,
+                likeCount: (feed.likeCount || 0) + (feed.isLikedByMe ? 1 : -1) // 롤백이므로 반대로
+              }
             : feed
         )
       );
@@ -162,19 +237,12 @@ const FeedPage = () => {
         <div className="container-solotion py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-off-white text-2xl font-extra-bold">잘 쉰 사람들 목록</h1>
-            <button
-              onClick={() => navigate('/appointments')}
-              className="flex items-center gap-2 px-4 py-2 bg-charcoal-lighter hover:bg-charcoal-lighter/80 text-off-white rounded-lg transition"
-            >
-              <Calendar size={18} />
-              <span className="text-sm font-bold">나의 쉼</span>
-            </button>
           </div>
         </div>
       </header>
 
       {/* Feed List */}
-      <div className="container-solotion py-6 space-y-4">
+      <div className="w-full pb-20">
         {feeds.length === 0 && !loading ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -200,13 +268,7 @@ const FeedPage = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className={`card overflow-hidden ${
-                  isScheduled
-                    ? 'border-2 border-electric-lime/30'
-                    : isArrived
-                    ? 'border-2 border-accent-pink/30'
-                    : ''
-                }`}
+                className="w-full bg-brand-gray mb-0 border-b border-gray-800 shadow-lg py-8 last:border-b-0"
               >
                 {/* 상태 배지 (라이브 느낌) */}
                 {(isScheduled || isArrived) && (
@@ -226,16 +288,22 @@ const FeedPage = () => {
                 )}
 
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-charcoal-lighter">
+                <div className="flex items-center justify-between p-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-electric-lime to-neon-purple rounded-full flex items-center justify-center">
-                      <span className="text-deep-charcoal text-sm font-bold">
+                    <div className="w-10 h-10 border-2 border-brand-neon rounded-full flex items-center justify-center bg-charcoal-lighter">
+                      <span className="text-off-white text-sm font-bold">
                         {feed.userNickname.charAt(0)}
                       </span>
                     </div>
                     <div>
-                      <div className="font-bold text-sm text-off-white">
+                      <div className="font-bold text-sm text-off-white flex items-center gap-2">
                         {feed.userNickname}
+                        {/* 별점 표시 */}
+                        {feed.rating && (
+                          <span className="text-electric-lime text-xs font-extra-bold flex items-center">
+                            ⭐ {feed.rating.toFixed(1)}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-1 text-xs text-text-gray">
                         <Clock size={12} />
@@ -263,17 +331,44 @@ const FeedPage = () => {
                   </div>
                 </div>
 
+              {/* Images (완료된 경우만) - Full Width */}
+              {isCompleted && (
+                <div className="w-full">
+                  <ImageCarousel
+                    images={feed.proofImageUrls && feed.proofImageUrls.length > 0 ? feed.proofImageUrls : []}
+                    aspectRatio="square"
+                    className="w-full"
+                  />
+                </div>
+              )}
+
               {/* Content */}
-              <div className="p-4">
-                {/* Mission Title & Place */}
-                <div className="mb-3">
-                  <h3 className="text-off-white font-bold text-lg mb-1">
-                    {feed.missionTitle}
-                  </h3>
-                  <p className="text-text-gray text-sm flex items-center gap-1">
-                    <span>📍</span>
-                    {feed.placeName}
-                  </p>
+              <div className="p-4 pb-2">
+                {/* Mission Title & Place & Bookmark */}
+                <div className="mb-3 flex items-start justify-between">
+                  <div>
+                    <h3 className="text-off-white font-bold text-lg mb-1">
+                      {feed.missionTitle}
+                    </h3>
+                    <p className="text-text-gray text-sm flex items-center gap-1">
+                      <span>📍</span>
+                      {feed.placeName}
+                    </p>
+                  </div>
+                  
+                  <button
+                    onClick={() => handleToggleSave(feed.appointmentId)}
+                    className={`transition-colors ${
+                      feed.isSavedByMe
+                        ? 'text-electric-lime'
+                        : 'text-text-gray hover:text-electric-lime'
+                    }`}
+                  >
+                    <Bookmark
+                      size={22}
+                      fill={feed.isSavedByMe ? "currentColor" : "none"}
+                    />
+                  </button>
                 </div>
 
                 {/* 진행 중 상태일 때 다른 메시지 */}
@@ -286,9 +381,7 @@ const FeedPage = () => {
 
                 {/* Comment (완료된 경우만) */}
                 {isCompleted && feed.proofComment && (
-                  <p className="text-text-gray text-sm mb-3 leading-relaxed">
-                    {feed.proofComment}
-                  </p>
+                  <ExpandableText text={feed.proofComment} />
                 )}
 
                 {/* Keywords (완료된 경우만) */}
@@ -305,58 +398,89 @@ const FeedPage = () => {
                   </div>
                 )}
 
-                {/* Images (완료된 경우만) */}
-                {isCompleted && feed.proofImageUrls && feed.proofImageUrls.length > 0 && (
-                  <div className="mb-3 rounded-lg overflow-hidden">
-                    <img
-                      src={`${import.meta.env.VITE_API_BASE_URL}${feed.proofImageUrls[0]}`}
-                      alt="proof"
-                      className="w-full h-80 object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=80';
-                      }}
-                    />
-                    {feed.proofImageUrls.length > 1 && (
-                      <div className="text-xs text-text-gray mt-2 text-center">
-                        +{feed.proofImageUrls.length - 1}장 더보기
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Action Buttons */}
-                <div className="flex items-center justify-between pt-3 border-t border-charcoal-lighter">
-                  <div className="flex items-center gap-4">
-                    <button className="flex items-center gap-1 text-text-gray hover:text-electric-lime transition">
-                      <MessageCircle size={18} />
-                      <span className="text-sm">댓글</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleToggleSave(feed.appointmentId)}
-                      className={`flex items-center gap-1 transition ${
-                        feed.isSavedByMe
-                          ? 'text-electric-lime'
-                          : 'text-text-gray hover:text-electric-lime'
-                      }`}
-                    >
-                      <Bookmark
-                        size={18}
-                        fill={feed.isSavedByMe ? 'currentColor' : 'none'}
-                      />
-                      <span className="text-sm">
-                        {feed.isSavedByMe ? '저장됨' : '저장'}
-                      </span>
-                    </button>
-                  </div>
-
-                  {/* ESC 좋아요 버튼 */}
+                <div className="mt-10">
                   <EscLikeButton
                     isLiked={feed.isLikedByMe}
+                    likeCount={feed.likeCount}
                     onLike={() => handleToggleLike(feed.appointmentId)}
                   />
                 </div>
               </div>
+
+              {/* Comment Section (Expandable) - MVP 단계에서 임시 숨김 */}
+              {/* <AnimatePresence>
+                {expandedFeedId === feed.appointmentId && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="overflow-hidden bg-charcoal-soft px-4"
+                  >
+                    <div className="pt-2 pb-4 space-y-3 border-t border-charcoal-lighter/50">
+                      <div className="max-h-60 overflow-y-auto space-y-3 custom-scrollbar">
+                        {currentComments.length === 0 ? (
+                          <p className="text-xs text-text-gray-dark italic py-2 text-center">
+                            아직 댓글이 없어요. 첫 댓글을 남겨보세요! 👇
+                          </p>
+                        ) : (
+                          currentComments.map((comment) => (
+                            <div key={comment.id} className="flex gap-2 items-start group">
+                              <div className="w-8 h-8 rounded-full bg-charcoal-lighter overflow-hidden flex-shrink-0">
+                                {comment.userProfileImage ? (
+                                  <img src={comment.userProfileImage} alt={comment.userNickname} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-xs font-bold text-text-gray">
+                                    {comment.userNickname.charAt(0)}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className="text-xs font-bold text-off-white">{comment.userNickname}</span>
+                                  <span className="text-[10px] text-text-gray-dark">
+                                    {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: ko })}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-text-gray break-words leading-relaxed">{comment.content}</p>
+                              </div>
+                              {comment.isMyComment && (
+                                <button
+                                  onClick={() => handleDeleteComment(comment.id, feed.appointmentId)}
+                                  className="text-text-gray-dark hover:text-accent-pink opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="text"
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          placeholder="댓글 달기..."
+                          className="flex-1 bg-charcoal-lighter text-off-white text-sm px-4 py-2 rounded-full focus:outline-none focus:ring-1 focus:ring-electric-lime transition-all"
+                          onKeyPress={(e) => e.key === 'Enter' && handleSubmitComment(feed.appointmentId)}
+                        />
+                        <button
+                          onClick={() => handleSubmitComment(feed.appointmentId)}
+                          disabled={!commentText.trim()}
+                          className="text-electric-lime font-bold text-sm px-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          게시
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence> */}
             </motion.div>
             );
           })
@@ -389,9 +513,6 @@ const FeedPage = () => {
           </div>
         )}
       </div>
-
-      {/* Scroll to Top FAB */}
-      <ScrollToTopButton threshold={300} />
     </div>
   );
 };

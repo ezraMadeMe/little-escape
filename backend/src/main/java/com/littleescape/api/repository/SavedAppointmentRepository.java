@@ -24,6 +24,9 @@ public interface SavedAppointmentRepository extends JpaRepository<SavedAppointme
     // 저장 개수 조회
     Long countByUserId(Long userId);
 
+    // 특정 약속의 저장 개수 조회
+    Long countByAppointmentId(Long appointmentId);
+
     /**
      * 사용자가 저장한 약속들의 카테고리별 통계 조회
      * 추천 알고리즘에서 가중치 계산에 사용
@@ -45,4 +48,9 @@ public interface SavedAppointmentRepository extends JpaRepository<SavedAppointme
      * 사용자 삭제 시 저장 레코드도 함께 삭제
      */
     void deleteByUserId(Long userId);
+
+    /**
+     * 약속 삭제 시 해당 약속을 저장한 모든 레코드 삭제
+     */
+    void deleteByAppointmentId(Long appointmentId);
 }

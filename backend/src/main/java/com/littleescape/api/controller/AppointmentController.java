@@ -226,6 +226,26 @@ public class AppointmentController {
     }
 
     /**
+     * 약속 완전 삭제 (Hard Delete)
+     * 약속을 DB에서 영구적으로 삭제하며, 관련된 SavedAppointment, Feed 데이터도 함께 삭제됩니다.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteAppointment(
+            @AuthenticationPrincipal String userId,
+            @PathVariable Long id) {
+
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        log.info("약속 완전 삭제 요청 - 사용자: {}, 약속 ID: {}", userId, id);
+
+        appointmentService.hardDeleteAppointment(Long.parseLong(userId), id);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * 약속 저장/저장 취소 (토글 방식)
      * 피드에서 마음에 드는 약속을 저장하여 추후 추천 가중치에 활용
      */

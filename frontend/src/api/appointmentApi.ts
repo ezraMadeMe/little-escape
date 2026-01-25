@@ -68,9 +68,13 @@ export interface FeedItem {
   userNickname: string;
   completedAt: string;
   reviewKeywords: string[];
+  rating?: number; // 별점 (0.0 ~ 5.0)
   status: string; // ACCEPTED, ARRIVED, COMPLETED 등
   scheduledAt: string;
   isLikedByMe: boolean; // 현재 사용자가 좋아요 했는지 여부
+  likeCount?: number;
+  saveCount?: number;
+  commentCount?: number;
   isSavedByMe: boolean; // 현재 사용자가 저장했는지 여부
 }
 
@@ -88,15 +92,18 @@ export async function completeAppointment(
   id: number,
   comment: string,
   keywords: string[],
-  files: File[]
+  files: File[],
+  rating?: number,
+  proofImageUrls?: string[]
 ): Promise<void> {
   const formData = new FormData();
 
-  // 1. JSON 데이터를 Blob으로 변환 (핵심!)
-  // 백엔드 @RequestPart("request")가 인식할 수 있도록 type을 명시해야 함
+  // 1. JSON 데이터를 Blob으로 변환
   const requestDto = {
     proofComment: comment || null,
-    reviewKeywords: keywords
+    reviewKeywords: keywords,
+    rating: rating,
+    proofImageUrls: proofImageUrls
   };
   const jsonBlob = new Blob([JSON.stringify(requestDto)], { type: "application/json" });
   formData.append("request", jsonBlob);
@@ -157,11 +164,12 @@ export async function cloneAppointment(appointmentId: number): Promise<number> {
   return response.id;
 }
 
-export async function toggleFavorite(appointmentId: number): Promise<void> {
-  return apiFetch<void>(`/api/v1/appointments/${appointmentId}/favorite`, {
-    method: 'PATCH',
-  });
-}
+// Favorite functionality has been merged into Save/Bookmark functionality
+// export async function toggleFavorite(appointmentId: number): Promise<void> {
+//   return apiFetch<void>(`/api/v1/appointments/${appointmentId}/favorite`, {
+//     method: 'PATCH',
+//   });
+// }
 
 export async function markAsArrived(appointmentId: number): Promise<Appointment> {
   return apiFetch<Appointment>(`/api/v1/appointments/${appointmentId}/arrive`, {
@@ -176,9 +184,27 @@ export async function bulkDeleteAppointments(appointmentIds: number[]): Promise<
   });
 }
 
+/**
+ * 약속 완전 삭제 (Hard Delete)
+ * 약속과 연관된 모든 데이터(저장, 좋아요, 댓글)를 영구적으로 삭제합니다.
+ * @param appointmentId 삭제할 약속 ID
+ */
+export async function deleteAppointment(appointmentId: number): Promise<void> {
+  return apiFetch<void>(`/api/v1/appointments/${appointmentId}`, {
+    method: 'DELETE',
+  });
+}
+
 // ========================================
 // 개발용 API (테스트 전용)
 // ========================================
+
+// 개발용: 약속 시간 타임 트래블 (현재로 당기기 - 관리자용)
+export async function adminTimeTravel(appointmentId: number): Promise<void> {
+  await apiFetch<void>(`${import.meta.env.VITE_API_BASE_URL}/api/admin/appointments/${appointmentId}/time-travel`, {
+    method: 'PATCH',
+  });
+}
 
 // 개발용: 약속 날짜를 내일(D-1)로 변경
 export async function devUnlockTomorrow(appointmentId: number): Promise<Appointment> {

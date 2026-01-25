@@ -46,7 +46,8 @@ const SmartActionModal = ({ onClose }: SmartActionModalProps) => {
 
   const handleContinue = () => {
     if (activeAppointment) {
-      navigate(`/chat/${activeAppointment.id}`);
+      // 진행 중인 약속의 미션 상세로 이동
+      navigate(`/mission/${activeAppointment.id}`);
       onClose();
     }
   };

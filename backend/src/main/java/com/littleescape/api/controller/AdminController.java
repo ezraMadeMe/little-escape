@@ -30,6 +30,7 @@ public class AdminController {
     private final DataIngestionService dataIngestionService;
     private final DataImportService dataImportService;
     private final SimulationService simulationService;
+    private final com.littleescape.api.service.AppointmentService appointmentService;
     private final com.littleescape.api.scheduler.AppointmentScheduler appointmentScheduler;
     private final com.littleescape.api.repository.AppointmentRepository appointmentRepository;
 
@@ -231,6 +232,31 @@ public class AdminController {
             errorResponse.put("error", e.toString());
 
             return ResponseEntity.internalServerError().body(errorResponse);
+        }
+    }
+
+    /**
+     * 약속 시간 타임 트래블 (현재로 당기기)
+     * PATCH /api/admin/appointments/{id}/time-travel
+     */
+    @PatchMapping("/appointments/{id}/time-travel")
+    @Operation(summary = "약속 시간 타임 트래블",
+               description = "해당 약속의 예정 시간을 현재 시간으로 변경합니다. (개발/QA용)")
+    public ResponseEntity<Map<String, Object>> timeTravel(@PathVariable Long id) {
+        log.info("🔧 관리자 요청: 약속 {} 타임 트래블", id);
+
+        try {
+            appointmentService.adminTimeTravel(id);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "약속 시간이 현재로 변경되었습니다.");
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("타임 트래블 실행 중 오류", e);
+            return ResponseEntity.internalServerError().body(Map.of("success", false, "message", e.getMessage()));
         }
     }
 

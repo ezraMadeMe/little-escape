@@ -19,16 +19,24 @@ public class FeedResponse {
     private String userNickname;
     private LocalDateTime completedAt;
     private List<String> reviewKeywords;
+    private Double rating;  // 별점
     private AppointmentStatus status;  // ACCEPTED, ARRIVED, COMPLETED 등
     private LocalDateTime scheduledAt;
     private Boolean isLikedByMe;  // 현재 사용자가 좋아요 했는지 여부
+    private Long likeCount;       // 좋아요 횟수
     private Boolean isSavedByMe;  // 현재 사용자가 저장했는지 여부
+    private Long saveCount;       // 저장 횟수
+    private Long commentCount;    // 댓글 횟수
 
     public static FeedResponse from(Appointment appointment) {
-        return from(appointment, null);
+        return from(appointment, null, 0L, 0L, 0L);
     }
 
     public static FeedResponse from(Appointment appointment, Long currentUserId) {
+        return from(appointment, currentUserId, 0L, 0L, 0L);
+    }
+
+    public static FeedResponse from(Appointment appointment, Long currentUserId, Long likeCount, Long saveCount, Long commentCount) {
         // 사용자 닉네임 (익명 처리 옵션)
         String userNickname = appointment.getUser() != null
             ? maskNickname(appointment.getUser().getNickname())
@@ -53,10 +61,14 @@ public class FeedResponse {
             userNickname,
             appointment.getCompletedAt(),
             appointment.getReviewKeywords(),
+            appointment.getRating(), // 별점
             appointment.getStatus(),
             appointment.getScheduledAt(),
             false,  // isLikedByMe - will be set by service layer
-            false   // isSavedByMe - will be set by service layer
+            likeCount,
+            false,  // isSavedByMe - will be set by service layer
+            saveCount,
+            commentCount
         );
     }
 

@@ -40,6 +40,7 @@ public class AppointmentService {
     private final PlaceRepository placeRepository;
     private final com.littleescape.api.repository.SavedAppointmentRepository savedAppointmentRepository;
     private final com.littleescape.api.repository.LikedAppointmentRepository likedAppointmentRepository;
+    private final com.littleescape.api.repository.CommentRepository commentRepository;
 
     // 1인 가구 타겟에 맞지 않는 키워드
     private static final String[] BAD_KEYWORDS = {
@@ -593,11 +594,13 @@ public class AppointmentService {
                             null, null, // images
                             appointment.getProofComment(),
                             null, // proofImageUrl
-                            null, 
-                            null, 
+                            null, // proofImageUrls
+                            null, // reviewKeywords
+                            null, // rating (추가됨)
                             0L, // visitCount
                             appointment.isFavorite(),
-                            null
+                            null, // missionGuide
+                            null  // missionDescription (추가됨)
                         );
                     }
                 })
@@ -643,6 +646,13 @@ public class AppointmentService {
 
         // 이미지 파일 처리 - 로컬 uploads/ 폴더에 저장
         java.util.List<String> imageUrls = new java.util.ArrayList<>();
+
+        // 1. DTO에 담긴 URL이 있으면 추가 (Supabase 등 외부 스토리지 사용 시)
+        if (request.proofImageUrls() != null && !request.proofImageUrls().isEmpty()) {
+            log.info("DTO에서 전달된 이미지 URL 개수: {}", request.proofImageUrls().size());
+            imageUrls.addAll(request.proofImageUrls());
+        }
+
         if (files != null && !files.isEmpty()) {
             log.info("업로드된 파일 개수: {}", files.size());
 
@@ -717,6 +727,9 @@ public class AppointmentService {
         appointment.setStatus(AppointmentStatus.COMPLETED);
         appointment.setCompletedAt(LocalDateTime.now());
         appointment.setProofComment(request.proofComment());
+        if (request.rating() != null) {
+            appointment.setRating(request.rating());
+        }
         appointment.setPublic(true);  // 완료된 약속은 자동으로 피드에 공개
 
         // 다중 이미지 URL 저장
@@ -842,6 +855,46 @@ public class AppointmentService {
     }
 
     /**
+     * 약속 완전 삭제 (Hard Delete)
+     * 약속을 DB에서 영구적으로 삭제하며, 연관된 데이터도 함께 삭제됩니다.
+     * - SavedAppointment (저장 내역)
+     * - LikedAppointment (좋아요 내역)
+     * - Comment (댓글)
+     * - Feed는 Appointment를 참조하므로 자동으로 제거됨
+     */
+    @Transactional
+    public void hardDeleteAppointment(Long userId, Long appointmentId) {
+        log.info("=== 약속 완전 삭제 시작 ===");
+        log.info("사용자 ID: {}, 약속 ID: {}", userId, appointmentId);
+
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new RuntimeException("약속을 찾을 수 없습니다."));
+
+        // 권한 확인: 본인의 약속만 삭제 가능
+        if (!appointment.getUser().getId().equals(userId)) {
+            throw new RuntimeException("삭제 권한이 없습니다.");
+        }
+
+        // 1. SavedAppointment 삭제 (다른 사용자가 저장한 내역 포함)
+        savedAppointmentRepository.deleteByAppointmentId(appointmentId);
+        log.info("SavedAppointment 삭제 완료");
+
+        // 2. LikedAppointment 삭제 (다른 사용자가 좋아요한 내역 포함)
+        likedAppointmentRepository.deleteByAppointmentId(appointmentId);
+        log.info("LikedAppointment 삭제 완료");
+
+        // 3. Comment 삭제 (다른 사용자가 작성한 댓글 포함)
+        commentRepository.deleteByAppointmentId(appointmentId);
+        log.info("Comment 삭제 완료");
+
+        // 4. Appointment 삭제 (ElementCollection인 proofImageUrls, reviewKeywords는 자동 삭제됨)
+        appointmentRepository.delete(appointment);
+        log.info("Appointment 삭제 완료");
+
+        log.info("=== 약속 완전 삭제 완료 (ID: {}) ===", appointmentId);
+    }
+
+    /**
      * 공개 피드 조회 (SCHEDULED, ARRIVED, COMPLETED 모두 포함)
      * @param page 페이지 번호 (0부터 시작)
      * @param size 페이지 크기
@@ -877,7 +930,14 @@ public class AppointmentService {
         // 상태별 필터링 로직 제거 - 모든 상태 허용
         List<FeedResponse> feedResponses = appointments.stream()
             .map(appointment -> {
-                FeedResponse response = FeedResponse.from(appointment, userId);
+                // 저장 횟수 조회
+                Long saveCount = savedAppointmentRepository.countByAppointmentId(appointment.getId());
+                // 댓글 횟수 조회
+                Long commentCount = commentRepository.countByAppointmentId(appointment.getId());
+                // 좋아요 횟수 조회
+                Long likeCount = likedAppointmentRepository.countByAppointmentId(appointment.getId());
+
+                FeedResponse response = FeedResponse.from(appointment, userId, likeCount, saveCount, commentCount);
 
                 // 사용자별 좋아요/저장 상태 설정
                 if (userId != null) {
@@ -894,10 +954,14 @@ public class AppointmentService {
                         response.getUserNickname(),
                         response.getCompletedAt(),
                         response.getReviewKeywords(),
+                        response.getRating(),
                         response.getStatus(),
                         response.getScheduledAt(),
                         isLiked,
-                        isSaved
+                        likeCount,
+                        isSaved,
+                        response.getSaveCount(),
+                        response.getCommentCount()
                     );
                 }
 
@@ -1028,6 +1092,42 @@ public class AppointmentService {
         }
 
         return AppointmentResponse.from(savedAppointment, visitCount);
+    }
+
+    // ========================================
+    // 관리자 전용 메서드
+    // ========================================
+
+    /**
+     * 관리자용: 약속 시간을 현재로 변경 (Time Travel)
+     * 소유자 체크 없이 강제로 변경
+     */
+    @Transactional
+    public void adminTimeTravel(Long appointmentId) {
+        log.warn("⚠️ [관리자] 약속 시간 Time Travel 실행 - ID: {}", appointmentId);
+
+        Appointment appointment = appointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new IllegalArgumentException("약속을 찾을 수 없습니다."));
+
+        // 현재 시간으로 변경
+        LocalDateTime now = LocalDateTime.now();
+        appointment.setScheduledAt(now);
+
+        // 상태 변경: 미션이 있으면 ACCEPTED, 없으면 CREATED 유지
+        // 단, 이미 COMPLETED나 ARRIVED 상태라면 변경하지 않음
+        if (appointment.getStatus() == AppointmentStatus.PENDING || 
+            appointment.getStatus() == AppointmentStatus.ACCEPTED || 
+            appointment.getStatus() == AppointmentStatus.CREATED) {
+            
+            if (appointment.getMissionTemplate() != null) {
+                appointment.setStatus(AppointmentStatus.ACCEPTED);
+            } else {
+                appointment.setStatus(AppointmentStatus.CREATED);
+            }
+        }
+
+        appointmentRepository.save(appointment);
+        log.info("✅ 약속 시간 변경 완료: {}", now);
     }
 
     // ========================================
@@ -1194,7 +1294,14 @@ public class AppointmentService {
         return savedAppointments.stream()
                 .map(sa -> {
                     Appointment appointment = sa.getAppointment();
-                    FeedResponse response = FeedResponse.from(appointment, userId);
+                    // 저장 횟수 조회
+                    Long saveCount = savedAppointmentRepository.countByAppointmentId(appointment.getId());
+                    // 댓글 횟수 조회
+                    Long commentCount = commentRepository.countByAppointmentId(appointment.getId());
+                    // 좋아요 횟수 조회
+                    Long likeCount = likedAppointmentRepository.countByAppointmentId(appointment.getId());
+
+                    FeedResponse response = FeedResponse.from(appointment, userId, likeCount, saveCount, commentCount);
 
                     // 저장된 목록이므로 isSavedByMe는 항상 true
                     boolean isLiked = likedAppointmentRepository.existsByUserIdAndAppointmentId(userId, appointment.getId());
@@ -1208,10 +1315,14 @@ public class AppointmentService {
                         response.getUserNickname(),
                         response.getCompletedAt(),
                         response.getReviewKeywords(),
+                        response.getRating(),
                         response.getStatus(),
                         response.getScheduledAt(),
                         isLiked,
-                        true  // isSavedByMe는 항상 true
+                        likeCount,
+                        true,  // isSavedByMe는 항상 true
+                        response.getSaveCount(),
+                        response.getCommentCount()
                     );
                 })
                 .collect(Collectors.toList());

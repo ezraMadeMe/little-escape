@@ -1,567 +1,432 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, PanInfo } from 'framer-motion';
-import { getMyAppointments, toggleFavorite, bulkDeleteAppointments, cloneAppointment, cancelAppointment, devUnlockTomorrow, devUnlockNow } from '../api/appointmentApi';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  getMyAppointments,
+  getSavedAppointments,
+  toggleSaveAppointment,
+  deleteAppointment,
+  devUnlockTomorrow,
+  devUnlockNow
+} from '../api/appointmentApi';
 import { Appointment, AppointmentStatus } from '../types/appointment';
-import { formatDateTime, calculateDday } from '../utils/dateUtils';
+import { FeedItem } from '../api/appointmentApi';
+import { formatDateTime } from '../utils/dateUtils';
 import FeaturedCard from '../components/FeaturedCard';
+import { MapPin, Trash2 } from 'lucide-react';
+import { showToast } from '../utils/toast';
 
 const Appointments = () => {
   const navigate = useNavigate();
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
-  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  
+  // Tabs: 'my' (내 약속) | 'saved' (저장된 약속)
+  const [activeTab, setActiveTab] = useState<'my' | 'saved'>('my');
 
-  // 다중 선택 모드
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // State for My Appointments
+  const [myAppointments, setMyAppointments] = useState<Appointment[]>([]);
+  const [filter, setFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
+  const [isMyLoading, setIsMyLoading] = useState(true);
+
+  // State for Saved Appointments
+  const [savedAppointments, setSavedAppointments] = useState<FeedItem[]>([]);
+  const [isSavedLoading, setIsSavedLoading] = useState(true);
 
   useEffect(() => {
-    loadAppointments();
+    loadMyAppointments();
+    loadSavedAppointments();
   }, []);
 
-  const loadAppointments = async () => {
+  const loadMyAppointments = async () => {
     try {
+      setIsMyLoading(true);
       const data = await getMyAppointments();
-      setAppointments(data);
+      setMyAppointments(data);
     } catch (error) {
-      console.error('약속 목록 조회 실패:', error);
-      // 인증 에러는 client.ts에서 자동으로 로그인 페이지로 리다이렉트됩니다
-      // 다른 에러의 경우 사용자에게 알림
-      if (error instanceof Error && !error.message.includes('Authentication') && !error.message.includes('Unauthorized')) {
-        alert('약속 목록을 불러오는데 실패했습니다. 다시 시도해주세요.');
-      }
+      console.error('내 약속 로딩 실패:', error);
     } finally {
-      setIsLoading(false);
+      setIsMyLoading(false);
     }
   };
 
-  // 진행 중인 약속 중 가장 가까운 1개 (Hero Section용)
-  const upcomingAppointment = appointments
-    .filter((apt) => 
+  const loadSavedAppointments = async () => {
+    try {
+      setIsSavedLoading(true);
+      const data = await getSavedAppointments();
+      setSavedAppointments(data);
+    } catch (error) {
+      console.error('저장된 약속 로딩 실패:', error);
+    } finally {
+      setIsSavedLoading(false);
+    }
+  };
+
+  // --- Actions for My Appointments ---
+
+  const handleDeleteAppointment = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    if (!confirm('정말 삭제하시겠습니까?\n이 작업은 복구할 수 없습니다.')) return;
+    try {
+      await deleteAppointment(id);
+      showToast('약속이 완전히 삭제되었습니다.');
+      loadMyAppointments();
+    } catch (error) {
+      showToast('삭제에 실패했습니다.');
+    }
+  };
+
+
+  // --- Actions for Saved Appointments ---
+
+  const handleUnsave = async (e: React.MouseEvent, appointmentId: number) => {
+    e.stopPropagation();
+    if (!confirm('저장 목록에서 삭제하시겠습니까?')) return;
+    try {
+      await toggleSaveAppointment(appointmentId);
+      setSavedAppointments(prev => prev.filter(item => item.appointmentId !== appointmentId));
+      showToast('삭제되었습니다.');
+    } catch (error) {
+      showToast('삭제 실패');
+    }
+  };
+
+  // --- Filtering Logic for My Appointments ---
+
+  // Hero Section (가장 가까운 진행 중 약속)
+  const upcomingAppointment = myAppointments
+    .filter((apt) =>
       apt.status === AppointmentStatus.CREATED ||
       apt.status === AppointmentStatus.UNLOCKED ||
-      apt.status === AppointmentStatus.PENDING || 
+      apt.status === AppointmentStatus.PENDING ||
       apt.status === AppointmentStatus.ACCEPTED
     )
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
 
-  const filteredAppointments = appointments.filter((apt) => {
-    // Hero Section에 표시된 약속은 리스트에서 제외
+  // 마지막 완료된 약속 (진행 중인 약속이 없을 때 표시)
+  const lastCompletedAppointment = myAppointments
+    .filter((apt) => apt.status === AppointmentStatus.COMPLETED)
+    .sort((a, b) => new Date(b.completedAt || b.scheduledAt).getTime() - new Date(a.completedAt || a.scheduledAt).getTime())[0];
+
+  // List Items (Hero 제외, 필터 적용)
+  const filteredMyAppointments = myAppointments.filter((apt) => {
     if (upcomingAppointment && apt.id === upcomingAppointment.id) return false;
 
-    // 즐겨찾기 필터
-    if (showFavoritesOnly && !apt.isFavorite) return false;
-
-    // 상태 필터
-    if (filter === 'active') {
-      return apt.status === AppointmentStatus.CREATED ||
-             apt.status === AppointmentStatus.UNLOCKED ||
-             apt.status === AppointmentStatus.PENDING || 
-             apt.status === AppointmentStatus.ACCEPTED;
-    }
-    if (filter === 'completed') {
-      return apt.status === AppointmentStatus.COMPLETED;
-    }
-    if (filter === 'cancelled') {
-      return apt.status === AppointmentStatus.CANCELLED;
-    }
+    if (filter === 'completed') return apt.status === AppointmentStatus.COMPLETED;
+    if (filter === 'cancelled') return apt.status === AppointmentStatus.CANCELLED;
     return true;
   });
 
-  const handleToggleFavorite = async (e: React.MouseEvent, appointmentId: number) => {
-    e.stopPropagation();
-    try {
-      await toggleFavorite(appointmentId);
-      setAppointments(prev =>
-        prev.map(apt =>
-          apt.id === appointmentId ? { ...apt, isFavorite: !apt.isFavorite } : apt
-        )
-      );
-    } catch (error) {
-      console.error('즐겨찾기 실패:', error);
-      alert('즐겨찾기 처리에 실패했습니다.');
-    }
+  // --- Swipe Logic ---
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
   };
 
-  const handleToggleSelection = (appointmentId: number) => {
-    setSelectedIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(appointmentId)) {
-        newSet.delete(appointmentId);
-      } else {
-        newSet.add(appointmentId);
-      }
-      return newSet;
-    });
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`선택한 ${selectedIds.size}개의 약속을 삭제하시겠습니까?`)) return;
-
-    try {
-      await bulkDeleteAppointments(Array.from(selectedIds));
-      alert('삭제되었습니다.');
-      setSelectedIds(new Set());
-      setIsSelectionMode(false);
-      loadAppointments();
-    } catch (error) {
-      console.error('다중 삭제 실패:', error);
-      alert('삭제에 실패했습니다.');
-    }
-  };
-
-  const handleSwipeRight = async (appointmentId: number) => {
-    // 복제 (다시 잡기)
-    try {
-      const newAppointmentId = await cloneAppointment(appointmentId);
-      navigate(`/chat/${newAppointmentId}`);
-    } catch (error) {
-      console.error('약속 복제 실패:', error);
-      alert('약속 복제에 실패했습니다.');
-    }
-  };
-
-  const handleSwipeLeft = async (appointmentId: number) => {
-    // 삭제
-    if (!confirm('이 약속을 삭제하시겠습니까?')) return;
-
-    try {
-      await cancelAppointment(appointmentId);
-      loadAppointments();
-    } catch (error) {
-      console.error('약속 삭제 실패:', error);
-      alert('약속 삭제에 실패했습니다.');
-    }
-  };
-
-  // 개발용: 약속 날짜를 내일로 변경
-  const handleDevUnlockTomorrow = async (appointmentId: number) => {
-    console.log('============ [개발용] D-1로 변경 버튼 클릭 ============');
-    console.log('약속 ID:', appointmentId);
-    console.log('현재 시간:', new Date().toISOString());
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
     
-    if (!confirm('⚠️ [개발용] 약속 날짜를 내일(D-1)로 변경하시겠습니까?')) {
-      console.log('❌ 사용자가 취소함');
-      return;
-    }
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
 
-    try {
-      console.log('📡 API 호출 시작: devUnlockTomorrow');
-      const result = await devUnlockTomorrow(appointmentId);
-      console.log('✅ API 호출 성공:', result);
-      console.log('  - 변경된 약속 시간:', result.scheduledAt);
-      console.log('  - 변경된 상태:', result.status);
-      
-      alert('✅ 약속 날짜가 내일로 변경되었습니다!');
-      
-      console.log('🔄 약속 목록 새로고침 시작');
-      await loadAppointments();
-      console.log('✅ 약속 목록 새로고침 완료');
-    } catch (error) {
-      console.error('❌ 날짜 변경 실패:', error);
-      alert('날짜 변경에 실패했습니다.');
+    if (isLeftSwipe && activeTab === 'my') {
+      setActiveTab('saved');
     }
-    console.log('============================================');
-  };
-
-  // 개발용: 약속 날짜를 현재 시간으로 변경
-  const handleDevUnlockNow = async (appointmentId: number) => {
-    console.log('============ [개발용] Now로 변경 버튼 클릭 ============');
-    console.log('약속 ID:', appointmentId);
-    console.log('현재 시간:', new Date().toISOString());
-    
-    if (!confirm('⚠️ [개발용] 약속 날짜를 현재 시간으로 변경하시겠습니까?')) {
-      console.log('❌ 사용자가 취소함');
-      return;
-    }
-
-    try {
-      console.log('📡 API 호출 시작: devUnlockNow');
-      const result = await devUnlockNow(appointmentId);
-      console.log('✅ API 호출 성공:', result);
-      console.log('  - 변경된 약속 시간:', result.scheduledAt);
-      console.log('  - 변경된 상태:', result.status);
-      
-      alert('✅ 약속 날짜가 현재 시간으로 변경되었습니다!');
-      
-      console.log('🔄 약속 목록 새로고침 시작');
-      await loadAppointments();
-      console.log('✅ 약속 목록 새로고침 완료');
-    } catch (error) {
-      console.error('❌ 날짜 변경 실패:', error);
-      alert('날짜 변경에 실패했습니다.');
-    }
-    console.log('============================================');
-  };
-
-  const getStatusBadge = (status: AppointmentStatus) => {
-    switch (status) {
-      case AppointmentStatus.CREATED:
-        return <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full flex items-center gap-1">
-          <span>🔒</span>
-          <span>미션 D-1 공개</span>
-        </span>;
-      case AppointmentStatus.UNLOCKED:
-        return <span className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full flex items-center gap-1">
-          <span>🎉</span>
-          <span>미션 선택 가능</span>
-        </span>;
-      case AppointmentStatus.PENDING:
-        return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full">미션 선택 필요</span>;
-      case AppointmentStatus.ACCEPTED:
-        return <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full">진행 중</span>;
-      case AppointmentStatus.COMPLETED:
-        return <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">완료</span>;
-      case AppointmentStatus.CANCELLED:
-        return <span className="px-2 py-1 bg-charcoal-lighter text-text-gray text-xs rounded-full">취소됨</span>;
-      default:
-        return null;
+    if (isRightSwipe && activeTab === 'saved') {
+      setActiveTab('my');
     }
   };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-deep-charcoal flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-electric-lime"></div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-deep-charcoal text-off-white">
-      <div className="max-w-md mx-auto">
-        {/* 헤더 */}
-        <div className="bg-deep-charcoal border-b border-charcoal-lighter px-4 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-xl font-bold text-off-white">내 약속</h1>
-
-            <div className="flex items-center gap-2">
-              {/* 즐겨찾기 필터 */}
-              <button
-                onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-                  showFavoritesOnly
-                    ? 'bg-electric-lime/20 text-electric-lime'
-                    : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
-                }`}
-              >
-                ⭐ {showFavoritesOnly ? '전체보기' : '즐겨찾기'}
-              </button>
-
-              {/* 휴지통 (다중 선택 모드) */}
-              <button
-                onClick={() => {
-                  setIsSelectionMode(!isSelectionMode);
-                  setSelectedIds(new Set());
-                }}
-                className={`p-2 rounded-full transition ${
-                  isSelectionMode ? 'bg-accent-pink/20 text-accent-pink' : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
-                }`}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          {/* 필터 탭 */}
-          <div className="flex gap-2 overflow-x-auto">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
-                filter === 'all'
-                  ? 'bg-electric-lime text-deep-charcoal'
-                  : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
-              }`}
-            >
-              전체 ({appointments.length})
-            </button>
-            <button
-              onClick={() => setFilter('active')}
-              className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
-                filter === 'active'
-                  ? 'bg-electric-lime text-deep-charcoal'
-                  : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
-              }`}
-            >
-              진행 중
-            </button>
-            <button
-              onClick={() => setFilter('completed')}
-              className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
-                filter === 'completed'
-                  ? 'bg-electric-lime text-deep-charcoal'
-                  : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
-              }`}
-            >
-              완료
-            </button>
-            <button
-              onClick={() => setFilter('cancelled')}
-              className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
-                filter === 'cancelled'
-                  ? 'bg-electric-lime text-deep-charcoal'
-                  : 'bg-charcoal-lighter text-text-gray hover:bg-charcoal-soft'
-              }`}
-            >
-              취소
-            </button>
-          </div>
+    <div className="min-h-screen bg-deep-charcoal pb-24">
+      {/* 1. 상단 헤더 (고정 탭뷰) */}
+      <header className="sticky top-0 z-20 bg-deep-charcoal border-b border-charcoal-lighter">
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab('my')}
+            className={`flex-1 py-4 text-center font-bold text-sm transition-colors relative ${
+              activeTab === 'my' ? 'text-electric-lime' : 'text-text-gray hover:text-off-white'
+            }`}
+          >
+            내 약속
+            {activeTab === 'my' && (
+              <motion.div layoutId="underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-electric-lime" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('saved')}
+            className={`flex-1 py-4 text-center font-bold text-sm transition-colors relative ${
+              activeTab === 'saved' ? 'text-electric-lime' : 'text-text-gray hover:text-off-white'
+            }`}
+          >
+            저장된 약속
+            {activeTab === 'saved' && (
+              <motion.div layoutId="underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-electric-lime" />
+            )}
+          </button>
         </div>
+      </header>
 
-        {/* 다중 선택 모드 안내 */}
-        {isSelectionMode && (
-          <div className="bg-accent-pink/10 border-b border-accent-pink/20 px-4 py-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-accent-pink">
-                {selectedIds.size > 0 ? `${selectedIds.size}개 선택됨` : '삭제할 약속을 선택하세요'}
-              </span>
-              {selectedIds.size > 0 && (
-                <button
-                  onClick={handleBulkDelete}
-                  className="px-4 py-1.5 bg-accent-pink text-deep-charcoal text-sm font-semibold rounded-lg hover:bg-accent-pink/90 transition"
-                >
-                  삭제하기
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+      {/* 2. 탭 컨텐츠 (Swipeable) */}
+      <div 
+        className="container-solotion py-4 min-h-[80vh]"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        <AnimatePresence mode="wait">
+          {activeTab === 'my' ? (
+            <motion.div
+              key="my"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* 2-1. Hero Section (진행 중인 약속 또는 빈 상태) */}
+              {upcomingAppointment ? (
+                <div className="mb-6">
+                  <FeaturedCard
+                    appointment={upcomingAppointment}
+                    onDevUnlockTomorrow={devUnlockTomorrow}
+                    onDevUnlockNow={devUnlockNow}
+                  />
+                </div>
+              ) : (
+                <div className="mb-6">
+                  {/* 빈 상태 카드 */}
+                  <div
+                    className="relative w-full rounded-solotion overflow-hidden shadow-solotion cursor-pointer border-2 border-electric-lime/30"
+                    onClick={() => navigate('/location')}
+                  >
+                    {/* Background Image */}
+                    <img
+                      src={lastCompletedAppointment?.missionImageUrl || lastCompletedAppointment?.placeImageUrl || 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=80'}
+                      alt="새로운 약속 만들기"
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
 
-        {/* Hero Section: 진행 중인 가장 가까운 약속 */}
-        {upcomingAppointment && !isSelectionMode && (
-          <div className="px-4 pt-4">
-            <FeaturedCard 
-              appointment={upcomingAppointment}
-              onDevUnlockTomorrow={handleDevUnlockTomorrow}
-              onDevUnlockNow={handleDevUnlockNow}
-            />
-          </div>
-        )}
+                    {/* Dark Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-deep-charcoal via-deep-charcoal/80 to-deep-charcoal/60 opacity-95"></div>
 
-        {/* 약속 리스트 */}
-        <div>
-          {appointments.length === 0 ? (
-            <div className="text-center py-20 px-4">
-              <div className="text-6xl mb-4">📅</div>
-              <p className="text-text-gray">약속이 없어요</p>
-              <p className="text-sm text-text-gray-dark mt-2">새로운 약속을 잡아보세요!</p>
-            </div>
-          ) : filteredAppointments.length === 0 && !upcomingAppointment ? (
-            <div className="text-center py-20 px-4">
-              <div className="text-6xl mb-4">🔍</div>
-              <p className="text-text-gray">
-                {showFavoritesOnly ? '즐겨찾기한 약속이 없어요' : '해당하는 약속이 없어요'}
-              </p>
-            </div>
-          ) : (
-            <>
-              {filteredAppointments.length > 0 && (
-                <div className="px-4 pt-2 pb-1">
-                  <h2 className="text-sm font-semibold text-text-gray">지난 약속</h2>
+                    <div className="relative p-6 text-off-white flex flex-col justify-between h-full min-h-[200px]">
+                      <div>
+                        <h2 className="text-2xl font-extra-bold mb-2 leading-tight">
+                          새로운 일탈을 시작해볼까?
+                        </h2>
+                        <p className="text-sm text-text-gray font-medium">
+                          {lastCompletedAppointment
+                            ? `마지막 약속으로부터 ${Math.floor((Date.now() - new Date(lastCompletedAppointment.completedAt || lastCompletedAppointment.scheduledAt).getTime()) / (1000 * 60 * 60 * 24))}일째`
+                            : '첫 번째 약속을 만들어보세요!'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-end justify-between mt-4">
+                        <div className="flex flex-col">
+                          <span className="text-xs text-text-gray-dark mb-1">다음 도전까지</span>
+                          <span className="text-4xl font-black tracking-tighter text-electric-lime">
+                            지금
+                          </span>
+                        </div>
+                        <button className="bg-electric-lime text-deep-charcoal px-6 py-2 rounded-full font-extra-bold text-sm hover:bg-electric-lime/90 transition-colors">
+                          약속 잡기
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
-              {filteredAppointments.map((appointment) => (
-                <SwipeableAppointmentItem
-                  key={appointment.id}
-                  appointment={appointment}
-                  isSelectionMode={isSelectionMode}
-                  isSelected={selectedIds.has(appointment.id)}
-                  onToggleSelection={() => handleToggleSelection(appointment.id)}
-                  onToggleFavorite={handleToggleFavorite}
-                  onSwipeRight={() => handleSwipeRight(appointment.id)}
-                onSwipeLeft={() => handleSwipeLeft(appointment.id)}
-                onClick={() => !isSelectionMode && navigate(`/mission/${appointment.id}`)}
-                getStatusBadge={getStatusBadge}
-                onDevUnlockTomorrow={handleDevUnlockTomorrow}
-                onDevUnlockNow={handleDevUnlockNow}
-              />
-              ))}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
-// 스와이프 가능한 약속 아이템 컴포넌트
-interface SwipeableAppointmentItemProps {
-  appointment: Appointment;
-  isSelectionMode: boolean;
-  isSelected: boolean;
-  onToggleSelection: () => void;
-  onToggleFavorite: (e: React.MouseEvent, id: number) => void;
-  onSwipeRight: () => void;
-  onSwipeLeft: () => void;
-  onClick: () => void;
-  getStatusBadge: (status: AppointmentStatus) => JSX.Element | null;
-  onDevUnlockTomorrow?: (id: number) => void;
-  onDevUnlockNow?: (id: number) => void;
-}
-
-const SwipeableAppointmentItem = ({
-  appointment,
-  isSelectionMode,
-  isSelected,
-  onToggleSelection,
-  onToggleFavorite,
-  onSwipeRight,
-  onSwipeLeft,
-  onClick,
-  getStatusBadge,
-  onDevUnlockTomorrow,
-  onDevUnlockNow,
-}: SwipeableAppointmentItemProps) => {
-  const [dragX, setDragX] = useState(0);
-  const isDev = import.meta.env.DEV; // 개발 환경 체크
-  
-  // 개발용 버튼 표시 조건 로그
-  // 개발 환경에서는 COMPLETED를 제외한 모든 상태에서 버튼 표시 (테스트 용이성 향상)
-  const showDevButtons = isDev && !isSelectionMode && appointment.status !== AppointmentStatus.COMPLETED;
-  
-  if (isDev && appointment.id) {
-    console.log(`[개발용 버튼 체크] 약속 ID: ${appointment.id}`);
-    console.log(`  - isDev: ${isDev}`);
-    console.log(`  - isSelectionMode: ${isSelectionMode}`);
-    console.log(`  - appointment.status: ${appointment.status}`);
-    console.log(`  - showDevButtons: ${showDevButtons}`);
-    
-    if (!showDevButtons && appointment.status === AppointmentStatus.COMPLETED) {
-      console.log(`  ⚠️ COMPLETED 상태는 개발용 버튼을 지원하지 않습니다.`);
-    }
-  }
-
-  const handleDragEnd = (event: any, info: PanInfo) => {
-    const threshold = 100;
-
-    if (info.offset.x > threshold) {
-      // 오른쪽 스와이프 - 복제
-      onSwipeRight();
-    } else if (info.offset.x < -threshold) {
-      // 왼쪽 스와이프 - 삭제
-      onSwipeLeft();
-    }
-
-    setDragX(0);
-  };
-
-  return (
-    <div className="relative overflow-hidden">
-      {/* 배경 액션 (스와이프 시 보임) */}
-      {dragX > 20 && (
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-green-500 flex items-center justify-start px-6">
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          <span className="ml-2 text-white font-semibold">다시 잡기</span>
-        </div>
-      )}
-      {dragX < -20 && (
-        <div className="absolute inset-0 bg-red-500 flex items-center justify-end px-6">
-          <span className="mr-2 text-white font-semibold">삭제</span>
-          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </div>
-      )}
-
-      {/* 메인 아이템 */}
-      <motion.div
-        drag={isSelectionMode ? false : 'x'}
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.2}
-        onDrag={(event, info) => setDragX(info.offset.x)}
-        onDragEnd={handleDragEnd}
-        className="bg-charcoal-soft border-b border-charcoal-lighter cursor-pointer"
-      >
-        <div
-          onClick={isSelectionMode ? onToggleSelection : onClick}
-          className="px-4 py-4 flex items-start gap-3"
-        >
-          {/* 선택 모드: 체크박스 */}
-          {isSelectionMode && (
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={onToggleSelection}
-                className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-              />
-            </div>
-          )}
-
-          {/* 즐겨찾기 별 */}
-          {!isSelectionMode && (
-            <button
-              onClick={(e) => onToggleFavorite(e, appointment.id)}
-              className="flex items-center justify-center w-6 h-6 mt-1"
-            >
-              {appointment.isFavorite ? (
-                <span className="text-yellow-500 text-xl">★</span>
-              ) : (
-                <span className="text-charcoal-lighter text-xl">☆</span>
-              )}
-            </button>
-          )}
-
-          {/* 내용 */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between mb-1">
-              <h3 className="font-bold text-off-white truncate">
-                {appointment.missionTitle || '미션 미선택'}
-              </h3>
-              {getStatusBadge(appointment.status)}
-            </div>
-
-            <p className="text-sm text-text-gray mb-1">
-              {formatDateTime(appointment.scheduledAt)}
-            </p>
-
-            {appointment.status === AppointmentStatus.ACCEPTED && (
-              <span className="text-xs font-semibold text-electric-lime">
-                {calculateDday(appointment.scheduledAt)}
-              </span>
-            )}
-
-            {appointment.placeName && (
-              <p className="text-xs text-text-gray-dark mt-1">
-                📍 {appointment.placeName}
-              </p>
-            )}
-
-            {/* 개발용 버튼 (개발 환경에서만 표시) */}
-            {showDevButtons && (
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={(e) => {
-                    console.log('🔓 D-1로 변경 버튼 클릭됨!');
-                    e.stopPropagation();
-                    onDevUnlockTomorrow?.(appointment.id);
-                  }}
-                  className="px-2 py-1 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 transition"
-                >
-                  🔓 D-1로 변경
-                </button>
-                <button
-                  onClick={(e) => {
-                    console.log('⏰ Now로 변경 버튼 클릭됨!');
-                    e.stopPropagation();
-                    onDevUnlockNow?.(appointment.id);
-                  }}
-                  className="px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition"
-                >
-                  ⏰ Now로 변경
-                </button>
+              {/* 2-2. 필터 탭 (Hero 하단 배치) */}
+              <div className="flex border-b border-charcoal-lighter mb-4">
+                {(['all', 'completed', 'cancelled'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`flex-1 pb-3 text-center text-sm font-bold transition-colors relative ${
+                      filter === f
+                        ? 'text-electric-lime'
+                        : 'text-text-gray hover:text-off-white'
+                    }`}
+                  >
+                    {f === 'all' && '전체'}
+                    {f === 'completed' && '완료'}
+                    {f === 'cancelled' && '취소'}
+                    {filter === f && (
+                      <motion.div
+                        layoutId="filter-underline"
+                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-electric-lime"
+                      />
+                    )}
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
-        </div>
-      </motion.div>
+
+              {/* 2-3. 내 약속 리스트 (2열 그리드) */}
+              {filteredMyAppointments.length === 0 ? (
+                <div className="text-center py-20">
+                  <div className="text-4xl mb-3">📅</div>
+                  <p className="text-text-gray text-sm">해당하는 약속이 없어요</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  {filteredMyAppointments.map((apt) => {
+                    // 이미지 결정: 완료 인증샷 > 장소 이미지 > 미션 이미지 > 기본값
+                    const displayImage = apt.proofImageUrls?.[0] || apt.placeImageUrl || apt.missionImageUrl || 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=400&q=80';
+                    
+                    return (
+                      <div
+                        key={apt.id}
+                        className="card p-0 overflow-hidden relative group cursor-pointer"
+                        onClick={() => {
+                          const isArchived = apt.status === AppointmentStatus.COMPLETED ||
+                                           apt.status === AppointmentStatus.CANCELLED;
+                          navigate(isArchived ? `/archived/${apt.id}` : `/mission/${apt.id}`);
+                        }}
+                      >
+                        {/* 썸네일 */}
+                        <div className="relative h-40 bg-charcoal-lighter">
+                          <img
+                            src={displayImage}
+                            alt={apt.missionTitle}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.src = 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=400&q=80';
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors" />
+                          
+                          {/* 3. 간단한 액션 버튼 (휴지통) */}
+                          <div className="absolute top-2 right-2 flex gap-1">
+                            <button
+                              onClick={(e) => handleDeleteAppointment(e, apt.id)}
+                              className="p-2 rounded-full bg-black/40 backdrop-blur-sm text-text-gray hover:text-accent-pink hover:bg-black/60 transition-all"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+
+                          {/* 상태 배지 및 별점 */}
+                          <div className="absolute bottom-2 left-2 flex items-center gap-2">
+                            {apt.status === AppointmentStatus.COMPLETED && (
+                              <>
+                                <span className="bg-green-500/90 text-white text-[10px] px-2 py-1 rounded-full font-bold">완료</span>
+                                {apt.rating && apt.rating > 0 && (
+                                  <div className="flex items-center gap-0.5 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full">
+                                    {[...Array(5)].map((_, i) => (
+                                      <span
+                                        key={i}
+                                        className={`text-xs ${i < Math.floor(apt.rating!) ? 'text-electric-lime' : 'text-gray-500'}`}
+                                      >
+                                        ⭐
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            {apt.status === AppointmentStatus.CANCELLED && (
+                              <span className="bg-gray-500/90 text-white text-[10px] px-2 py-1 rounded-full font-bold">취소됨</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 정보 */}
+                        <div className="p-3">
+                          <h3 className="text-off-white font-bold text-sm mb-1 line-clamp-1">
+                            {apt.missionTitle || '미션 미선택'}
+                          </h3>
+                          <div className="flex items-center gap-1 text-text-gray text-xs mb-1">
+                            <MapPin size={12} />
+                            <span className="line-clamp-1">{apt.placeName || '장소 미정'}</span>
+                          </div>
+                          <p className="text-text-gray-dark text-[10px]">
+                            {formatDateTime(apt.scheduledAt)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="saved"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {/* 저장된 약속 리스트 (2열 그리드) */}
+              {savedAppointments.length === 0 ? (
+                <div className="text-center py-20">
+                  <div className="text-4xl mb-3">📂</div>
+                  <p className="text-text-gray text-sm">저장된 약속이 없어요</p>
+                  <button onClick={() => navigate('/feed')} className="mt-4 text-electric-lime text-xs underline">
+                    피드 둘러보기
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  {savedAppointments.map((item) => (
+                    <div
+                      key={item.appointmentId}
+                      className="card p-0 overflow-hidden relative group cursor-pointer"
+                      onClick={() => navigate(`/saved/detail/${item.appointmentId}`)}
+                    >
+                      {/* 썸네일 */}
+                      <div className="relative h-40 bg-charcoal-lighter">
+                        <img
+                          src={item.proofImageUrls?.[0] ? `${import.meta.env.VITE_API_BASE_URL}${item.proofImageUrls[0]}` : 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=400&q=80'}
+                          alt={item.missionTitle}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=400&q=80';
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors" />
+
+                        {/* 삭제 버튼 */}
+                        <div className="absolute top-2 right-2">
+                          <button
+                            onClick={(e) => handleUnsave(e, item.appointmentId)}
+                            className="p-2 rounded-full bg-black/40 backdrop-blur-sm text-text-gray hover:text-accent-pink hover:bg-black/60 transition-all"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 정보 */}
+                      <div className="p-3">
+                        <h3 className="text-off-white font-bold text-sm mb-1 line-clamp-1">
+                          {item.missionTitle}
+                        </h3>
+                        <div className="flex items-center gap-1 text-text-gray text-xs mb-1">
+                          <MapPin size={12} />
+                          <span className="line-clamp-1">{item.placeName}</span>
+                        </div>
+                        <p className="text-text-gray-dark text-[10px]">
+                          by {item.userNickname}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

@@ -54,7 +54,8 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({
   }, [appointment.scheduledAt]);
 
   const handleClick = () => {
-    navigate(`/chat/${appointment.id}`);
+    // 약속 상세 화면으로 이동 (미션 상세)
+    navigate(`/mission/${appointment.id}`);
   };
 
   const getStatusText = (status: AppointmentStatus) => {
@@ -77,39 +78,39 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({
 
   return (
     <div
-      className={`relative w-full rounded-3xl overflow-hidden shadow-xl cursor-pointer mb-6
-                  ${isUrgent ? 'border-4 border-red-500 animate-pulse-border' : 'border-2 border-purple-200'}`}
+      className={`relative w-full rounded-solotion overflow-hidden shadow-solotion cursor-pointer mb-6 border-2 transition-all
+                  ${isUrgent ? 'border-accent-pink animate-pulse' : 'border-electric-lime/50'}`}
       onClick={handleClick}
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-600 via-pink-500 to-orange-500 opacity-80"></div>
+      {/* Background Image */}
       <img
-        src={appointment.missionImageUrl || appointment.placeImageUrl || 'https://via.placeholder.com/800x400?text=Little+Escape'}
+        src={appointment.missionImageUrl || appointment.placeImageUrl || 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=800&q=80'}
         alt={appointment.missionTitle || '미션 이미지'}
-        className="absolute inset-0 w-full h-full object-cover mix-blend-overlay"
+        className="absolute inset-0 w-full h-full object-cover"
       />
-      <div className="relative p-6 text-white flex flex-col justify-between h-full min-h-[200px]">
+      
+      {/* Dark Overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-deep-charcoal via-deep-charcoal/60 to-transparent opacity-90"></div>
+
+      <div className="relative p-6 text-off-white flex flex-col justify-between h-full min-h-[200px]">
         {/* 개발용 버튼 (우상단에 작게 배치) */}
         {showDevButtons && (
           <div className="absolute top-2 right-2 flex gap-1 z-10">
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                console.log('🔓 FeaturedCard: D-1로 변경 버튼 클릭됨!');
                 onDevUnlockTomorrow?.(appointment.id);
               }}
-              className="px-2 py-1 bg-black bg-opacity-50 backdrop-blur text-white text-[10px] rounded hover:bg-opacity-70 transition"
-              title="개발용: D-1로 변경"
+              className="px-2 py-1 bg-black/50 backdrop-blur text-white text-[10px] rounded hover:bg-black/70 transition"
             >
               🔓 D-1
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                console.log('⏰ FeaturedCard: Now로 변경 버튼 클릭됨!');
                 onDevUnlockNow?.(appointment.id);
               }}
-              className="px-2 py-1 bg-black bg-opacity-50 backdrop-blur text-white text-[10px] rounded hover:bg-opacity-70 transition"
-              title="개발용: Now로 변경"
+              className="px-2 py-1 bg-black/50 backdrop-blur text-white text-[10px] rounded hover:bg-black/70 transition"
             >
               ⏰ Now
             </button>
@@ -117,32 +118,27 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({
         )}
 
         <div>
-          <h2 className="text-2xl font-extrabold mb-2 drop-shadow-md">
+          <h2 className="text-2xl font-extra-bold mb-2 leading-tight">
             {appointment.missionTitle || '새로운 일탈을 계획해보세요!'}
           </h2>
-          <p className="text-sm opacity-90 mb-4 drop-shadow">
+          <p className="text-sm text-text-gray font-medium">
             {getStatusText(appointment.status)}
           </p>
         </div>
-        <div className="flex items-center justify-between mt-4">
-          <span className={`text-4xl font-bold drop-shadow-lg ${isUrgent ? 'text-red-300' : ''}`}>
-            {timeRemaining || 'Loading...'}
-          </span>
-          <span className="text-sm opacity-90 drop-shadow">
+        
+        <div className="flex items-end justify-between mt-4">
+          <div className="flex flex-col">
+            <span className="text-xs text-text-gray-dark mb-1">남은 시간</span>
+            <span className={`text-4xl font-black tracking-tighter ${isUrgent ? 'text-accent-pink' : 'text-electric-lime'}`}>
+              {timeRemaining || '...'}
+            </span>
+          </div>
+          <span className="text-sm font-semibold flex items-center gap-1 bg-charcoal-soft/50 px-3 py-1 rounded-full backdrop-blur-sm">
+            <span>📍</span>
             {appointment.placeName || '장소 미정'}
           </span>
         </div>
       </div>
-      <style>{`
-        @keyframes pulse-border {
-          0% { border-color: #ef4444; }
-          50% { border-color: #f87171; }
-          100% { border-color: #ef4444; }
-        }
-        .animate-pulse-border {
-          animation: pulse-border 1.5s infinite;
-        }
-      `}</style>
     </div>
   );
 };

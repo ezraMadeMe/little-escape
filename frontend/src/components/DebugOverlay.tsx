@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { devUnlockNow } from '../api/appointmentApi';
 
 const DebugOverlay = () => {
   // 개발 모드가 아니면 렌더링하지 않음
@@ -101,6 +102,23 @@ const DebugOverlay = () => {
     navigate('/feed');
   };
 
+  const handleTimeTravel = async () => {
+    const id = localStorage.getItem('appointmentId');
+    if (!id || id === 'null') {
+      alert('약속 ID가 없습니다.');
+      return;
+    }
+
+    try {
+      await devUnlockNow(Number(id));
+      alert('⏰ 약속 시간을 현재로 변경했습니다 (잠금 해제)');
+      window.location.reload();
+    } catch (error) {
+      console.error(error);
+      alert('실패했습니다.');
+    }
+  };
+
   return (
     <>
       {/* 토글 버튼 (항상 보임) */}
@@ -171,6 +189,12 @@ const DebugOverlay = () => {
 
       {/* Actions */}
       <div className="flex flex-col gap-1.5">
+        <button
+          onClick={handleTimeTravel}
+          className="bg-purple-600 hover:bg-purple-700 px-2 py-1 rounded text-xs font-semibold"
+        >
+          [Time Travel] 약속 시간=현재
+        </button>
         <button
           onClick={handleReset}
           className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-xs font-semibold"

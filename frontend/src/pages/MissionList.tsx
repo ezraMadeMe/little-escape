@@ -586,33 +586,6 @@ function MissionList() {
             오늘은 쉴래
           </motion.button>
         )}
-
-        {/* Dev Cooldown Test Button */}
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.85, duration: 0.5 }}
-          onClick={handleDevSetCooldown}
-          className="w-full text-xs text-electric-lime/50 hover:text-electric-lime/70 mt-3 py-2 transition-colors"
-        >
-          [DEV] 쿨타임 10초 테스트
-        </motion.button>
-
-        {/* Dev Reset Button */}
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.9, duration: 0.5 }}
-          onClick={() => {
-            if (confirm('개발용 리셋: 모든 데이터를 초기화하고 온보딩으로 돌아갈까?')) {
-              localStorage.clear();
-              navigate('/chat');
-            }
-          }}
-          className="w-full text-xs text-text-gray-dark/50 hover:text-text-gray/70 mt-2 py-2 transition-colors"
-        >
-          [DEV] 처음부터 다시 하기
-        </motion.button>
         </footer>
       )}
 

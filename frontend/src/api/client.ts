@@ -1,7 +1,66 @@
+import { isMockUser, createMockFeeds, createMockMyAppointments, getMockUser, createMockAppointment } from '../utils/mockData';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 interface FetchOptions extends RequestInit {
   headers?: Record<string, string>;
+}
+
+// Mock API 응답 핸들러
+async function handleMockRequest<T>(endpoint: string, options: FetchOptions): Promise<T> {
+  console.log('🎭 Mock API Request:', endpoint, options.method || 'GET');
+
+  // 약간의 지연 시간 추가 (실제 API처럼)
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+  // 엔드포인트별 Mock 응답
+  if (endpoint === '/api/v1/users/me') {
+    return getMockUser() as T;
+  }
+
+  if (endpoint.startsWith('/api/v1/appointments/feed')) {
+    console.log('📱 Mock 피드 데이터 생성 중...');
+    const feeds = createMockFeeds(20);
+    console.log('✅ Mock 피드 생성 완료:', feeds.length, '개');
+    return feeds as T;
+  }
+
+  if (endpoint === '/api/v1/appointments/my') {
+    return createMockMyAppointments() as T;
+  }
+
+  if (endpoint === '/api/v1/appointments/next') {
+    const myAppointments = createMockMyAppointments();
+    const upcoming = myAppointments.find(apt =>
+      apt.status === 'ACCEPTED' || apt.status === 'UNLOCKED'
+    );
+    if (!upcoming) {
+      throw new Error('No upcoming appointment');
+    }
+    return upcoming as T;
+  }
+
+  if (endpoint.startsWith('/api/v1/appointments/') && endpoint.includes('/detail')) {
+    const id = endpoint.split('/')[3];
+    return createMockAppointment({ id: Number(id) }) as T;
+  }
+
+  if (endpoint === '/api/v1/appointments/saved') {
+    return [] as T;
+  }
+
+  // POST 요청 - 약속 생성
+  if (endpoint === '/api/v1/appointments' && options.method === 'POST') {
+    return createMockAppointment() as T;
+  }
+
+  // PATCH, DELETE 등은 성공 응답
+  if (options.method === 'PATCH' || options.method === 'DELETE') {
+    return undefined as T;
+  }
+
+  console.warn('⚠️ Mock API: 처리되지 않은 엔드포인트:', endpoint);
+  return {} as T;
 }
 
 export async function apiFetch<T>(
@@ -9,6 +68,20 @@ export async function apiFetch<T>(
   options: FetchOptions = {}
 ): Promise<T> {
   const token = localStorage.getItem('token');
+
+  // Mock 모드 체크
+  const mockMode = isMockUser();
+  console.log('🔍 API 요청 체크:', {
+    endpoint,
+    method: options.method || 'GET',
+    token: token?.substring(0, 20) + '...',
+    isMockMode: mockMode
+  });
+
+  if (mockMode) {
+    console.log('🎭 Mock 모드 활성화 - 백엔드 요청 우회');
+    return handleMockRequest<T>(endpoint, options);
+  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
