@@ -1,5 +1,6 @@
 package com.littleescape.api.dto.ingestion;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
@@ -11,12 +12,14 @@ import java.util.List;
  * 데이터셋: 서울시 모범음식점 지정 현황
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class SeoulRestaurantResponse {
 
     @JsonProperty("LOCALDATA_072405")
     private RestaurantData restaurantData;
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class RestaurantData {
         
         @JsonProperty("list_total_count")
@@ -30,15 +33,17 @@ public class SeoulRestaurantResponse {
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Result {
         @JsonProperty("CODE")
         private String code;
-        
+
         @JsonProperty("MESSAGE")
         private String message;
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Restaurant {
         
         @JsonProperty("OPNSFTEAMCODE")

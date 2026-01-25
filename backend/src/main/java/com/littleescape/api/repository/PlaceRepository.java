@@ -1,11 +1,14 @@
 package com.littleescape.api.repository;
 
 import com.littleescape.api.domain.Place;
+import com.littleescape.api.domain.type.DataSource;
 import com.littleescape.api.domain.type.MissionCategory;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -139,4 +142,76 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             @Param("keyword6") String keyword6,
             @Param("keyword7") String keyword7
     );
+
+    // ========== 신규 메서드 (데이터 수집용) ==========
+
+    /**
+     * 외부 API ID로 장소 조회 (upsert용)
+     */
+    Optional<Place> findByExternalId(String externalId);
+
+    /**
+     * 외부 API ID 존재 여부 확인
+     */
+    boolean existsByExternalId(String externalId);
+
+    /**
+     * 데이터 소스별 장소 조회
+     */
+    List<Place> findByDataSource(DataSource dataSource);
+
+    /**
+     * 데이터 소스별 장소 개수
+     */
+    long countByDataSource(DataSource dataSource);
+
+    /**
+     * 활성 장소만 조회 (종료되지 않은)
+     */
+    List<Place> findByIsActiveTrue();
+
+    /**
+     * 활성 + 카테고리별 장소 조회
+     */
+    List<Place> findByCategoryAndIsActiveTrue(MissionCategory category);
+
+    /**
+     * 종료일이 지난 활성 공연 조회 (비활성화 대상)
+     */
+    @Query("SELECT p FROM Place p WHERE p.isActive = true AND p.endDate < :today AND p.dataSource = :dataSource")
+    List<Place> findExpiredPerformances(
+            @Param("today") LocalDate today,
+            @Param("dataSource") DataSource dataSource
+    );
+
+    /**
+     * 종료된 공연 일괄 비활성화
+     */
+    @Modifying
+    @Query("UPDATE Place p SET p.isActive = false, p.performanceState = '공연완료' " +
+           "WHERE p.isActive = true AND p.endDate < :today AND p.dataSource IN :dataSources")
+    int deactivateExpiredPerformances(
+            @Param("today") LocalDate today,
+            @Param("dataSources") List<DataSource> dataSources
+    );
+
+    /**
+     * 데이터 소스 + 카테고리별 활성 장소 조회
+     */
+    List<Place> findByDataSourceAndCategoryAndIsActiveTrue(DataSource dataSource, MissionCategory category);
+
+    /**
+     * 가격 범위 내 활성 장소 조회 (무료 또는 지정 가격 이하)
+     */
+    @Query("SELECT p FROM Place p WHERE p.isActive = true AND p.category = :category AND " +
+           "(p.isFree = true OR p.ticketPrice IS NULL OR p.ticketPrice <= :maxPrice)")
+    List<Place> findAffordablePlaces(
+            @Param("category") MissionCategory category,
+            @Param("maxPrice") Integer maxPrice
+    );
+
+    /**
+     * 공연 상태별 조회
+     */
+    List<Place> findByPerformanceStateAndIsActiveTrue(String performanceState);
 }

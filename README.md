@@ -777,6 +777,125 @@ Google Cloud Console 등에서 리다이렉트 URI에 Ngrok 주소 추가
 
 ---
 
+## 🚀 v3.0 주요 업데이트 (2026.01.25)
+
+### 1. 📚 공공 API 데이터 수집 시스템 (Public API Data Collection)
+- **도서관정보나루 API 연동:**
+  - 서울시 도서관 200개 자동 수집 및 저장
+  - 인기 대출 도서 30권 (20대 타겟) 주간 수집
+  - 도서 소장/대출 가능 여부 실시간 조회 (1시간 캐싱)
+  - Library, PopularBook 엔티티로 데이터 관리
+- **KOPIS 공연예술통합전산망 API 확장:**
+  - 공연 상세 정보 조회 (티켓 가격, 공연 시간, 좌석 정보)
+  - 축제 목록 수집 및 필터링
+  - 종료된 공연 자동 비활성화 (isActive = false)
+- **서울시 열린데이터광장 API 확장:**
+  - 공원 현황 200개 수집 (SearchParkInfoService)
+  - 공공서비스예약 문화행사 수집 (ListPublicReservationCulture)
+  - 기존 모범음식점 로직 유지
+
+### 2. 🎯 2030 1인가구 타겟 콘텐츠 필터링 (Content Filtering)
+- **ContentFilteringService 구현:**
+  - 제외 키워드: 아동, 가족, 초등, 중등, 유아, 방학, 어린이, 키즈, 교육, 체험학습
+  - 최대 허용 가격: 70,000원 (7만원 초과 공연 자동 제외)
+  - 이용대상 필터링: 아동/초등/유아 대상 행사 제외
+- **가격 파싱 로직:**
+  - "R석 70,000원, S석 50,000원" → 최저가 50,000원 추출
+  - "전석 무료" → 0원 처리
+
+### 3. ⏰ 자동 데이터 수집 스케줄러 (DataCollectionScheduler)
+- **주간 수집 (매주 월요일 04:00):**
+  - 인기 대출 도서 (20대, 서울)
+  - 공연/축제 목록
+- **일간 수집 (매일 05:00):**
+  - 문화행사 정보
+  - 종료된 공연/행사 비활성화
+- **월간 수집 (매월 1일 03:00):**
+  - 도서관 정보 갱신
+  - 공원 정보 갱신
+- **앱 시작 시 (1회):**
+  - 데이터 없을 경우 초기 로드
+
+### 4. 🔧 Admin API 확장
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `POST /api/admin/data/collect/libraries` | 도서관 수동 수집 |
+| `POST /api/admin/data/collect/popular-books` | 인기도서 수동 수집 |
+| `POST /api/admin/data/collect/performances` | 공연/축제 수동 수집 |
+| `POST /api/admin/data/collect/cultural-events` | 문화행사 수동 수집 |
+| `POST /api/admin/data/collect/parks` | 공원 수동 수집 |
+| `POST /api/admin/data/collect/all` | 전체 수집 (비동기) |
+| `GET /api/admin/data/test/book-exist` | 도서 소장/대출 테스트 |
+| `GET /api/admin/data/stats` | 수집 통계 조회 |
+
+### 5. 🗄️ 데이터베이스 스키마 확장
+- **Place 엔티티 필드 추가:**
+  - `startDate`, `endDate`: 공연/행사 기간
+  - `ticketPrice`: 최저 티켓 가격 (원)
+  - `isFree`: 무료 여부
+  - `dataSource`: 데이터 출처 (KOPIS, SEOUL_CULTURE, LIBRARY 등)
+  - `externalId`: 외부 API 고유 ID (중복 방지)
+  - `isActive`: 활성 상태 (종료 공연은 false)
+  - `performanceState`: 공연 상태 (공연중, 공연예정, 공연완료)
+- **신규 엔티티:**
+  - `Library`: 도서관 정보 (libraryCode, closedDays, operatingTime)
+  - `PopularBook`: 인기 도서 (isbn, ranking, loanCount, collectedAt)
+  - `DataSource` enum: 데이터 출처 구분
+
+### 6. 🚀 Caffeine Cache 도입
+- **캐시 적용 항목:**
+  - `bookExistence`: 도서 소장/대출 조회 (1시간)
+  - `bookDetail`: 도서 상세 정보 (1시간)
+  - `bookKeywords`: 도서 키워드 (1시간)
+  - `nearbyBookAvailability`: 주변 도서관 대출 가능 (1시간)
+- **의존성 추가:**
+  - `spring-boot-starter-cache`
+  - `com.github.ben-manes.caffeine:caffeine:3.1.8`
+
+### 7. 🛠️ 기술적 개선
+- **서비스 통합 리팩토링:**
+  - DataIngestionService → DataCollectionService 리네이밍
+  - 도서관, KOPIS, 서울시 수집 로직 통합
+  - ContentFilteringService 분리
+- **Hibernate 세션 안정성:**
+  - 개별 항목 처리 실패 시 `entityManager.clear()` 호출
+  - 세션 오염 방지로 후속 항목 정상 처리
+- **PlaceRepository 확장:**
+  - `findByExternalId()`: 중복 방지용 조회
+  - `findByDataSource()`: 데이터 출처별 조회
+  - `deactivateExpiredPerformances()`: 종료 공연 일괄 비활성화
+
+### 8. 📋 구현 파일 목록
+```
+backend/src/main/java/com/littleescape/api/
+├── domain/
+│   ├── Library.java                 # 도서관 엔티티
+│   ├── PopularBook.java             # 인기도서 엔티티
+│   └── type/DataSource.java         # 데이터 출처 Enum
+├── repository/
+│   ├── LibraryRepository.java
+│   └── PopularBookRepository.java
+├── dto/ingestion/
+│   ├── PopularBookResponse.java     # 인기도서 응답
+│   ├── BookExistResponse.java       # 도서 소장/대출 응답
+│   ├── BookDetailResponse.java      # 도서 상세 응답
+│   ├── BookKeywordResponse.java     # 도서 키워드 응답
+│   ├── PerformanceDetailResponse.java  # 공연 상세 응답
+│   ├── FestivalResponse.java        # 축제 목록 응답
+│   ├── SeoulParkResponse.java       # 공원 응답
+│   └── PublicReservationCultureResponse.java  # 공공예약 응답
+├── config/
+│   └── CacheConfig.java             # Caffeine 캐시 설정
+├── service/
+│   ├── DataCollectionService.java   # 통합 수집 서비스
+│   ├── ContentFilteringService.java # 콘텐츠 필터링
+│   └── LibraryApiService.java       # 도서 실시간 조회
+└── scheduler/
+    └── DataCollectionScheduler.java # 자동 수집 스케줄러
+```
+
+---
+
 ## 🎯 다음 개발 계획 (Roadmap)
 
 ### Phase 1: 피드 기능 고도화

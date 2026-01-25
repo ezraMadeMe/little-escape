@@ -1,5 +1,6 @@
 package com.littleescape.api.dto.ingestion;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
@@ -10,6 +11,7 @@ import java.util.List;
  * API: https://dapi.kakao.com/v2/local/search/address.json
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class KakaoGeoResponse {
 
     @JsonProperty("meta")
@@ -19,6 +21,7 @@ public class KakaoGeoResponse {
     private List<Document> documents;
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Meta {
         @JsonProperty("total_count")
         private Integer totalCount;
@@ -31,6 +34,7 @@ public class KakaoGeoResponse {
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Document {
         
         @JsonProperty("address_name")
@@ -53,6 +57,7 @@ public class KakaoGeoResponse {
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Address {
         @JsonProperty("address_name")
         private String addressName;
@@ -77,6 +82,7 @@ public class KakaoGeoResponse {
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class RoadAddress {
         @JsonProperty("address_name")
         private String addressName;

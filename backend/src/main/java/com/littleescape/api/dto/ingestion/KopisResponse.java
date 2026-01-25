@@ -1,5 +1,6 @@
 package com.littleescape.api.dto.ingestion;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
@@ -13,6 +14,7 @@ import java.util.List;
  */
 @Data
 @JacksonXmlRootElement(localName = "dbs")
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class KopisResponse {
 
     @JacksonXmlElementWrapper(useWrapping = false)
@@ -20,6 +22,7 @@ public class KopisResponse {
     private List<Performance> performances;
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Performance {
         
         @JacksonXmlProperty(localName = "mt20id")

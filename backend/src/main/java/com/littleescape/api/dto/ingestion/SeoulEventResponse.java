@@ -1,5 +1,6 @@
 package com.littleescape.api.dto.ingestion;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
@@ -10,12 +11,14 @@ import java.util.List;
  * API: http://openapi.seoul.go.kr:8088/{KEY}/json/culturalEventInfo/1/100/
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class SeoulEventResponse {
 
     @JsonProperty("culturalEventInfo")
     private CulturalEventInfo culturalEventInfo;
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class CulturalEventInfo {
         
         @JsonProperty("list_total_count")
@@ -29,6 +32,7 @@ public class SeoulEventResponse {
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Result {
         @JsonProperty("CODE")
         private String code;
@@ -38,6 +42,7 @@ public class SeoulEventResponse {
     }
 
     @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Event {
         
         @JsonProperty("CODENAME")

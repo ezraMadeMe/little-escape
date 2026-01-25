@@ -2,8 +2,9 @@ package com.littleescape.api.controller;
 
 import com.littleescape.api.dto.simulation.SimulationRequest;
 import com.littleescape.api.dto.simulation.SimulationResponse;
-import com.littleescape.api.service.DataIngestionService;
+import com.littleescape.api.service.DataCollectionService;
 import com.littleescape.api.service.DataImportService;
+import com.littleescape.api.service.LibraryApiService;
 import com.littleescape.api.service.SimulationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -27,58 +28,320 @@ import java.util.Map;
 @Tag(name = "Admin", description = "관리자 API")
 public class AdminController {
 
-    private final DataIngestionService dataIngestionService;
+    private final DataCollectionService dataCollectionService;
     private final DataImportService dataImportService;
     private final SimulationService simulationService;
+    private final LibraryApiService libraryApiService;
     private final com.littleescape.api.service.AppointmentService appointmentService;
     private final com.littleescape.api.scheduler.AppointmentScheduler appointmentScheduler;
     private final com.littleescape.api.repository.AppointmentRepository appointmentRepository;
 
+    // ========== 데이터 수집 API ==========
+
     /**
-     * 데이터 수집 수동 트리거
-     * 스케줄러 시각(새벽 4시)을 기다리지 않고 즉시 데이터 수집 실행
-     * 
-     * @return 실행 결과 메시지
+     * 데이터 수집 수동 트리거 (전체)
      */
     @PostMapping("/ingest")
-    @Operation(summary = "데이터 수집 수동 실행", 
-               description = "외부 공공 API(KOPIS, 서울시, 도서관)에서 데이터를 즉시 수집합니다.")
+    @Operation(summary = "데이터 수집 수동 실행 (전체)",
+               description = "모든 외부 공공 API에서 데이터를 즉시 수집합니다.")
     public ResponseEntity<Map<String, Object>> triggerDataIngestion() {
         log.info("========================================");
-        log.info("🔧 관리자 요청: 수동 데이터 수집 트리거");
+        log.info("🔧 관리자 요청: 수동 데이터 수집 트리거 (전체)");
         log.info("========================================");
-        
+
         try {
-            // 비동기로 실행하여 응답 지연 방지
             new Thread(() -> {
                 try {
-                    dataIngestionService.manualTrigger();
+                    dataCollectionService.collectAll();
                 } catch (Exception e) {
                     log.error("수동 데이터 수집 실행 중 오류", e);
                 }
             }).start();
-            
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "데이터 수집이 시작되었습니다. 로그를 확인해주세요.");
-            response.put("note", "백그라운드에서 실행 중입니다. 완료까지 1-2분 소요될 수 있습니다.");
-            
+            response.put("message", "전체 데이터 수집이 시작되었습니다. 로그를 확인해주세요.");
+            response.put("note", "백그라운드에서 실행 중입니다. 완료까지 3-5분 소요될 수 있습니다.");
+
             return ResponseEntity.ok(response);
-            
+
         } catch (Exception e) {
             log.error("데이터 수집 트리거 실패", e);
-            
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("success", false);
-            errorResponse.put("message", "데이터 수집 시작 실패: " + e.getMessage());
-            
-            return ResponseEntity.internalServerError().body(errorResponse);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", "데이터 수집 시작 실패: " + e.getMessage()
+            ));
         }
     }
 
     /**
+     * 도서관 데이터 수집
+     */
+    @PostMapping("/data/collect/libraries")
+    @Operation(summary = "도서관 데이터 수집",
+               description = "도서관정보나루 API에서 서울 지역 도서관 데이터를 수집합니다.")
+    public ResponseEntity<Map<String, Object>> collectLibraries() {
+        log.info("🔧 관리자 요청: 도서관 데이터 수집");
+
+        try {
+            DataCollectionService.CollectionResult result = dataCollectionService.collectLibraries();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "도서관 데이터 수집 완료");
+            response.put("inserted", result.inserted);
+            response.put("updated", result.updated);
+            response.put("skipped", result.skipped);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("도서관 수집 실패", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * 인기 대출 도서 수집
+     */
+    @PostMapping("/data/collect/popular-books")
+    @Operation(summary = "인기 대출 도서 수집",
+               description = "도서관정보나루 API에서 20-30대 대상 인기 대출 도서를 수집합니다.")
+    public ResponseEntity<Map<String, Object>> collectPopularBooks() {
+        log.info("🔧 관리자 요청: 인기 대출 도서 수집");
+
+        try {
+            DataCollectionService.CollectionResult result = dataCollectionService.collectPopularBooks();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "인기도서 데이터 수집 완료");
+            response.put("inserted", result.inserted);
+            response.put("skipped", result.skipped);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("인기도서 수집 실패", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * KOPIS 공연/축제 데이터 수집
+     */
+    @PostMapping("/data/collect/performances")
+    @Operation(summary = "공연/축제 데이터 수집",
+               description = "KOPIS API에서 서울 지역 공연/축제 데이터를 수집합니다. (필터링 적용)")
+    public ResponseEntity<Map<String, Object>> collectPerformances() {
+        log.info("🔧 관리자 요청: 공연/축제 데이터 수집");
+
+        try {
+            DataCollectionService.CollectionResult perfResult = dataCollectionService.collectPerformances();
+            DataCollectionService.CollectionResult festResult = dataCollectionService.collectFestivals();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "공연/축제 데이터 수집 완료");
+            response.put("performances", Map.of(
+                    "inserted", perfResult.inserted,
+                    "updated", perfResult.updated,
+                    "filtered", perfResult.filtered,
+                    "skipped", perfResult.skipped
+            ));
+            response.put("festivals", Map.of(
+                    "inserted", festResult.inserted,
+                    "updated", festResult.updated,
+                    "filtered", festResult.filtered,
+                    "skipped", festResult.skipped
+            ));
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("공연/축제 수집 실패", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * 서울시 문화행사 데이터 수집
+     */
+    @PostMapping("/data/collect/cultural-events")
+    @Operation(summary = "문화행사 데이터 수집",
+               description = "서울시 열린데이터 API에서 문화행사 정보를 수집합니다.")
+    public ResponseEntity<Map<String, Object>> collectCulturalEvents() {
+        log.info("🔧 관리자 요청: 문화행사 데이터 수집");
+
+        try {
+            DataCollectionService.CollectionResult eventResult = dataCollectionService.collectSeoulCulturalEvents();
+            DataCollectionService.CollectionResult reservationResult = dataCollectionService.collectPublicReservationCulture();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "문화행사 데이터 수집 완료");
+            response.put("culturalEvents", Map.of(
+                    "inserted", eventResult.inserted,
+                    "filtered", eventResult.filtered,
+                    "skipped", eventResult.skipped
+            ));
+            response.put("publicReservation", Map.of(
+                    "inserted", reservationResult.inserted,
+                    "filtered", reservationResult.filtered,
+                    "skipped", reservationResult.skipped
+            ));
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("문화행사 수집 실패", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * 서울시 공원 데이터 수집
+     */
+    @PostMapping("/data/collect/parks")
+    @Operation(summary = "공원 데이터 수집",
+               description = "서울시 열린데이터 API에서 공원 정보를 수집합니다.")
+    public ResponseEntity<Map<String, Object>> collectParks() {
+        log.info("🔧 관리자 요청: 공원 데이터 수집");
+
+        try {
+            DataCollectionService.CollectionResult result = dataCollectionService.collectSeoulParks();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "공원 데이터 수집 완료");
+            response.put("inserted", result.inserted);
+            response.put("filtered", result.filtered);
+            response.put("skipped", result.skipped);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("공원 수집 실패", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * 모범음식점 데이터 수집
+     */
+    @PostMapping("/data/collect/restaurants")
+    @Operation(summary = "모범음식점 데이터 수집",
+               description = "서울시 열린데이터 API에서 모범음식점 정보를 수집합니다.")
+    public ResponseEntity<Map<String, Object>> collectRestaurants() {
+        log.info("🔧 관리자 요청: 모범음식점 데이터 수집");
+
+        try {
+            DataCollectionService.CollectionResult result = dataCollectionService.collectSeoulRestaurants();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "모범음식점 데이터 수집 완료");
+            response.put("inserted", result.inserted);
+            response.put("skipped", result.skipped);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("모범음식점 수집 실패", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * 종료 공연 비활성화
+     */
+    @PostMapping("/data/deactivate-expired")
+    @Operation(summary = "종료 공연 비활성화",
+               description = "종료일이 지난 공연/행사를 비활성화합니다.")
+    public ResponseEntity<Map<String, Object>> deactivateExpired() {
+        log.info("🔧 관리자 요청: 종료 공연 비활성화");
+
+        try {
+            int count = dataCollectionService.deactivateExpiredPerformances();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", count + "건의 종료 공연이 비활성화되었습니다.");
+            response.put("deactivatedCount", count);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("종료 공연 비활성화 실패", e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false, "message", e.getMessage()));
+        }
+    }
+
+    /**
+     * 수집 통계 조회
+     */
+    @GetMapping("/data/stats")
+    @Operation(summary = "수집 통계 조회",
+               description = "현재 수집된 데이터의 통계를 조회합니다.")
+    public ResponseEntity<DataCollectionService.CollectionStats> getCollectionStats() {
+        log.info("🔧 관리자 요청: 수집 통계 조회");
+
+        DataCollectionService.CollectionStats stats = dataCollectionService.getCollectionStats();
+        return ResponseEntity.ok(stats);
+    }
+
+    // ========== 도서 API 테스트 ==========
+
+    /**
+     * 도서 소장/대출 가능 여부 테스트
+     */
+    @GetMapping("/data/test/book-exist")
+    @Operation(summary = "도서 소장/대출 가능 테스트",
+               description = "특정 ISBN의 도서를 대출할 수 있는 도서관을 조회합니다.")
+    public ResponseEntity<List<LibraryApiService.BookAvailability>> testBookExistence(
+            @RequestParam String isbn,
+            @RequestParam(defaultValue = "37.5665") Double latitude,
+            @RequestParam(defaultValue = "126.9780") Double longitude) {
+
+        log.info("🔧 관리자 요청: 도서 소장 테스트 - ISBN: {}", isbn);
+
+        List<LibraryApiService.BookAvailability> result =
+                libraryApiService.checkBookExistence(isbn, latitude, longitude);
+
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 도서 상세 정보 테스트
+     */
+    @GetMapping("/data/test/book-detail")
+    @Operation(summary = "도서 상세 정보 테스트",
+               description = "특정 ISBN의 도서 상세 정보를 조회합니다.")
+    public ResponseEntity<LibraryApiService.BookDetail> testBookDetail(
+            @RequestParam String isbn) {
+
+        log.info("🔧 관리자 요청: 도서 상세 테스트 - ISBN: {}", isbn);
+
+        LibraryApiService.BookDetail result = libraryApiService.getBookDetail(isbn);
+
+        if (result != null) {
+            return ResponseEntity.ok(result);
+        } else {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    // ========== 기존 API (유지) ==========
+
+    /**
      * 헬스체크 엔드포인트
-     * 관리자 API가 정상 동작하는지 확인
      */
     @PostMapping("/health")
     @Operation(summary = "관리자 API 헬스체크", description = "관리자 API 서버 상태를 확인합니다.")
@@ -91,7 +354,6 @@ public class AdminController {
 
     /**
      * 서울 맛집 데이터 import
-     * POST /api/admin/data/import/seoul-restaurants
      */
     @PostMapping("/data/import/seoul-restaurants")
     @Operation(summary = "서울 맛집 데이터 import",
@@ -113,7 +375,6 @@ public class AdminController {
 
     /**
      * Places 테이블 전체 삭제 (개발용)
-     * DELETE /api/admin/data/places
      */
     @DeleteMapping("/data/places")
     @Operation(summary = "Places 테이블 전체 삭제",
@@ -136,7 +397,6 @@ public class AdminController {
 
     /**
      * Places 테이블 데이터 개수 조회
-     * GET /api/admin/data/places/count
      */
     @GetMapping("/data/places/count")
     @Operation(summary = "Places 데이터 개수 조회",
@@ -152,7 +412,6 @@ public class AdminController {
 
     /**
      * 약속 만료 체크 수동 실행
-     * POST /api/admin/scheduler/check-expired
      */
     @PostMapping("/scheduler/check-expired")
     @Operation(summary = "약속 만료 체크 수동 실행",
@@ -163,7 +422,6 @@ public class AdminController {
         log.info("========================================");
 
         try {
-            // 스케줄러 메서드 직접 호출
             appointmentScheduler.checkExpiredAppointments();
 
             Map<String, Object> response = new HashMap<>();
@@ -174,19 +432,15 @@ public class AdminController {
 
         } catch (Exception e) {
             log.error("약속 만료 체크 실행 중 오류", e);
-
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("success", false);
-            errorResponse.put("message", "약속 만료 체크 실패: " + e.getMessage());
-            errorResponse.put("error", e.toString());
-
-            return ResponseEntity.internalServerError().body(errorResponse);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", "약속 만료 체크 실패: " + e.getMessage()
+            ));
         }
     }
 
     /**
      * 완료된 약속을 모두 공개 상태로 변경
-     * POST /api/admin/fix-public-status
      */
     @PostMapping("/fix-public-status")
     @Operation(summary = "완료된 약속 공개 상태 수정",
@@ -225,19 +479,15 @@ public class AdminController {
 
         } catch (Exception e) {
             log.error("공개 상태 수정 중 오류", e);
-
-            Map<String, Object> errorResponse = new HashMap<>();
-            errorResponse.put("success", false);
-            errorResponse.put("message", "공개 상태 수정 실패: " + e.getMessage());
-            errorResponse.put("error", e.toString());
-
-            return ResponseEntity.internalServerError().body(errorResponse);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "message", "공개 상태 수정 실패: " + e.getMessage()
+            ));
         }
     }
 
     /**
      * 약속 시간 타임 트래블 (현재로 당기기)
-     * PATCH /api/admin/appointments/{id}/time-travel
      */
     @PatchMapping("/appointments/{id}/time-travel")
     @Operation(summary = "약속 시간 타임 트래블",
@@ -262,8 +512,6 @@ public class AdminController {
 
     /**
      * God Mode Simulation API
-     * 환경 변수를 통제하여 추천 로직 테스트
-     * POST /api/admin/simulation
      */
     @PostMapping("/simulation")
     @Operation(
@@ -303,7 +551,6 @@ public class AdminController {
         } catch (Exception e) {
             log.error("시뮬레이션 실행 중 오류 발생", e);
 
-            // 오류 발생 시에도 디버그 로그 제공
             SimulationResponse errorResponse = new SimulationResponse(
                 null,
                 null,
