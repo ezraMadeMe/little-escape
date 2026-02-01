@@ -176,8 +176,10 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     List<Place> findByCategoryAndIsActiveTrue(MissionCategory category);
 
     /**
+     * @deprecated PlaceDetailPerformanceRepository.findExpiredByDataSources 로 이관
      * 종료일이 지난 활성 공연 조회 (비활성화 대상)
      */
+    @Deprecated
     @Query("SELECT p FROM Place p WHERE p.isActive = true AND p.endDate < :today AND p.dataSource = :dataSource")
     List<Place> findExpiredPerformances(
             @Param("today") LocalDate today,
@@ -185,8 +187,10 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     );
 
     /**
-     * 종료된 공연 일괄 비활성화
+     * @deprecated detail 테이블 기반 deactivate 로직으로 전환 중 (레거시 fallback용 유지)
+     * 종료된 공연 일괄 비활성화 (hub 컬럼 기준)
      */
+    @Deprecated
     @Modifying
     @Query("UPDATE Place p SET p.isActive = false, p.performanceState = '공연완료' " +
            "WHERE p.isActive = true AND p.endDate < :today AND p.dataSource IN :dataSources")
@@ -201,8 +205,10 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     List<Place> findByDataSourceAndCategoryAndIsActiveTrue(DataSource dataSource, MissionCategory category);
 
     /**
+     * @deprecated PlaceDetailPerformanceRepository.findAffordablePlaces 로 이관
      * 가격 범위 내 활성 장소 조회 (무료 또는 지정 가격 이하)
      */
+    @Deprecated
     @Query("SELECT p FROM Place p WHERE p.isActive = true AND p.category = :category AND " +
            "(p.isFree = true OR p.ticketPrice IS NULL OR p.ticketPrice <= :maxPrice)")
     List<Place> findAffordablePlaces(
@@ -211,7 +217,9 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
     );
 
     /**
+     * @deprecated PlaceDetailPerformanceRepository.findByPerformanceStateAndPlaceIsActiveTrue 로 이관
      * 공연 상태별 조회
      */
+    @Deprecated
     List<Place> findByPerformanceStateAndIsActiveTrue(String performanceState);
 }

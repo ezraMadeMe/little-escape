@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { saveChatOnboardingData } from '../api/userApi';
+import LocationSelectbox from '../components/LocationSelectbox';
+import type { LocationSelection } from '../components/LocationSelectbox';
 
 // 메시지 타입
 interface ChatMessage {
@@ -32,6 +34,7 @@ const ChatAppointment = () => {
   const [inputValue, setInputValue] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [showChoices, setShowChoices] = useState(false);
+  const [showLocationSelect, setShowLocationSelect] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analyzingText, setAnalyzingText] = useState('');
 
@@ -130,26 +133,26 @@ const ChatAppointment = () => {
 
     await addManagerMessage(response, 800);
     setCurrentStep('location');
-    await addManagerMessage('주로 어디서 출발해? (사는 곳이나 직장)', 500);
-    setShowInput(true);
-    setTimeout(() => inputRef.current?.focus(), 100);
+    await addManagerMessage('주로 어디서 출발해? 구랑 동네 골라봐.', 500);
+    setShowLocationSelect(true);
   };
 
-  // 위치 입력 처리
-  const handleLocationSubmit = async () => {
-    if (!inputValue.trim()) return;
+  // 위치 선택 처리 (selectbox)
+  const handleLocationSelect = async (selection: LocationSelection) => {
+    setUserData((prev) => ({ ...prev, defaultLocation: selection.name }));
+    addUserMessage(`${selection.district} ${selection.name}`);
+    setShowLocationSelect(false);
 
-    const location = inputValue.trim();
-    setUserData((prev) => ({ ...prev, defaultLocation: location }));
-    addUserMessage(location);
-    setInputValue('');
-    setShowInput(false);
+    // localStorage에 저장 (레거시 + 구조화 데이터)
+    localStorage.setItem('default_location', selection.name);
+    localStorage.setItem('user_location', JSON.stringify({
+      lat: selection.lat,
+      lng: selection.lng,
+      name: selection.name,
+    }));
+    console.log('✅ 기본 위치 저장:', selection);
 
-    // localStorage에 default_location 저장
-    localStorage.setItem('default_location', location);
-    console.log('✅ 기본 위치 저장:', location);
-
-    await addManagerMessage(`${location}? 알았어.`, 800);
+    await addManagerMessage(`${selection.name}? 알았어.`, 800);
     setCurrentStep('preference');
     await addManagerMessage('야외가 좋아, 실내가 좋아?', 500);
     setShowChoices(true);
@@ -225,8 +228,6 @@ const ChatAppointment = () => {
     if (e.key === 'Enter') {
       if (currentStep === 'nickname') {
         handleNicknameSubmit();
-      } else if (currentStep === 'location') {
-        handleLocationSubmit();
       }
     }
   };
@@ -356,6 +357,22 @@ const ChatAppointment = () => {
           </motion.div>
         )}
 
+        {/* 위치 선택 Selectbox */}
+        {showLocationSelect && currentStep === 'location' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-end"
+          >
+            <div className="w-full max-w-[85%]">
+              <LocationSelectbox
+                variant="dark"
+                onSelect={handleLocationSelect}
+              />
+            </div>
+          </motion.div>
+        )}
+
         <div ref={messagesEndRef} />
       </main>
 
@@ -413,8 +430,8 @@ const ChatAppointment = () => {
         )}
       </AnimatePresence>
 
-      {/* 입력창 - 모바일 CSS 최적화 */}
-      {showInput && (
+      {/* 입력창 - nickname step에서만 표시 */}
+      {showInput && currentStep === 'nickname' && (
         <motion.div
           initial={{ y: 100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -427,23 +444,11 @@ const ChatAppointment = () => {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder={
-                currentStep === 'nickname'
-                  ? '닉네임 입력...'
-                  : currentStep === 'location'
-                  ? '지역 입력 (예: 강남, 홍대)...'
-                  : '입력...'
-              }
+              placeholder="닉네임 입력..."
               className="flex-1 min-w-0 bg-charcoal-lighter text-off-white px-4 py-3 rounded-full border border-charcoal-lighter focus:border-electric-lime focus:outline-none transition-colors placeholder-text-gray-dark"
             />
             <button
-              onClick={() => {
-                if (currentStep === 'nickname') {
-                  handleNicknameSubmit();
-                } else if (currentStep === 'location') {
-                  handleLocationSubmit();
-                }
-              }}
+              onClick={handleNicknameSubmit}
               disabled={!inputValue.trim()}
               className="flex-shrink-0 bg-electric-lime text-deep-charcoal px-4 sm:px-6 py-3 rounded-full font-bold hover:bg-electric-lime/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[60px] text-sm sm:text-base"
             >

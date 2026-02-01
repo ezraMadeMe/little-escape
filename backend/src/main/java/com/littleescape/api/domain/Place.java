@@ -25,6 +25,8 @@ public class Place extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // ========== 허브 필드 (공통) ==========
+
     @Column(nullable = false, length = 100)
     private String name;
 
@@ -47,24 +49,9 @@ public class Place extends BaseTimeEntity {
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 
-    // 장소 태그 (쉼표로 구분된 문자열)
-    // 예: "ALCOHOL_ONLY,VIEW_POINT"
+    /** 장소 태그 (쉼표로 구분, 예: "ALCOHOL_ONLY,VIEW_POINT") */
     @Column(name = "tags", length = 500)
     private String tags;
-
-    // ========== 신규 필드 (공연/행사 정보) ==========
-
-    /** 공연/행사 시작일 */
-    @Column(name = "start_date")
-    private LocalDate startDate;
-
-    /** 공연/행사 종료일 */
-    @Column(name = "end_date")
-    private LocalDate endDate;
-
-    /** 티켓 가격 (최저가, 원 단위) */
-    @Column(name = "ticket_price")
-    private Integer ticketPrice;
 
     /** 무료 여부 */
     @Column(name = "is_free")
@@ -83,16 +70,46 @@ public class Place extends BaseTimeEntity {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
-    /** 공연 상태 (공연중, 공연예정, 공연완료) - KOPIS 전용 */
+    // ========== Detail 테이블 연관관계 ==========
+
+    /** 공연/축제/문화행사 상세 (1:1, cascade) */
+    @OneToOne(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private PlaceDetailPerformance performanceDetail;
+
+    /** 시설(도서관/공원 등) 상세 (1:1, cascade) */
+    @OneToOne(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private PlaceDetailFacility facilityDetail;
+
+    // ========== @Deprecated: detail 테이블로 이관 예정 (하위호환 유지) ==========
+
+    /** @deprecated PlaceDetailPerformance.startDate 로 이관 */
+    @Deprecated
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    /** @deprecated PlaceDetailPerformance.endDate 로 이관 */
+    @Deprecated
+    @Column(name = "end_date")
+    private LocalDate endDate;
+
+    /** @deprecated PlaceDetailPerformance.ticketPrice 로 이관 */
+    @Deprecated
+    @Column(name = "ticket_price")
+    private Integer ticketPrice;
+
+    /** @deprecated PlaceDetailPerformance.performanceState 로 이관 */
+    @Deprecated
     @Column(name = "performance_state", length = 20)
     private String performanceState;
 
-    /** 운영 시간 (도서관, 공원 등) */
-    @Column(name = "operating_time", length = 200)
+    /** @deprecated PlaceDetailFacility.operatingTime 으로 이관 */
+    @Deprecated
+    @Column(name = "operating_time", length = 500)
     private String operatingTime;
 
-    /** 휴관일/휴무일 정보 */
-    @Column(name = "closed_days", length = 200)
+    /** @deprecated PlaceDetailFacility.closedDays 로 이관 */
+    @Deprecated
+    @Column(name = "closed_days", length = 500)
     private String closedDays;
 
     // ========== 기존 생성자 (하위 호환성 유지) ==========
@@ -107,9 +124,6 @@ public class Place extends BaseTimeEntity {
         this.isActive = true;
     }
 
-    /**
-     * imageUrl을 포함한 생성자 (데이터 수집 시 사용)
-     */
     public Place(String name, String address, String url, Double latitude, Double longitude, MissionCategory category, String imageUrl) {
         this.name = name;
         this.address = address;
@@ -149,6 +163,28 @@ public class Place extends BaseTimeEntity {
         this.closedDays = closedDays;
     }
 
+    // ========== Detail 편의 메서드 ==========
+
+    /**
+     * 공연 상세 정보 설정 (cascade로 함께 저장됨)
+     */
+    public void setPerformanceDetail(PlaceDetailPerformance detail) {
+        this.performanceDetail = detail;
+        if (detail != null) {
+            detail.setPlace(this);
+        }
+    }
+
+    /**
+     * 시설 상세 정보 설정 (cascade로 함께 저장됨)
+     */
+    public void setFacilityDetail(PlaceDetailFacility detail) {
+        this.facilityDetail = detail;
+        if (detail != null) {
+            detail.setPlace(this);
+        }
+    }
+
     // ========== 업데이트 메서드 ==========
 
     /**
@@ -156,20 +192,29 @@ public class Place extends BaseTimeEntity {
      */
     public void deactivate() {
         this.isActive = false;
-        this.performanceState = "공연완료";
+        this.performanceState = "공연완료"; // 하위호환
+        if (this.performanceDetail != null) {
+            this.performanceDetail.deactivate();
+        }
     }
 
     /**
      * 공연 정보 업데이트 (upsert 시 사용)
+     * 허브 컬럼 + detail 테이블 동시 업데이트 (dual-write)
      */
     public void updatePerformanceInfo(String performanceState, Integer ticketPrice,
                                        LocalDate startDate, LocalDate endDate, String imageUrl) {
+        // 하위호환: 허브 컬럼 유지
         this.performanceState = performanceState;
         this.ticketPrice = ticketPrice;
         this.startDate = startDate;
         this.endDate = endDate;
         if (imageUrl != null) {
             this.imageUrl = imageUrl;
+        }
+        // detail 테이블 동시 업데이트
+        if (this.performanceDetail != null) {
+            this.performanceDetail.updatePerformanceInfo(performanceState, ticketPrice, startDate, endDate);
         }
     }
 
@@ -180,7 +225,12 @@ public class Place extends BaseTimeEntity {
         if (this.isActive == null || !this.isActive) {
             return false;
         }
-        if (this.endDate != null && this.endDate.isBefore(LocalDate.now())) {
+        // detail 우선, 없으면 허브 컬럼 fallback
+        LocalDate checkEndDate = this.endDate;
+        if (this.performanceDetail != null && this.performanceDetail.getEndDate() != null) {
+            checkEndDate = this.performanceDetail.getEndDate();
+        }
+        if (checkEndDate != null && checkEndDate.isBefore(LocalDate.now())) {
             return false;
         }
         return true;

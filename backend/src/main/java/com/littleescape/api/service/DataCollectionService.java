@@ -4,11 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.littleescape.api.domain.Library;
 import com.littleescape.api.domain.Place;
+import com.littleescape.api.domain.PlaceDetailFacility;
+import com.littleescape.api.domain.PlaceDetailPerformance;
 import com.littleescape.api.domain.PopularBook;
 import com.littleescape.api.domain.type.DataSource;
 import com.littleescape.api.domain.type.MissionCategory;
 import com.littleescape.api.dto.ingestion.*;
 import com.littleescape.api.repository.LibraryRepository;
+import com.littleescape.api.repository.PlaceDetailPerformanceRepository;
 import com.littleescape.api.repository.PlaceRepository;
 import com.littleescape.api.repository.PopularBookRepository;
 import jakarta.persistence.EntityManager;
@@ -17,7 +20,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
@@ -44,6 +49,7 @@ import java.util.Optional;
 public class DataCollectionService {
 
     private final PlaceRepository placeRepository;
+    private final PlaceDetailPerformanceRepository performanceDetailRepository;
     private final LibraryRepository libraryRepository;
     private final PopularBookRepository popularBookRepository;
     private final ContentFilteringService filteringService;
@@ -52,6 +58,7 @@ public class DataCollectionService {
     private final WebClient seoulWebClient;
     private final WebClient libraryWebClient;
     private final WebClient kakaoWebClient;
+    private final PlatformTransactionManager transactionManager;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -81,7 +88,6 @@ public class DataCollectionService {
      * 전체 데이터 수집 실행
      * 스케줄러 또는 수동 트리거로 호출
      */
-    @Transactional
     public CollectionSummary collectAll() {
         if (!ingestionEnabled) {
             log.info("⏸️ 데이터 수집이 비활성화되어 있습니다.");
@@ -141,9 +147,9 @@ public class DataCollectionService {
     /**
      * KOPIS - 공연/전시 정보 수집 (필터링 적용)
      */
-    @Transactional
     public CollectionResult collectPerformances() {
         CollectionResult result = new CollectionResult();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
         try {
             String startDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
@@ -173,7 +179,7 @@ public class DataCollectionService {
                     log.info("KOPIS 공연 데이터 {}건 수신", kopisResponse.getPerformances().size());
 
                     for (KopisResponse.Performance perf : kopisResponse.getPerformances()) {
-                        processPerformance(perf, result);
+                        txTemplate.executeWithoutResult(status -> processPerformance(perf, result));
                         Thread.sleep(100);  // Rate limit
                     }
                 }
@@ -229,7 +235,7 @@ public class DataCollectionService {
                 Optional<Place> existing = placeRepository.findByExternalId(perf.getId());
 
                 if (existing.isPresent()) {
-                    // 업데이트
+                    // 업데이트 (hub + detail dual-write)
                     Place place = existing.get();
                     place.updatePerformanceInfo(
                             detailInfo.getState(),
@@ -238,10 +244,21 @@ public class DataCollectionService {
                             endDate,
                             detailInfo.getPosterUrl()
                     );
+                    // detail 없으면 생성 (기존 데이터 마이그레이션 보완)
+                    if (place.getPerformanceDetail() == null) {
+                        PlaceDetailPerformance perfDetail = PlaceDetailPerformance.builder()
+                                .place(place)
+                                .startDate(startDate)
+                                .endDate(endDate)
+                                .ticketPrice(ticketPrice)
+                                .performanceState(detailInfo.getState())
+                                .build();
+                        place.setPerformanceDetail(perfDetail);
+                    }
                     placeRepository.save(place);
                     result.updated++;
                 } else {
-                    // 신규 생성
+                    // 신규 생성 (hub + detail 동시 cascade)
                     GeoLocation geo = getCoordinatesFromFacilityName(perf.getFacilityName());
 
                     Place place = Place.builder()
@@ -260,6 +277,15 @@ public class DataCollectionService {
                             .isFree(isFree)
                             .performanceState(detailInfo.getState())
                             .build();
+
+                    // detail 엔티티 생성 (cascade로 함께 저장)
+                    PlaceDetailPerformance perfDetail = PlaceDetailPerformance.builder()
+                            .startDate(startDate)
+                            .endDate(endDate)
+                            .ticketPrice(ticketPrice)
+                            .performanceState(detailInfo.getState())
+                            .build();
+                    place.setPerformanceDetail(perfDetail);
 
                     placeRepository.save(place);
                     result.inserted++;
@@ -301,9 +327,9 @@ public class DataCollectionService {
     /**
      * KOPIS - 축제 정보 수집 (필터링 적용)
      */
-    @Transactional
     public CollectionResult collectFestivals() {
         CollectionResult result = new CollectionResult();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
         try {
             String startDate = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
@@ -332,7 +358,7 @@ public class DataCollectionService {
                     log.info("KOPIS 축제 데이터 {}건 수신", festivalResponse.getCount());
 
                     for (FestivalResponse.Festival fest : festivalResponse.getFestivals()) {
-                        processFestival(fest, result);
+                        txTemplate.executeWithoutResult(status -> processFestival(fest, result));
                         Thread.sleep(100);
                     }
                 }
@@ -364,11 +390,23 @@ public class DataCollectionService {
             Optional<Place> existing = placeRepository.findByExternalId(fest.getId());
 
             if (existing.isPresent()) {
+                // 업데이트 (hub + detail dual-write)
                 Place place = existing.get();
                 place.updatePerformanceInfo(fest.getState(), null, startDate, endDate, fest.getPosterUrl());
+                // detail 없으면 생성
+                if (place.getPerformanceDetail() == null) {
+                    PlaceDetailPerformance perfDetail = PlaceDetailPerformance.builder()
+                            .place(place)
+                            .startDate(startDate)
+                            .endDate(endDate)
+                            .performanceState(fest.getState())
+                            .build();
+                    place.setPerformanceDetail(perfDetail);
+                }
                 placeRepository.save(place);
                 result.updated++;
             } else {
+                // 신규 생성 (hub + detail 동시 cascade)
                 GeoLocation geo = getCoordinatesFromFacilityName(fest.getFacilityName());
 
                 Place place = Place.builder()
@@ -384,6 +422,14 @@ public class DataCollectionService {
                         .endDate(endDate)
                         .performanceState(fest.getState())
                         .build();
+
+                // detail 엔티티 생성 (cascade로 함께 저장)
+                PlaceDetailPerformance perfDetail = PlaceDetailPerformance.builder()
+                        .startDate(startDate)
+                        .endDate(endDate)
+                        .performanceState(fest.getState())
+                        .build();
+                place.setPerformanceDetail(perfDetail);
 
                 placeRepository.save(place);
                 result.inserted++;
@@ -403,9 +449,9 @@ public class DataCollectionService {
     /**
      * 서울시 - 문화행사 정보 수집
      */
-    @Transactional
     public CollectionResult collectSeoulCulturalEvents() {
         CollectionResult result = new CollectionResult();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
         try {
             String response = seoulWebClient.get()
@@ -428,7 +474,7 @@ public class DataCollectionService {
                     log.info("서울시 문화행사 데이터 {}건 수신", events.size());
 
                     for (SeoulEventResponse.Event event : events) {
-                        processSeoulEvent(event, result);
+                        txTemplate.executeWithoutResult(status -> processSeoulEvent(event, result));
                     }
                 }
             }
@@ -507,9 +553,9 @@ public class DataCollectionService {
     /**
      * 서울시 - 공원 현황 수집
      */
-    @Transactional
     public CollectionResult collectSeoulParks() {
         CollectionResult result = new CollectionResult();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
         try {
             String response = seoulWebClient.get()
@@ -529,7 +575,7 @@ public class DataCollectionService {
                     log.info("서울시 공원 데이터 {}건 수신", parkResponse.getCount());
 
                     for (SeoulParkResponse.Park park : parkResponse.getParks()) {
-                        processPark(park, result);
+                        txTemplate.executeWithoutResult(status -> processPark(park, result));
                     }
                 }
             }
@@ -597,9 +643,9 @@ public class DataCollectionService {
     /**
      * 서울시 - 공공서비스예약 문화행사 수집
      */
-    @Transactional
     public CollectionResult collectPublicReservationCulture() {
         CollectionResult result = new CollectionResult();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
         try {
             String response = seoulWebClient.get()
@@ -620,7 +666,7 @@ public class DataCollectionService {
                     log.info("서울시 공공예약 문화행사 {}건 수신", reservationResponse.getCount());
 
                     for (PublicReservationCultureResponse.CultureEvent event : reservationResponse.getEvents()) {
-                        processPublicReservationEvent(event, result);
+                        txTemplate.executeWithoutResult(status -> processPublicReservationEvent(event, result));
                     }
                 }
             }
@@ -703,9 +749,9 @@ public class DataCollectionService {
     /**
      * 서울시 - 모범음식점 수집 (기존 로직 유지)
      */
-    @Transactional
     public CollectionResult collectSeoulRestaurants() {
         CollectionResult result = new CollectionResult();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
         try {
             String response = seoulWebClient.get()
@@ -730,7 +776,7 @@ public class DataCollectionService {
                     log.info("서울시 모범음식점 데이터 {}건 수신", restaurants.size());
 
                     for (SeoulRestaurantResponse.Restaurant restaurant : restaurants) {
-                        processRestaurant(restaurant, result);
+                        txTemplate.executeWithoutResult(status -> processRestaurant(restaurant, result));
                     }
                 }
             }
@@ -825,9 +871,9 @@ public class DataCollectionService {
     /**
      * 도서관 정보 수집
      */
-    @Transactional
     public CollectionResult collectLibraries() {
         CollectionResult result = new CollectionResult();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
         try {
             String response = libraryWebClient.get()
@@ -852,7 +898,7 @@ public class DataCollectionService {
                     log.info("도서관 데이터 {}건 수신", libraryResponse.getLibraries().size());
 
                     for (LibraryResponse.Library lib : libraryResponse.getLibraries()) {
-                        processLibrary(lib, result);
+                        txTemplate.executeWithoutResult(status -> processLibrary(lib, result));
                     }
                 }
             }
@@ -946,6 +992,15 @@ public class DataCollectionService {
                     .operatingTime(lib.getOperatingTime())
                     .build();
 
+            // detail 엔티티 생성 (cascade로 함께 저장)
+            PlaceDetailFacility facDetail = PlaceDetailFacility.builder()
+                    .operatingTime(lib.getOperatingTime())
+                    .closedDays(lib.getClosedDays())
+                    .tel(lib.getTel())
+                    .homepage(lib.getHomepage())
+                    .build();
+            place.setFacilityDetail(facDetail);
+
             placeRepository.save(place);
             result.inserted++;
 
@@ -962,17 +1017,18 @@ public class DataCollectionService {
     /**
      * 인기 대출 도서 수집 (20-30대, 서울)
      */
-    @Transactional
     public CollectionResult collectPopularBooks() {
         CollectionResult result = new CollectionResult();
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
 
         try {
             // 이번 주 수집한 데이터가 이미 있으면 스킵
             LocalDate weekStart = LocalDate.now().minusDays(
                     LocalDate.now().getDayOfWeek().getValue() - 1);
-            List<PopularBook> thisWeekBooks = popularBookRepository.findThisWeekPopularBooks(weekStart);
+            List<PopularBook> thisWeekBooks = txTemplate.execute(status ->
+                    popularBookRepository.findThisWeekPopularBooks(weekStart));
 
-            if (!thisWeekBooks.isEmpty()) {
+            if (thisWeekBooks != null && !thisWeekBooks.isEmpty()) {
                 log.info("이번 주 인기도서 이미 수집됨: {}건", thisWeekBooks.size());
                 return result;
             }
@@ -1006,7 +1062,7 @@ public class DataCollectionService {
                     log.info("인기대출도서 {}건 수신", bookResponse.getCount());
 
                     for (PopularBookResponse.BookDoc book : bookResponse.getBooks()) {
-                        processPopularBook(book, result);
+                        txTemplate.executeWithoutResult(status -> processPopularBook(book, result));
                     }
                 }
             }
@@ -1054,6 +1110,7 @@ public class DataCollectionService {
 
     /**
      * 종료된 공연/행사 비활성화
+     * detail 테이블 기준 조회 후 Place.deactivate() 호출 (hub + detail 동시 업데이트)
      */
     @Transactional
     public int deactivateExpiredPerformances() {
@@ -1064,9 +1121,22 @@ public class DataCollectionService {
                 DataSource.SEOUL_RESERVATION
         );
 
-        int count = placeRepository.deactivateExpiredPerformances(today, performanceDataSources);
-        log.info("🔄 종료된 공연/행사 {}건 비활성화", count);
-        return count;
+        // 1단계: detail 테이블에서 만료 항목 조회
+        List<PlaceDetailPerformance> expiredDetails =
+                performanceDetailRepository.findExpiredByDataSources(today, performanceDataSources);
+
+        // 2단계: 각 Place의 deactivate() 호출 (hub + detail 동시 업데이트)
+        for (PlaceDetailPerformance detail : expiredDetails) {
+            detail.getPlace().deactivate();
+        }
+
+        // 3단계: detail 없는 레거시 데이터도 처리 (hub 컬럼 fallback)
+        int legacyCount = placeRepository.deactivateExpiredPerformances(today, performanceDataSources);
+
+        int totalCount = expiredDetails.size() + legacyCount;
+        log.info("🔄 종료된 공연/행사 {}건 비활성화 (detail: {}, legacy: {})",
+                totalCount, expiredDetails.size(), legacyCount);
+        return totalCount;
     }
 
     // ========== 유틸리티 메서드 ==========
@@ -1211,7 +1281,6 @@ public class DataCollectionService {
     /**
      * 수동 전체 수집 트리거
      */
-    @Transactional
     public CollectionSummary manualTrigger() {
         log.info("🔧 수동 데이터 수집 트리거");
         return collectAll();

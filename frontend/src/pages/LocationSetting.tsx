@@ -2,21 +2,15 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { showToast } from '../utils/toast';
+import LocationSelectbox from '../components/LocationSelectbox';
+import type { LocationSelection } from '../components/LocationSelectbox';
 
 interface Location {
   lat: number;
   lng: number;
   name: string;
+  district?: string;
 }
-
-// 서울 주요 핫플 프리셋
-const HOTSPOTS = [
-  { name: '성수', lat: 37.5445, lng: 127.0557 },
-  { name: '홍대', lat: 37.5563, lng: 126.9234 },
-  { name: '강남', lat: 37.4979, lng: 127.0276 },
-  { name: '이태원', lat: 37.5346, lng: 126.9947 },
-  { name: '을지로', lat: 37.5663, lng: 126.991 },
-];
 
 const LocationSetting = () => {
   const navigate = useNavigate();
@@ -106,9 +100,14 @@ const LocationSetting = () => {
     handleGetCurrentLocation();
   }, []);
 
-  // 핫플 선택
-  const handleHotspotClick = (hotspot: Location) => {
-    setSelectedLocation(hotspot);
+  // Selectbox 선택
+  const handleSelectboxSelect = (selection: LocationSelection) => {
+    setSelectedLocation({
+      lat: selection.lat,
+      lng: selection.lng,
+      name: selection.name,
+      district: selection.district,
+    });
   };
 
   // 시간 선택으로 이동
@@ -236,7 +235,7 @@ const LocationSetting = () => {
           ) : null}
         </motion.div>
 
-        {/* Section B: Hotspots */}
+        {/* Section B: 구 > 지역 Selectbox */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -247,25 +246,11 @@ const LocationSetting = () => {
             다른 곳에서 놀고 싶다면?
           </h2>
 
-          <div className="flex flex-wrap gap-3">
-            {HOTSPOTS.map((hotspot) => (
-              <motion.button
-                key={hotspot.name}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleHotspotClick(hotspot)}
-                className={`px-6 py-4 rounded-2xl font-bold text-lg transition-all ${
-                  selectedLocation?.name === hotspot.name
-                    ? 'bg-electric-lime text-deep-charcoal shadow-lg shadow-electric-lime/20'
-                    : 'bg-charcoal-soft text-off-white hover:bg-charcoal-lighter border-2 border-transparent hover:border-electric-lime/30'
-                }`}
-              >
-                {hotspot.name}
-                {selectedLocation?.name === hotspot.name && (
-                  <span className="ml-2">✓</span>
-                )}
-              </motion.button>
-            ))}
-          </div>
+          <LocationSelectbox
+            variant="dark"
+            onSelect={handleSelectboxSelect}
+            className="w-full"
+          />
 
           {selectedLocation && selectedLocation.name !== '현재 위치' && (
             <motion.div
@@ -275,7 +260,11 @@ const LocationSetting = () => {
               className="card bg-charcoal-soft/50 p-4"
             >
               <p className="text-text-gray text-sm">
-                선택된 위치: <span className="text-electric-lime font-bold">{selectedLocation.name}</span>
+                선택된 위치:{' '}
+                {selectedLocation.district && (
+                  <span className="text-text-gray-dark">{selectedLocation.district} &gt; </span>
+                )}
+                <span className="text-electric-lime font-bold">{selectedLocation.name}</span>
               </p>
               <p className="text-text-gray-dark text-xs mt-1">
                 {selectedLocation.lat.toFixed(4)}, {selectedLocation.lng.toFixed(4)}
