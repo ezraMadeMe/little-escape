@@ -896,6 +896,89 @@ backend/src/main/java/com/littleescape/api/
 
 ---
 
+## 🚀 v3.1 주요 업데이트 (2026.01.31)
+
+### 1. 🗄️ Place 허브+디테일 테이블 아키텍처 (Hub & Detail Pattern)
+- **PlaceDetailPerformance 엔티티 추가:**
+  - 공연/축제 전용 상세 필드 분리 (공연 상태, 시작/종료일, 티켓가격, 장르 등)
+  - Place 엔티티와 1:1 관계 (`@OneToOne`, `@MapsId`)
+  - PlaceDetailPerformanceRepository: 활성 공연 조회, 무료 공연 필터, 장르 검색
+- **PlaceDetailFacility 엔티티 추가:**
+  - 시설(도서관/공원/음식점) 전용 상세 필드 (운영시간, 휴관일, 입장료, 편의시설 등)
+  - Place 엔티티와 1:1 관계
+  - PlaceDetailFacilityRepository: 무료 시설, 편의시설 키워드 검색
+- **DataCollectionService Dual-Write 패턴:**
+  - 데이터 수집 시 Place(허브) + Detail(공연/시설) 동시 저장
+  - KOPIS 공연 데이터 → PlaceDetailPerformance 자동 매핑
+  - 문화행사/공원/도서관 → PlaceDetailFacility 자동 매핑
+
+### 2. 📍 위치 Selectbox 통합 (Location Selectbox Unification)
+- **LocationSelectbox 공유 컴포넌트:**
+  - 구(district) → 핫스팟(area) 2단계 드롭다운 선택
+  - `variant` prop으로 dark/light 테마 지원
+  - `onSelect` 콜백: `{district, name, lat, lng}` 반환
+- **서울시 120개 핫스팟 데이터 완전 수록:**
+  - `seoulDistricts.ts`: 24개 구, 120개 핫스팟 전체 데이터
+  - `init-seoul-places.sql`에서 추출한 정확한 WGS84 좌표 사용
+  - 타입: `Hotspot`, `District`, `SEOUL_DISTRICTS`, `ALL_HOTSPOTS`
+- **3개 페이지 통합 적용:**
+  - **ChatAppointment:** 텍스트 입력 → selectbox (dark variant)
+  - **LocationSetting:** 5개 버튼 프리셋 → selectbox (dark variant)
+  - **DevConsole:** 5개 프리셋 → selectbox (light variant), 랜덤 시나리오 120개 지역 활용
+- **localStorage 호환성 유지:**
+  - `default_location`: 지역명 (string)
+  - `user_location`: `{lat, lng, name}` (JSON) - 기존 소비자 호환
+
+### 3. 📝 로깅 시스템 구축 (Logback Configuration)
+- **logback-spring.xml 설정 추가:**
+  - 콘솔 출력: 컬러 포맷, 간결한 로거명
+  - 파일 출력: 일별 롤링, 최대 30일/1GB 보관
+  - 에러 전용 파일: ERROR 레벨만 별도 기록
+  - 스케줄러 전용 파일: 데이터 수집 로그 분리
+- **로그 레벨 세분화:**
+  - 앱 코드: DEBUG
+  - Hibernate SQL: DEBUG (바인딩 파라미터 포함)
+  - Spring Security: WARN
+  - 외부 라이브러리: INFO
+
+### 4. 🧹 SQL 파일 정리
+- **불필요한 임시 SQL 파일 삭제:**
+  - `add-feed-columns.sql`, `fix-feed-columns.sql`, `test-feed-data.sql` 제거
+- **init-seoul-places.sql 경로 이동:**
+  - `resources/` → `resources/db/data/` 디렉토리로 정리
+- **data.sql PostgreSQL 호환성 개선:**
+  - 중복 키워드 정리, 구문 최적화
+
+### 5. 📋 구현 파일 목록
+```
+backend/src/main/java/com/littleescape/api/
+├── domain/
+│   ├── Place.java                          # 허브 테이블 (필드 추가)
+│   ├── PlaceDetailPerformance.java         # 공연 디테일 테이블 (신규)
+│   └── PlaceDetailFacility.java            # 시설 디테일 테이블 (신규)
+├── repository/
+│   ├── PlaceRepository.java                # 확장 쿼리 추가
+│   ├── PlaceDetailPerformanceRepository.java  # 신규
+│   └── PlaceDetailFacilityRepository.java     # 신규
+├── service/
+│   └── DataCollectionService.java          # Dual-write 패턴 적용
+backend/src/main/resources/
+├── logback-spring.xml                      # 로깅 설정 (신규)
+└── db/data/init-seoul-places.sql           # 경로 이동
+
+frontend/src/
+├── components/
+│   └── LocationSelectbox.tsx               # 2단계 위치 선택 컴포넌트 (신규)
+├── data/
+│   └── seoulDistricts.ts                   # 서울 120개 핫스팟 데이터 (신규)
+└── pages/
+    ├── ChatAppointment.tsx                 # selectbox 통합
+    ├── LocationSetting.tsx                 # selectbox 통합
+    └── DevConsole.tsx                      # selectbox 통합
+```
+
+---
+
 ## 🎯 다음 개발 계획 (Roadmap)
 
 ### Phase 1: 피드 기능 고도화
