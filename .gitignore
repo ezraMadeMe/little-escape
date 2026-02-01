@@ -5,6 +5,7 @@ frontend/dist
 # Backend
 backend/build
 backend/.gradle
+backend/logs/
 
 # OS / env
 .DS_Store

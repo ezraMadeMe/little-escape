@@ -2,6 +2,9 @@ import { useState } from 'react';
 import axios from 'axios';
 import { adminTimeTravel } from '../api/appointmentApi';
 import { showToast } from '../utils/toast';
+import LocationSelectbox from '../components/LocationSelectbox';
+import type { LocationSelection } from '../components/LocationSelectbox';
+import { ALL_HOTSPOTS } from '../data/seoulDistricts';
 
 // API Types
 type Weather = 'SUNNY' | 'RAIN' | 'SNOW' | 'CLOUDY';
@@ -59,14 +62,7 @@ interface SimulationResponse {
   allFilteredPlaces: PlaceInfo[];
 }
 
-// Location Presets
-const LOCATION_PRESETS = [
-  { name: '성수동', latitude: 37.5447, longitude: 127.0438 },
-  { name: '강남역', latitude: 37.4979, longitude: 127.0276 },
-  { name: '홍대', latitude: 37.5563, longitude: 126.9240 },
-  { name: '여의도', latitude: 37.5219, longitude: 126.9245 },
-  { name: '서울역', latitude: 37.5547, longitude: 126.9707 },
-];
+// Location Presets → seoulDistricts.ts로 이관됨 (ALL_HOTSPOTS 사용)
 
 // Weather Icons
 const WEATHER_OPTIONS: { value: Weather; icon: string; label: string }[] = [
@@ -108,10 +104,10 @@ const DevConsole = () => {
     randomDate.setHours(Math.floor(Math.random() * 24));
     setTargetDateTime(randomDate.toISOString().slice(0, 16));
 
-    // Random location
-    const randomPreset = LOCATION_PRESETS[Math.floor(Math.random() * LOCATION_PRESETS.length)];
-    setLatitude(randomPreset.latitude);
-    setLongitude(randomPreset.longitude);
+    // Random location (120개 서울시 핫스팟 중 랜덤)
+    const randomHotspot = ALL_HOTSPOTS[Math.floor(Math.random() * ALL_HOTSPOTS.length)];
+    setLatitude(randomHotspot.lat);
+    setLongitude(randomHotspot.lng);
 
     // Random radius (5-15km)
     setSearchRadius(5 + Math.floor(Math.random() * 11));
@@ -217,23 +213,16 @@ const DevConsole = () => {
                 />
               </div>
 
-              {/* Location Presets */}
+              {/* Location Selectbox (구 > 지역) */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">위치 프리셋</label>
-                <div className="flex flex-wrap gap-2">
-                  {LOCATION_PRESETS.map((preset) => (
-                    <button
-                      key={preset.name}
-                      onClick={() => {
-                        setLatitude(preset.latitude);
-                        setLongitude(preset.longitude);
-                      }}
-                      className="px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-sm"
-                    >
-                      📍 {preset.name}
-                    </button>
-                  ))}
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">위치 선택</label>
+                <LocationSelectbox
+                  variant="light"
+                  onSelect={(selection: LocationSelection) => {
+                    setLatitude(selection.lat);
+                    setLongitude(selection.lng);
+                  }}
+                />
               </div>
 
               {/* Latitude & Longitude */}
