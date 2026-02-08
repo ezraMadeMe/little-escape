@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { showToast } from '../utils/toast';
 
 /**
@@ -7,7 +7,6 @@ import { showToast } from '../utils/toast';
  * 루트 페이지(피드, 약속, 리뷰, 마이페이지)에서 뒤로가기 두 번 누르면 앱 종료
  */
 export const useBackButtonHandler = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const lastBackPressTime = useRef<number>(0);
   const BACK_PRESS_INTERVAL = 2000; // 2초 이내에 두 번 눌러야 종료

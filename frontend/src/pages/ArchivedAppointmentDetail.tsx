@@ -50,7 +50,9 @@ function ArchivedAppointmentDetail() {
   }
 
   const isCompleted = appointment.status === AppointmentStatus.COMPLETED;
-  const isCancelled = appointment.status === AppointmentStatus.CANCELLED;
+  // isCancelled은 향후 취소 상태 UI 표시에 사용 예정
+  const _isCancelled = appointment.status === AppointmentStatus.CANCELLED;
+  void _isCancelled; // 미사용 경고 방지
 
   return (
     <div className="min-h-screen bg-deep-charcoal">

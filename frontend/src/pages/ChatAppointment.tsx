@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { saveChatOnboardingData } from '../api/userApi';
+import { showToast } from '../utils/toast';
 import LocationSelectbox from '../components/LocationSelectbox';
 import type { LocationSelection } from '../components/LocationSelectbox';
 
@@ -25,7 +26,7 @@ const ChatAppointment = () => {
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const hasInitialized = useRef(false); // 초기화 방지용
+  const hasInitialized = useRef(false);
 
   // 상태 관리
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -43,7 +44,7 @@ const ChatAppointment = () => {
     nickname: '',
     mbti: '',
     defaultLocation: '',
-    preference: '', // 'OUTDOOR' or 'INDOOR'
+    preference: '',
   });
 
   // 자동 스크롤
@@ -56,6 +57,24 @@ const ChatAppointment = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping]);
+
+  // 브라우저 뒤로가기 감지 - 토스트 표시 후 초기화
+  useEffect(() => {
+    window.history.pushState({ onboarding: true }, '');
+
+    const handlePopState = () => {
+      if (currentStep !== 'welcome' && currentStep !== 'complete') {
+        showToast('온보딩이 초기화되었습니다. 처음부터 다시 진행해주세요.');
+      }
+      navigate('/', { replace: true });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [currentStep, navigate]);
 
   // 매니저 메시지 추가 (타이핑 효과)
   const addManagerMessage = (content: string, delay: number = 1000) => {
@@ -72,7 +91,7 @@ const ChatAppointment = () => {
           };
           setMessages((prev) => [...prev, newMessage]);
           resolve();
-        }, Math.min(content.length * 50, 2000)); // 타이핑 시간 (최대 2초)
+        }, Math.min(content.length * 50, 2000));
       }, delay);
     });
   };
@@ -88,7 +107,7 @@ const ChatAppointment = () => {
     setMessages((prev) => [...prev, newMessage]);
   };
 
-  // 초기화 - 웰컴 메시지 (중복 실행 방지)
+  // 초기화 - 웰컴 메시지
   useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
@@ -110,7 +129,7 @@ const ChatAppointment = () => {
     if (!inputValue.trim()) return;
 
     const nickname = inputValue.trim();
-    setUserData((prev) => ({ ...prev, nickname }));
+    setUserData(prev => ({ ...prev, nickname }));
     addUserMessage(nickname);
     setInputValue('');
     setShowInput(false);
@@ -123,7 +142,7 @@ const ChatAppointment = () => {
 
   // MBTI 선택 처리
   const handleMbtiSelect = async (mbti: 'I' | 'E') => {
-    setUserData((prev) => ({ ...prev, mbti }));
+    setUserData(prev => ({ ...prev, mbti }));
     addUserMessage(`${mbti}야.`);
     setShowChoices(false);
 
@@ -139,11 +158,11 @@ const ChatAppointment = () => {
 
   // 위치 선택 처리 (selectbox)
   const handleLocationSelect = async (selection: LocationSelection) => {
-    setUserData((prev) => ({ ...prev, defaultLocation: selection.name }));
+    setUserData(prev => ({ ...prev, defaultLocation: selection.name }));
     addUserMessage(`${selection.district} ${selection.name}`);
     setShowLocationSelect(false);
 
-    // localStorage에 저장 (레거시 + 구조화 데이터)
+    // localStorage에 저장
     localStorage.setItem('default_location', selection.name);
     localStorage.setItem('user_location', JSON.stringify({
       lat: selection.lat,
@@ -196,25 +215,21 @@ const ChatAppointment = () => {
         console.log('✅ 온보딩 데이터 저장 완료');
       } catch (error) {
         console.error('❌ 온보딩 데이터 저장 실패:', error);
-        
-        // 토큰이 유효한지 확인
+
         const token = localStorage.getItem('token');
         if (!token) {
           console.error('⚠️ 토큰이 없습니다. 로그인 페이지로 이동합니다.');
-          alert('로그인 세션이 만료되었습니다. 다시 로그인해주세요.');
+          showToast('로그인 세션이 만료되었습니다.');
           navigate('/login', { replace: true });
           return;
         }
-        
-        // 에러가 발생해도 로컬에는 저장하고 계속 진행
-        console.log('⚠️ 백엔드 저장 실패했지만 로컬 플래그는 저장하고 진행합니다.');
       }
 
       // 4단계: 최종 멘트
       setAnalyzingText('오늘의 약속을 확인해보러 가자! 🎯');
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // 온보딩 완료 플래그 저장 (로컬)
+      // 온보딩 완료 플래그 저장
       localStorage.setItem('onboarding_complete', 'true');
       console.log('✅ 온보딩 완료 플래그 저장됨');
 
@@ -232,12 +247,20 @@ const ChatAppointment = () => {
     }
   };
 
+  // 뒤로가기 버튼 핸들러
+  const handleBackClick = () => {
+    if (currentStep !== 'welcome' && currentStep !== 'complete') {
+      showToast('온보딩이 초기화됩니다. 다시 시작해주세요.');
+    }
+    navigate('/');
+  };
+
   return (
     <div className="min-h-screen bg-deep-charcoal flex flex-col">
       {/* Header */}
       <header className="bg-charcoal-soft border-b border-charcoal-lighter px-4 py-4 flex items-center gap-3">
         <button
-          onClick={() => navigate('/')}
+          onClick={handleBackClick}
           className="text-text-gray hover:text-off-white transition-colors"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -415,7 +438,7 @@ const ChatAppointment = () => {
               )}
             </motion.div>
 
-            {/* 프로그레스 바 (선택적) */}
+            {/* 프로그레스 바 */}
             <motion.div
               className="w-64 h-1 bg-charcoal-soft rounded-full overflow-hidden mt-8"
             >

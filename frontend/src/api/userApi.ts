@@ -132,19 +132,17 @@ export async function sendContactEmail(data: {
 }
 
 /**
- * 채팅 온보딩 데이터 저장 (MBTI, 혼밥 레벨 등)
+ * 채팅 온보딩 데이터 저장 (MBTI 등)
  */
 export async function saveChatOnboardingData(data: {
   nickname: string;
   mbti: string;
-  soloLevel: number;
 }): Promise<void> {
   console.log('💾 채팅 온보딩 데이터 저장:', data);
-  
+
   // localStorage에도 저장 (캐싱 목적)
   localStorage.setItem('user_preferences', JSON.stringify({
     mbti: data.mbti,
-    soloLevel: data.soloLevel,
     updatedAt: new Date().toISOString(),
   }));
 

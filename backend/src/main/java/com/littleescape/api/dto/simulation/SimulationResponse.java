@@ -1,8 +1,12 @@
 package com.littleescape.api.dto.simulation;
 
+import com.littleescape.api.domain.Place;
+import com.littleescape.api.domain.PlaceDetailFacility;
+import com.littleescape.api.domain.PlaceDetailPerformance;
 import com.littleescape.api.dto.MissionTemplateResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -41,7 +45,49 @@ public record SimulationResponse(
 ) {
 
     /**
-     * 장소 정보 (간소화된 버전)
+     * 공연/축제 상세 정보
+     */
+    @Schema(description = "공연/축제 상세 정보")
+    public record PerformanceDetailInfo(
+        LocalDate startDate,
+        LocalDate endDate,
+        Integer ticketPrice,
+        String performanceState
+    ) {
+        public static PerformanceDetailInfo from(PlaceDetailPerformance detail) {
+            if (detail == null) return null;
+            return new PerformanceDetailInfo(
+                detail.getStartDate(),
+                detail.getEndDate(),
+                detail.getTicketPrice(),
+                detail.getPerformanceState()
+            );
+        }
+    }
+
+    /**
+     * 시설 상세 정보
+     */
+    @Schema(description = "시설(도서관/공원 등) 상세 정보")
+    public record FacilityDetailInfo(
+        String operatingTime,
+        String closedDays,
+        String tel,
+        String homepage
+    ) {
+        public static FacilityDetailInfo from(PlaceDetailFacility detail) {
+            if (detail == null) return null;
+            return new FacilityDetailInfo(
+                detail.getOperatingTime(),
+                detail.getClosedDays(),
+                detail.getTel(),
+                detail.getHomepage()
+            );
+        }
+    }
+
+    /**
+     * 장소 정보 (허브 + 디테일 통합)
      */
     @Schema(description = "장소 정보")
     public record PlaceInfo(
@@ -52,6 +98,31 @@ public record SimulationResponse(
         Double latitude,
         Double longitude,
         String imageUrl,
-        String tags
-    ) {}
+        String tags,
+        String url,
+        String dataSource,
+        Boolean isFree,
+        @Schema(description = "공연/축제 상세 (해당되는 경우)")
+        PerformanceDetailInfo performanceDetail,
+        @Schema(description = "시설 상세 (해당되는 경우)")
+        FacilityDetailInfo facilityDetail
+    ) {
+        public static PlaceInfo from(Place place) {
+            return new PlaceInfo(
+                place.getId(),
+                place.getName(),
+                place.getAddress(),
+                place.getCategory().name(),
+                place.getLatitude(),
+                place.getLongitude(),
+                place.getImageUrl(),
+                place.getTags(),
+                place.getUrl(),
+                place.getDataSource() != null ? place.getDataSource().name() : null,
+                place.getIsFree(),
+                PerformanceDetailInfo.from(place.getPerformanceDetail()),
+                FacilityDetailInfo.from(place.getFacilityDetail())
+            );
+        }
+    }
 }

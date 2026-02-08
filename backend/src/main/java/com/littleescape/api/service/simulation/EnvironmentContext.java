@@ -37,7 +37,6 @@ public class EnvironmentContext {
 
     // 사용자 정보
     private String userMbti;
-    private Integer soloLevel;
     private String userTags;
 
     /**
@@ -47,7 +46,6 @@ public class EnvironmentContext {
             Double latitude,
             Double longitude,
             String userMbti,
-            Integer soloLevel,
             String userTags) {
 
         LocalDateTime now = LocalDateTime.now();
@@ -64,7 +62,6 @@ public class EnvironmentContext {
                 .airQuality(AirQuality.GOOD) // TODO: 실제 미세먼지 데이터
                 .congestion(Congestion.LOW) // TODO: 실제 혼잡도 데이터
                 .userMbti(userMbti)
-                .soloLevel(soloLevel)
                 .userTags(userTags)
                 .build();
     }
@@ -82,7 +79,6 @@ public class EnvironmentContext {
             AirQuality airQuality,
             Congestion congestion,
             String userMbti,
-            Integer soloLevel,
             String userTags) {
 
         return EnvironmentContext.builder()
@@ -97,7 +93,6 @@ public class EnvironmentContext {
                 .airQuality(airQuality)
                 .congestion(congestion)
                 .userMbti(userMbti)
-                .soloLevel(soloLevel)
                 .userTags(userTags)
                 .build();
     }

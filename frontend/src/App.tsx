@@ -65,8 +65,8 @@ const GlobalRedirectWrapper = ({ children }: { children: ReactNode }) => {
     console.log('약속 ID:', appointmentId);
     console.log('온보딩 완료:', onboardingComplete === 'true');
 
-    // 예외 경로: 피드, 마이페이지, 약속 목록, 로그인 등은 체크 안 함
-    const exemptPaths = ['/feed', '/mypage', '/appointments', '/reviews', '/mission', '/login', '/oauth/callback', '/auth/callback', '/magic-login', '/dev-console', '/profile-edit', '/contact', '/mypage/saved', '/saved/detail'];
+    // 예외 경로: 피드, 마이페이지, 약속 목록, 로그인, 약속 설정 플로우 등은 체크 안 함
+    const exemptPaths = ['/feed', '/mypage', '/appointments', '/reviews', '/mission', '/login', '/oauth/callback', '/auth/callback', '/magic-login', '/dev-console', '/profile-edit', '/contact', '/mypage/saved', '/saved/detail', '/location', '/time-picker'];
     if (exemptPaths.some(path => currentPath.startsWith(path))) {
       console.log('✅ 예외 경로 - 리다이렉트 skip');
       return;
@@ -79,9 +79,10 @@ const GlobalRedirectWrapper = ({ children }: { children: ReactNode }) => {
                                  appointmentId.trim() !== '' && 
                                  !isNaN(Number(appointmentId));
 
-    // 1순위: 약속 있음 -> 온보딩이나 다른 곳에 있으면 미션으로 납치
+    // 1순위: 약속 있음 -> 채팅 온보딩에 있으면 미션으로 납치
+    // 단, /location, /time-picker는 약속 설정 플로우이므로 예외
     if (isValidAppointmentId) {
-      if (currentPath.startsWith('/chat') || currentPath.startsWith('/onboarding') || currentPath === '/location' || currentPath === '/time-picker') {
+      if (currentPath.startsWith('/chat') || currentPath.startsWith('/onboarding')) {
         console.log('🎯 약속 있는데 온보딩 접근 시도 -> /mission으로 납치!');
         navigate(`/mission/${appointmentId}`, { replace: true });
         return;

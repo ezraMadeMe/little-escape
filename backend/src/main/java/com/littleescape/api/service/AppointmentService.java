@@ -401,16 +401,14 @@ public class AppointmentService {
 
         switch (missionCategory) {
             case ACTIVITY:
-                // 활동(산책, 운동 등) -> ACTIVITY 우선, 부가적으로 RELAX, CULTURE
+                // 활동(산책, 운동 등) -> ACTIVITY 우선, 부가적으로 CULTURE
                 mapping.add(com.littleescape.api.domain.type.MissionCategory.ACTIVITY);
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.RELAX);
                 mapping.add(com.littleescape.api.domain.type.MissionCategory.CULTURE);
                 break;
 
             case CULTURE:
-                // 문화(전시/관람) -> CULTURE 우선, 부가적으로 RELAX
+                // 문화(전시/관람) -> CULTURE만
                 mapping.add(com.littleescape.api.domain.type.MissionCategory.CULTURE);
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.RELAX);
                 break;
 
             case RELAX:
@@ -596,11 +594,12 @@ public class AppointmentService {
                             null, // proofImageUrl
                             null, // proofImageUrls
                             null, // reviewKeywords
-                            null, // rating (추가됨)
+                            null, // rating
                             0L, // visitCount
                             appointment.isFavorite(),
                             null, // missionGuide
-                            null  // missionDescription (추가됨)
+                            null, // missionDescription
+                            false // isMissionRevealed
                         );
                     }
                 })

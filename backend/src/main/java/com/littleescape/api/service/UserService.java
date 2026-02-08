@@ -276,6 +276,13 @@ public class UserService {
             log.info("태그 업데이트: {}", tags);
         }
 
+        // 선호도 저장 = 채팅 온보딩 완료로 간주
+        // isOnboarded를 true로 설정하여 크로스 디바이스 동기화 지원
+        if (!user.isOnboarded()) {
+            user.completeOnboarding();
+            log.info("✅ 온보딩 완료 처리 (isOnboarded = true)");
+        }
+
         User savedUser = userRepository.save(user);
         log.info("=== 사용자 선호도 업데이트 완료 ===");
 

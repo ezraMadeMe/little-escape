@@ -94,7 +94,11 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
      * 1) 위/경도 차이 0.1 이내 (약 11km) - 인덱스 활용 가능
      * 2) 하버사인 공식으로 정확한 거리 10km 이내 필터링
      */
-    @Query("SELECT p FROM Place p WHERE p.category = :category AND " +
+    @Query("SELECT p FROM Place p " +
+            "LEFT JOIN FETCH p.performanceDetail " +
+            "LEFT JOIN FETCH p.facilityDetail " +
+            "WHERE p.category = :category AND " +
+            "p.isActive = true AND " +
             "ABS(p.latitude - :userLat) <= 0.1 AND " +
             "ABS(p.longitude - :userLon) <= 0.1 AND " +
             "(6371 * acos(cos(radians(:userLat)) * cos(radians(p.latitude)) * " +
@@ -121,7 +125,11 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
      * 필터링된 양질의 장소 조회 (카테고리 무관 fallback + 거리 제한)
      * 사용자 위치 기준 반경 10km 이내 + 1인 가구 타겟 키워드 필터링
      */
-    @Query("SELECT p FROM Place p WHERE " +
+    @Query("SELECT p FROM Place p " +
+            "LEFT JOIN FETCH p.performanceDetail " +
+            "LEFT JOIN FETCH p.facilityDetail " +
+            "WHERE " +
+            "p.isActive = true AND " +
             "ABS(p.latitude - :userLat) <= 0.1 AND " +
             "ABS(p.longitude - :userLon) <= 0.1 AND " +
             "(6371 * acos(cos(radians(:userLat)) * cos(radians(p.latitude)) * " +
@@ -141,6 +149,44 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             @Param("keyword5") String keyword5,
             @Param("keyword6") String keyword6,
             @Param("keyword7") String keyword7
+    );
+
+    /**
+     * 카테고리별 + 거리 제한 장소 조회 (키워드 필터링 없음)
+     * ContentFilteringService를 통해 애플리케이션 레벨에서 필터링
+     */
+    @Query("SELECT p FROM Place p " +
+            "LEFT JOIN FETCH p.performanceDetail " +
+            "LEFT JOIN FETCH p.facilityDetail " +
+            "WHERE p.category = :category AND " +
+            "p.isActive = true AND " +
+            "ABS(p.latitude - :userLat) <= 0.1 AND " +
+            "ABS(p.longitude - :userLon) <= 0.1 AND " +
+            "(6371 * acos(cos(radians(:userLat)) * cos(radians(p.latitude)) * " +
+            "cos(radians(p.longitude) - radians(:userLon)) + " +
+            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= 10")
+    List<Place> findByCategoryWithDistance(
+            @Param("category") MissionCategory category,
+            @Param("userLat") Double userLatitude,
+            @Param("userLon") Double userLongitude
+    );
+
+    /**
+     * 전체 장소 + 거리 제한 조회 (키워드 필터링 없음)
+     * ContentFilteringService를 통해 애플리케이션 레벨에서 필터링
+     */
+    @Query("SELECT p FROM Place p " +
+            "LEFT JOIN FETCH p.performanceDetail " +
+            "LEFT JOIN FETCH p.facilityDetail " +
+            "WHERE p.isActive = true AND " +
+            "ABS(p.latitude - :userLat) <= 0.1 AND " +
+            "ABS(p.longitude - :userLon) <= 0.1 AND " +
+            "(6371 * acos(cos(radians(:userLat)) * cos(radians(p.latitude)) * " +
+            "cos(radians(p.longitude) - radians(:userLon)) + " +
+            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= 10")
+    List<Place> findAllWithDistance(
+            @Param("userLat") Double userLatitude,
+            @Param("userLon") Double userLongitude
     );
 
     // ========== 신규 메서드 (데이터 수집용) ==========

@@ -4,6 +4,8 @@ import { getMyInfo, checkNickname, getRandomNickname, completeOnboarding } from 
 
 const Onboarding = () => {
   const navigate = useNavigate();
+  // step은 향후 다단계 온보딩 구현 시 사용
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 

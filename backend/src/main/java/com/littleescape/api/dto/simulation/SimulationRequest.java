@@ -42,9 +42,6 @@ public record SimulationRequest(
     @Schema(description = "사용자 MBTI (I or E)", example = "I")
     String userMbti,
 
-    @Schema(description = "솔로 레벨 (1~5)", example = "3")
-    Integer soloLevel,
-
     @Schema(description = "특정 카테고리 강제 지정 (선택 사항)", example = "FOOD", nullable = true)
     MissionCategory forcedCategory
 ) {
@@ -70,9 +67,6 @@ public record SimulationRequest(
         }
         if (congestion == null) {
             congestion = Congestion.LOW;
-        }
-        if (soloLevel == null || soloLevel < 1 || soloLevel > 5) {
-            soloLevel = 3;
         }
     }
 }

@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, Bookmark, Clock, Calendar } from 'lucide-react';
-import { getPublicFeed, FeedItem, toggleSaveAppointment, toggleLikeAppointment } from '../api/appointmentApi';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Bookmark, Clock, MapPin, Calendar } from 'lucide-react';
+import { getPublicFeed, FeedItem, toggleSaveAppointment, toggleLikeAppointment, getNextAppointment } from '../api/appointmentApi';
 import { formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { useNavigate } from 'react-router-dom';
 import EscLikeButton from '../components/EscLikeButton';
 import ImageCarousel from '../components/common/ImageCarousel';
 import ExpandableText from '../components/common/ExpandableText';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { showToast } from '../utils/toast';
 import { Comment, createComment, getComments, deleteComment } from '../api/commentApi';
+import { Appointment } from '../types/appointment';
 
 const FeedPage = () => {
   const navigate = useNavigate();
@@ -19,14 +20,53 @@ const FeedPage = () => {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
-  // 댓글 확장 상태
+  // 미완료 약속 상태
+  const [pendingAppointment, setPendingAppointment] = useState<Appointment | null>(null);
+
+  // 댓글 확장 상태 (향후 댓글 기능 확장 시 사용)
   const [expandedFeedId, setExpandedFeedId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [currentComments, setCurrentComments] = useState<Comment[]>([]);
 
   useEffect(() => {
     loadFeeds();
+    checkPendingAppointment();
   }, []);
+
+  // 미완료 약속 확인
+  const checkPendingAppointment = async () => {
+    try {
+      const appointment = await getNextAppointment();
+      if (appointment) {
+        console.log('📋 미완료 약속 발견:', appointment);
+        setPendingAppointment(appointment);
+        localStorage.setItem('appointmentId', String(appointment.id));
+      }
+    } catch {
+      console.log('ℹ️ 진행 중인 약속 없음');
+    }
+  };
+
+  // 미완료 약속 이어하기
+  const handleContinueAppointment = () => {
+    if (!pendingAppointment) return;
+
+    // 장소가 없으면 위치 설정으로
+    if (!pendingAppointment.placeName) {
+      navigate('/location');
+      return;
+    }
+
+    // 미션이 없으면 미션 선택으로
+    if (!pendingAppointment.missionTitle) {
+      navigate('/missions');
+      return;
+    }
+
+    // 모두 있으면 미션 상세로
+    navigate(`/mission/${pendingAppointment.id}`);
+  };
 
   const loadFeeds = async (pageNum: number = page) => {
     try {
@@ -61,7 +101,8 @@ const FeedPage = () => {
     threshold: 0.5,
   });
 
-  // 댓글창 토글
+  // 댓글창 토글 (향후 댓글 기능 확장 시 사용)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleToggleComment = async (appointmentId: number) => {
     if (expandedFeedId === appointmentId) {
       setExpandedFeedId(null);
@@ -80,7 +121,8 @@ const FeedPage = () => {
     }
   };
 
-  // 댓글 전송
+  // 댓글 전송 (향후 댓글 기능 확장 시 사용)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleSubmitComment = async (appointmentId: number) => {
     if (!commentText.trim()) return;
     
@@ -101,7 +143,8 @@ const FeedPage = () => {
     }
   };
 
-  // 댓글 삭제
+  // 댓글 삭제 (향후 댓글 기능 확장 시 사용)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteComment = async (commentId: number, appointmentId: number) => {
     if (!confirm('댓글을 삭제할까요?')) return;
 
@@ -240,6 +283,59 @@ const FeedPage = () => {
           </div>
         </div>
       </header>
+
+      {/* 미완료 약속 배너 */}
+      {pendingAppointment && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-electric-lime/10 border-b border-electric-lime/30"
+        >
+          <div className="container-solotion py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-electric-lime font-bold text-sm mb-1">
+                  🎯 진행 중인 약속이 있어요!
+                </p>
+                <div className="flex items-center gap-3 text-text-gray text-xs">
+                  {pendingAppointment.placeName ? (
+                    <span className="flex items-center gap-1">
+                      <MapPin size={12} />
+                      {pendingAppointment.placeName}
+                    </span>
+                  ) : (
+                    <span className="text-accent-pink">📍 장소 미선택</span>
+                  )}
+                  {pendingAppointment.scheduledAt && (
+                    <span className="flex items-center gap-1">
+                      <Calendar size={12} />
+                      {new Date(pendingAppointment.scheduledAt).toLocaleDateString('ko-KR', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  )}
+                  {!pendingAppointment.missionTitle && (
+                    <span className="text-accent-pink">🎲 미션 미선택</span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleContinueAppointment}
+                className="flex-shrink-0 bg-electric-lime text-deep-charcoal px-4 py-2 rounded-full font-bold text-sm hover:bg-electric-lime/90 transition-colors"
+              >
+                {!pendingAppointment.placeName
+                  ? '장소 선택'
+                  : !pendingAppointment.missionTitle
+                  ? '미션 선택'
+                  : '확인하기'}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Feed List */}
       <div className="w-full pb-20">
