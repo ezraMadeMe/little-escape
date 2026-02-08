@@ -56,4 +56,35 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
         @Param("currentStatuses") List<AppointmentStatus> currentStatuses,
         @Param("expirationTime") LocalDateTime expirationTime
     );
+
+    /**
+     * D-1 미션 공개 대상 약속 조회
+     * 조건: 미션 미공개(isMissionRevealed=false) + 예정일이 24시간 이내
+     */
+    @Query("SELECT a FROM Appointment a " +
+           "WHERE a.isMissionRevealed = false " +
+           "AND a.missionTemplate IS NOT NULL " +
+           "AND a.status IN :activeStatuses " +
+           "AND a.scheduledAt BETWEEN :now AND :tomorrow")
+    List<Appointment> findMissionRevealTargets(
+        @Param("activeStatuses") List<AppointmentStatus> activeStatuses,
+        @Param("now") LocalDateTime now,
+        @Param("tomorrow") LocalDateTime tomorrow
+    );
+
+    /**
+     * D-1 미션 공개 배치 처리
+     * 예정일이 24시간 이내인 약속들의 미션을 일괄 공개
+     */
+    @Modifying
+    @Query("UPDATE Appointment a SET a.isMissionRevealed = true " +
+           "WHERE a.isMissionRevealed = false " +
+           "AND a.missionTemplate IS NOT NULL " +
+           "AND a.status IN :activeStatuses " +
+           "AND a.scheduledAt BETWEEN :now AND :tomorrow")
+    int revealMissionsForD1(
+        @Param("activeStatuses") List<AppointmentStatus> activeStatuses,
+        @Param("now") LocalDateTime now,
+        @Param("tomorrow") LocalDateTime tomorrow
+    );
 }

@@ -1,5 +1,7 @@
-import { ReactNode } from 'react';
-import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { ReactNode, useEffect, useState } from 'react';
+import { Navigate, useParams } from 'react-router-dom';
+import { getMyInfo } from '../api/userApi';
+import { getNextAppointment } from '../api/appointmentApi';
 
 // ID 유효성 검사 헬퍼 함수
 const isValidId = (id: string | null): boolean => {
@@ -10,22 +12,68 @@ const isValidId = (id: string | null): boolean => {
  * 뉴비 전용 라우트 가드
  * 이미 온보딩을 완료했거나 약속이 있는 사용자는 접근 불가
  * 용도: /chat (온보딩) 보호
+ *
+ * 크로스 디바이스 지원: 서버에서 isOnboarded 상태를 비동기로 확인
  */
 export const RequireNewUser = ({ children }: { children: ReactNode }) => {
-  const location = useLocation();
-  const onboardingComplete = localStorage.getItem('onboarding_complete');
-  const appointmentId = localStorage.getItem('appointmentId');
+  const [isChecking, setIsChecking] = useState(true);
+  const [shouldRedirect, setShouldRedirect] = useState<string | null>(null);
 
-  // 약속이 있는 경우 -> 미션 상세 페이지로 강제 이동
-  if (isValidId(appointmentId)) {
-    console.warn('⚠️ [RequireNewUser] 약속이 있는 유저 -> /mission으로 리다이렉트');
-    return <Navigate to={`/mission/${appointmentId}`} replace />;
+  useEffect(() => {
+    const checkStatus = async () => {
+      const onboardingComplete = localStorage.getItem('onboarding_complete');
+      const appointmentId = localStorage.getItem('appointmentId');
+
+      // 1. 약속이 있는 경우 -> 미션 상세 페이지로
+      if (isValidId(appointmentId)) {
+        console.warn('⚠️ [RequireNewUser] 약속이 있는 유저 -> /mission으로 리다이렉트');
+        setShouldRedirect(`/mission/${appointmentId}`);
+        setIsChecking(false);
+        return;
+      }
+
+      // 2. localStorage에 온보딩 완료 표시 -> 피드로
+      if (onboardingComplete === 'true') {
+        console.warn('⚠️ [RequireNewUser] 온보딩 완료 유저 (로컬) -> /feed로 리다이렉트');
+        setShouldRedirect('/feed');
+        setIsChecking(false);
+        return;
+      }
+
+      // 3. 서버에서 isOnboarded 확인 (크로스 디바이스 지원)
+      try {
+        const user = await getMyInfo();
+        const hasPreferences = user.mbti || user.soloLevel;
+
+        if (user.isOnboarded || hasPreferences) {
+          console.warn('⚠️ [RequireNewUser] 온보딩 완료 유저 (서버) -> /feed로 리다이렉트');
+          localStorage.setItem('onboarding_complete', 'true');
+          setShouldRedirect('/feed');
+          setIsChecking(false);
+          return;
+        }
+      } catch (error) {
+        console.log('ℹ️ [RequireNewUser] 서버 확인 실패, 로컬 상태 기반 진행:', error);
+      }
+
+      // 4. 신규 유저 -> 온보딩 진행
+      console.log('✅ [RequireNewUser] 신규 유저 -> 온보딩 진행');
+      setIsChecking(false);
+    };
+
+    checkStatus();
+  }, []);
+
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-deep-charcoal">
+        <div className="w-8 h-8 border-4 border-electric-lime border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
   }
 
-  // 온보딩 완료한 경우 -> 피드로 이동
-  if (onboardingComplete === 'true') {
-    console.warn('⚠️ [RequireNewUser] 온보딩 완료 유저 -> /feed로 리다이렉트');
-    return <Navigate to="/feed" replace />;
+  if (shouldRedirect) {
+    return <Navigate to={shouldRedirect} replace />;
   }
 
   return <>{children}</>;
@@ -96,36 +144,129 @@ export const RequireOnboarded = ({ children }: { children: ReactNode }) => {
 /**
  * 글로벌 리다이렉트 로직
  * 앱 최초 진입 시 사용자 상태에 따라 적절한 페이지로 이동
+ * 서버에서 isOnboarded 상태를 확인하여 자동로그인 시 온보딩 스킵
  */
 export const SmartRedirect = () => {
-  const token = localStorage.getItem('token');
-  const appointmentId = localStorage.getItem('appointmentId');
-  const onboardingComplete = localStorage.getItem('onboarding_complete');
+  const [redirectPath, setRedirectPath] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  console.log('=== SmartRedirect 체크 ===');
-  console.log('토큰:', !!token);
-  console.log('약속 ID:', appointmentId);
-  console.log('온보딩 완료:', onboardingComplete === 'true');
+  useEffect(() => {
+    const checkUserStatus = async () => {
+      const token = localStorage.getItem('token');
+      const appointmentId = localStorage.getItem('appointmentId');
+      const onboardingComplete = localStorage.getItem('onboarding_complete');
 
-  // 1. 토큰 없음 -> 로그인 페이지
-  if (!token || token === 'null' || token === 'undefined') {
-    console.log('🚫 토큰 없음 -> /login');
-    return <Navigate to="/login" replace />;
+      console.log('=== SmartRedirect 체크 ===');
+      console.log('토큰:', !!token);
+      console.log('약속 ID:', appointmentId);
+      console.log('온보딩 완료 (로컬):', onboardingComplete === 'true');
+
+      // 1. 토큰 없음 -> 로그인 페이지
+      if (!token || token === 'null' || token === 'undefined') {
+        console.log('🚫 토큰 없음 -> /login');
+        setRedirectPath('/login');
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. 서버에서 유저 정보 확인 (자동로그인 시 isOnboarded 확인)
+      try {
+        const user = await getMyInfo();
+        console.log('✅ 유저 정보 조회 성공:', user);
+
+        // 서버의 isOnboarded가 true면 localStorage에도 동기화
+        // 또는 MBTI/선호도가 설정되어 있으면 온보딩 완료로 간주 (기존 유저 호환)
+        const hasPreferences = user.mbti || user.soloLevel;
+        if (user.isOnboarded || hasPreferences) {
+          localStorage.setItem('onboarding_complete', 'true');
+          console.log('📝 온보딩 완료 상태 동기화됨 (isOnboarded:', user.isOnboarded, ', hasPreferences:', !!hasPreferences, ')');
+        }
+
+        // 3. 진행 중인 약속 확인
+        try {
+          const nextAppointment = await getNextAppointment();
+          if (nextAppointment) {
+            console.log('🎯 진행 중인 약속 발견:', nextAppointment);
+            localStorage.setItem('appointmentId', String(nextAppointment.id));
+
+            // 미완료 약속 (장소/미션 미선택)은 피드로 이동
+            // 피드에서 배너를 통해 이어서 진행 가능
+            const isIncomplete = !nextAppointment.placeName || !nextAppointment.missionTitle;
+            if (isIncomplete) {
+              console.log('📋 미완료 약속 -> /feed로 이동 (배너에서 이어하기)');
+              setRedirectPath('/feed');
+              setIsLoading(false);
+              return;
+            }
+
+            // 정상적인 약속 (장소+미션 모두 있음) -> 미션 상세 페이지로
+            console.log('✅ 완료된 약속 -> /mission으로 이동:', nextAppointment.id);
+            setRedirectPath(`/mission/${nextAppointment.id}`);
+            setIsLoading(false);
+            return;
+          }
+        } catch {
+          console.log('ℹ️ 진행 중인 약속 없음 (정상)');
+        }
+
+        // 4. 약속 없음 + 온보딩 상태로 분기
+        if (user.isOnboarded || onboardingComplete === 'true') {
+          console.log('✅ 온보딩 완료 -> /feed');
+          setRedirectPath('/feed');
+        } else {
+          console.log('📝 신규 유저 -> /chat');
+          setRedirectPath('/chat');
+        }
+      } catch (error) {
+        console.error('❌ 유저 정보 조회 실패:', error);
+
+        // 401 에러인 경우 토큰 만료 -> 로그인 페이지로
+        const isAuthError = error instanceof Error &&
+          (error.message.includes('401') || error.message.includes('Unauthorized'));
+
+        if (isAuthError) {
+          console.log('🚫 인증 에러 -> /login');
+          localStorage.removeItem('token');
+          setRedirectPath('/login');
+          setIsLoading(false);
+          return;
+        }
+
+        // 네트워크 에러 등 다른 에러인 경우 localStorage 기반 fallback
+        console.log('⚠️ API 에러, localStorage 기반 fallback');
+        if (isValidId(appointmentId)) {
+          setRedirectPath(`/mission/${appointmentId}`);
+        } else if (onboardingComplete === 'true') {
+          setRedirectPath('/feed');
+        } else {
+          // 온보딩 미완료지만 토큰은 있음 -> 일단 /feed로 (서버 재연결 시 확인)
+          setRedirectPath('/feed');
+        }
+      }
+
+      setIsLoading(false);
+    };
+
+    checkUserStatus();
+  }, []);
+
+  // 로딩 중
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-deep-charcoal">
+        <div className="flex flex-col items-center">
+          <div className="w-8 h-8 border-4 border-electric-lime border-t-transparent rounded-full animate-spin mb-4"></div>
+          <div className="text-text-gray">로딩 중...</div>
+        </div>
+      </div>
+    );
   }
 
-  // 2. Priority 1: 진행 중인 약속이 있으면 약속 상세로
-  if (isValidId(appointmentId)) {
-    console.log('🎯 진행 중인 약속 있음 -> /mission으로 이동');
-    return <Navigate to={`/mission/${appointmentId}`} replace />;
+  // 리다이렉트
+  if (redirectPath) {
+    return <Navigate to={redirectPath} replace />;
   }
 
-  // 3. Priority 2: 온보딩 완료 -> 피드로
-  if (onboardingComplete === 'true') {
-    console.log('✅ 온보딩 완료 -> /feed');
-    return <Navigate to="/feed" replace />;
-  }
-
-  // 4. Priority 3: 뉴비 -> 채팅 온보딩으로
-  console.log('📝 신규 유저 -> /chat');
-  return <Navigate to="/chat" replace />;
+  // fallback
+  return <Navigate to="/login" replace />;
 };

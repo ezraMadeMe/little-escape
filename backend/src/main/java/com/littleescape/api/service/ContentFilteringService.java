@@ -14,7 +14,8 @@ import java.util.regex.Pattern;
  *
  * 주요 기능:
  * - 제외 키워드 필터링 (아동, 가족, 교육 등)
- * - 가격 필터링 (7만원 초과 제외)
+ * - 가격 필터링 (5만원 초과 제외)
+ * - 연령 필터링 (영유아/개월 대상 제외)
  * - 가격 텍스트 파싱
  */
 @Slf4j
@@ -32,6 +33,10 @@ public class ContentFilteringService {
             "가족", "패밀리", "family", "부모", "엄마", "아빠", "맘", "대디",
             // 교육 관련
             "교육", "체험학습", "방학", "학습", "수업", "강좌",
+            // B2B/비즈니스 관련
+            "설명회", "바이어", "협력사업", "컨퍼런스", "세미나", "포럼",
+            "채용", "취업박람회", "사업설명", "투자설명", "IR",
+            "B2B", "b2b", "비즈니스", "기업", "산업",
             // 기타
             "노인", "실버", "경로"
     );
@@ -40,7 +45,7 @@ public class ContentFilteringService {
      * 최대 허용 가격 (원)
      * application.yml에서 설정 가능
      */
-    @Value("${data-ingestion.filtering.max-ticket-price:70000}")
+    @Value("${data-ingestion.filtering.max-ticket-price:50000}")
     private int maxTicketPrice;
 
     /**
@@ -191,6 +196,50 @@ public class ContentFilteringService {
      */
     public boolean isKidsAllowed(String kidState) {
         return "Y".equalsIgnoreCase(kidState);
+    }
+
+    /**
+     * 연령 정보에 영유아 대상 키워드 포함 여부 확인
+     * KOPIS prfage (관람연령) 또는 서울시 V_MIN/V_MAX에서 사용
+     *
+     * "개월" 이 포함된 경우 → 영유아 대상 콘텐츠로 판단하여 제외
+     * 예: "36개월 이상", "24개월~7세", "12개월 이상 관람가"
+     *
+     * @param ageText 연령 관련 텍스트
+     * @return 영유아 대상이면 true (제외 대상)
+     */
+    public boolean shouldExcludeByAge(String ageText) {
+        if (ageText == null || ageText.isEmpty()) {
+            return false;
+        }
+        String lower = ageText.toLowerCase().trim();
+        if (lower.contains("개월")) {
+            log.debug("연령 필터링 (영유아): '{}'", ageText);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 장소명/시설명에 어린이 관련 키워드 포함 여부 확인
+     * 수집 시 장소(공연장, 시설) 이름 레벨에서 필터링
+     *
+     * 예: "어린이회관", "어린이도서관", "키즈카페"
+     *
+     * @param placeName 장소명/시설명
+     * @return 어린이 관련 장소이면 true (제외 대상)
+     */
+    public boolean shouldExcludeByPlaceName(String placeName) {
+        if (placeName == null || placeName.isEmpty()) {
+            return false;
+        }
+        String lower = placeName.toLowerCase();
+        // 어린이/키즈 관련 장소명 체크
+        if (lower.contains("어린이") || lower.contains("키즈") || lower.contains("kids")) {
+            log.debug("장소명 필터링 (어린이): '{}'", placeName);
+            return true;
+        }
+        return false;
     }
 
     /**

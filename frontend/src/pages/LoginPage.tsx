@@ -2,8 +2,21 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// 온보딩 질문 타입 정의
+interface OnboardingQuestion {
+  id: string;
+  question: string;
+  subtext: string;
+  type: 'text' | 'choice' | 'slider';
+  placeholder?: string;
+  options?: { label: string; value: string }[];
+  min?: number;
+  max?: number;
+  labels?: string[];
+}
+
 // 츤데레 온보딩 질문 시퀀스
-const ONBOARDING_QUESTIONS = [
+const ONBOARDING_QUESTIONS: OnboardingQuestion[] = [
   {
     id: 'intro',
     question: '뭐야, 처음 보는데?',
@@ -21,15 +34,6 @@ const ONBOARDING_QUESTIONS = [
       { label: '밖에 나가긴 함 (카페 정도)', value: 'casual' },
       { label: '어디든 가봄 (모험가)', value: 'adventurer' },
     ],
-  },
-  {
-    id: 'solo-level',
-    question: '혼자 밥 먹는 거 레벨 몇이야?',
-    subtext: '1부터 5까지',
-    type: 'slider',
-    min: 1,
-    max: 5,
-    labels: ['무리', '조금 힘듦', '괜찮음', '여유로움', '프로'],
   },
   {
     id: 'motivation',

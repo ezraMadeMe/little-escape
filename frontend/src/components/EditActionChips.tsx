@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 interface EditActionChipsProps {
   onTimeChange: () => void;
   onLocationChange: () => void;

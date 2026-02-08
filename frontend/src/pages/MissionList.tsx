@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronLeft } from 'lucide-react';
 import { createAppointment, getMyAppointments } from '../api/appointmentApi';
 import { getMyInfo } from '../api/userApi';
 import { getTodayMission } from '../api/missionApi';
 import { AppointmentStatus, Appointment } from '../types/appointment';
 import { Mission } from '../types/mission';
 import { format } from 'date-fns';
+import { showToast } from '../utils/toast';
 
 // 내일 오후 3시로 기본 시간 설정 (함수 컴포넌트 외부로 이동)
 const getDefaultDateTime = () => {
@@ -170,7 +172,8 @@ function MissionList() {
     }
   };
 
-  // 개발용: 쿨타임 10초로 설정
+  // 개발용: 쿨타임 10초로 설정 (개발 콘솔에서 사용)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDevSetCooldown = () => {
     localStorage.setItem('last_mission_completed_at', new Date().toISOString());
     alert('쿨타임 10초 설정 완료! (테스트용)');
@@ -314,32 +317,49 @@ function MissionList() {
     );
   }
 
+  // 뒤로가기 핸들러 - 미션 선택 안하고 나가기
+  const handleGoBack = () => {
+    showToast('나중에 피드에서 이어할 수 있어요!');
+    navigate('/feed', { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-deep-charcoal flex flex-col overflow-hidden">
       {/* ===== Header: 인사 멘트 ===== */}
-      <header className="container-solotion py-6 flex items-center justify-between">
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="flex flex-col gap-1"
+      <header className="container-solotion py-6">
+        {/* 뒤로가기 버튼 */}
+        <button
+          onClick={handleGoBack}
+          className="mb-4 text-text-gray hover:text-off-white transition flex items-center gap-2"
         >
-          <span className="text-off-white text-2xl font-extra-bold">
-            야, {userName}!
-          </span>
-          <span className="text-text-gray text-base">
-            이번 주말엔 여기 어때?
-          </span>
-        </motion.div>
+          <ChevronLeft size={20} />
+          <span>나중에 할래</span>
+        </button>
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="text-4xl"
-        >
-          📮
-        </motion.div>
+        <div className="flex items-center justify-between">
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5 }}
+            className="flex flex-col gap-1"
+          >
+            <span className="text-off-white text-2xl font-extra-bold">
+              야, {userName}!
+            </span>
+            <span className="text-text-gray text-base">
+              이번 주말엔 여기 어때?
+            </span>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="text-4xl"
+          >
+            📮
+          </motion.div>
+        </div>
       </header>
 
       {/* ===== Main: The Letter ===== */}

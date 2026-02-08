@@ -25,11 +25,11 @@ const Appointments = () => {
   // State for My Appointments
   const [myAppointments, setMyAppointments] = useState<Appointment[]>([]);
   const [filter, setFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
-  const [isMyLoading, setIsMyLoading] = useState(true);
+  const [, setIsMyLoading] = useState(true);
 
   // State for Saved Appointments
   const [savedAppointments, setSavedAppointments] = useState<FeedItem[]>([]);
-  const [isSavedLoading, setIsSavedLoading] = useState(true);
+  const [, setIsSavedLoading] = useState(true);
 
   useEffect(() => {
     loadMyAppointments();

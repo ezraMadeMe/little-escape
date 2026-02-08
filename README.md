@@ -979,6 +979,84 @@ frontend/src/
 
 ---
 
+## 🚀 v3.2 주요 업데이트 (2026.02.08)
+
+### 1. 🔄 크로스 디바이스 온보딩 동기화 (Cross-Device Sync)
+- **서버 기반 온보딩 상태 관리:**
+  - `updateUserPreferences()` 호출 시 자동으로 `isOnboarded = true` 설정
+  - 디바이스 변경 시에도 온보딩 완료 상태 유지
+  - localStorage와 서버 상태 자동 동기화
+- **RequireNewUser 가드 개선:**
+  - 비동기로 서버에서 `isOnboarded` 상태 확인
+  - `mbti` 또는 `soloLevel`이 설정되어 있으면 온보딩 완료로 간주 (기존 유저 호환)
+- **SmartRedirect 개선:**
+  - 401 인증 에러 시 토큰 삭제 후 로그인 페이지로 리다이렉트
+  - 네트워크 에러 시 피드로 fallback (불필요한 온보딩 진입 방지)
+
+### 2. 📋 미완료 약속 이어하기 시스템 (Pending Appointment Resume)
+- **FeedPage 미완료 약속 배너:**
+  - 진행 중인 약속이 있으면 상단에 배너 표시
+  - 장소 미선택: "📍 장소 미선택" + "장소 선택" 버튼
+  - 미션 미선택: "🎲 미션 미선택" + "미션 선택" 버튼
+  - 모두 완료: "확인하기" 버튼
+  - 약속 시간 및 장소 정보 표시
+- **SmartRedirect 미완료 약속 처리:**
+  - 장소/미션 미선택 약속은 피드로 리다이렉트
+  - 피드 배너를 통해 이어서 진행 가능
+  - 무한 로딩 방지
+
+### 3. 🔙 약속 온보딩 뒤로가기 UX 개선
+- **모든 온보딩 페이지에 뒤로가기 버튼 추가:**
+  - LocationSetting: "나중에 할래" 버튼
+  - TimePicker: "뒤로" 버튼
+  - MissionList: "나중에 할래" 버튼
+- **뒤로가기 시 동작:**
+  - 토스트 메시지: "나중에 피드에서 이어할 수 있어요!"
+  - 피드 페이지로 이동 (`replace: true`)
+  - 약속은 그대로 유지 (미완료 상태)
+
+### 4. 🛡️ 무한 로딩 방지 로직 개선
+- **GlobalRedirectWrapper 예외 경로 확장:**
+  - `/location`, `/time-picker` 추가
+  - 약속 설정 플로우 중 리다이렉트 방지
+- **약속 납치 로직 수정:**
+  - `/location`, `/time-picker`는 약속 설정 플로우이므로 예외 처리
+  - 채팅 온보딩(`/chat`, `/onboarding`)만 미션으로 납치
+
+### 5. 💬 ChatAppointment 온보딩 간소화
+- **진행 상태 저장 로직 완전 제거:**
+  - `OnboardingProgress` 인터페이스 제거
+  - `saveProgress`, `loadProgress`, `clearProgress` 함수 제거
+  - 복잡한 상태 복원 로직 제거 (무한 로딩 원인)
+- **뒤로가기 시 초기화:**
+  - 브라우저/앱 뒤로가기: 토스트 + 홈으로 이동
+  - 온보딩은 항상 처음부터 시작
+
+### 6. 🔧 기술적 개선
+- **백엔드 UserService:**
+  - `updateUserPreferences()`에서 `completeOnboarding()` 자동 호출
+  - 채팅 온보딩 완료 시 서버에 영속화
+- **프론트엔드 타입 안전성:**
+  - `Appointment` 타입에 `missionTitle` 필드 활용
+  - Lucide React 아이콘 일관성 (ChevronLeft, MapPin, Calendar)
+
+### 7. 📋 수정된 파일 목록
+```
+backend/src/main/java/com/littleescape/api/
+└── service/UserService.java              # isOnboarded 자동 설정
+
+frontend/src/
+├── pages/
+│   ├── FeedPage.tsx                      # 미완료 약속 배너 추가
+│   ├── ChatAppointment.tsx               # 진행 저장 로직 제거, 뒤로가기 토스트
+│   ├── LocationSetting.tsx               # 뒤로가기 버튼 추가
+│   └── MissionList.tsx                   # 뒤로가기 버튼 추가
+├── routes/RouteGuards.tsx                # 크로스 디바이스 동기화, 미완료 약속 처리
+└── App.tsx                               # 예외 경로 확장
+```
+
+---
+
 ## 🎯 다음 개발 계획 (Roadmap)
 
 ### Phase 1: 피드 기능 고도화

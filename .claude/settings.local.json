@@ -29,7 +29,8 @@
       "Bash(powershell.exe -Command \"Set-Location ''F:\\\\04_DEV\\\\03_PROJECT\\\\little-escape\\\\backend''; .\\\\gradlew.bat bootRun 2>&1\")",
       "Bash(powershell.exe:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx vite build:*)"
+      "Bash(npx vite build:*)",
+      "Bash(python:*)"
     ]
   }
 }

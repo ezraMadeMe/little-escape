@@ -101,4 +101,65 @@ public class AppointmentScheduler {
         log.info("🧪 [TEST] 약속 만료 체크 (1분 주기) 시작");
         checkExpiredAppointments();
     }
+
+    /**
+     * D-1 미션 공개 처리 (매 시간 정각에 실행)
+     *
+     * 조건:
+     * - 미션이 아직 공개되지 않음 (isMissionRevealed = false)
+     * - 예정일(scheduledAt)이 현재 시간으로부터 24시간 이내
+     * - 미션이 할당되어 있음 (missionTemplate IS NOT NULL)
+     *
+     * 동작:
+     * - 해당 약속들의 isMissionRevealed를 true로 변경
+     * - 이후 AppointmentResponse에서 미션 정보가 노출됨
+     */
+    @Transactional
+    @Scheduled(cron = "0 0 * * * *") // 매 시간 정각에 실행
+    public void revealMissionsD1() {
+        try {
+            // 1. 한국 시간 기준 현재 시간
+            LocalDateTime nowKst = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+
+            // 2. D-1 범위: 현재 ~ 24시간 후
+            LocalDateTime tomorrow = nowKst.plusHours(24);
+
+            log.info("🎯 D-1 미션 공개 체크 시작");
+            log.info("   - 현재 시간(KST): {}", nowKst);
+            log.info("   - 공개 대상 범위: {} ~ {}", nowKst, tomorrow);
+
+            // 3. 공개 대상 상태 정의
+            List<AppointmentStatus> activeStatuses = List.of(
+                AppointmentStatus.PENDING,
+                AppointmentStatus.ACCEPTED,
+                AppointmentStatus.CREATED
+            );
+
+            // 4. 배치 업데이트 실행
+            int revealedCount = appointmentRepository.revealMissionsForD1(
+                activeStatuses,
+                nowKst,
+                tomorrow
+            );
+
+            if (revealedCount > 0) {
+                log.info("✅ 미션 공개 처리 완료: {}건의 약속에 미션이 공개됨", revealedCount);
+            } else {
+                log.info("📭 미션 공개 대상 없음 (D-1 이내 약속이 없거나 이미 공개됨)");
+            }
+
+        } catch (Exception e) {
+            log.error("❌ D-1 미션 공개 처리 중 오류 발생: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 개발용: D-1 미션 공개 테스트 (1분마다 실행)
+     */
+    @Transactional
+    @Scheduled(cron = "0 * * * * *") // 1분마다 실행 (테스트용)
+    public void revealMissionsD1Test() {
+        log.info("🧪 [TEST] D-1 미션 공개 체크 (1분 주기) 시작");
+        revealMissionsD1();
+    }
 }

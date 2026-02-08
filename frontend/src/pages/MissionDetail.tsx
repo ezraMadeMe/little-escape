@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAppointmentDetail, completeAppointment, markAsArrived, swapMission, deleteAppointment } from '../api/appointmentApi';
 import { Appointment } from '../types/appointment';
@@ -7,7 +7,7 @@ import { PlanB } from '../types/mission';
 import { supabase } from '../lib/supabaseClient';
 import MissionReview from '../components/MissionReview';
 import { showToast } from '../utils/toast';
-import { Trash2, Bookmark } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 // 가이드 스텝 인터페이스
 interface GuideStep {
@@ -47,6 +47,7 @@ const MOCK_PLAN_B: PlanB = {
 function MissionDetail() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -100,6 +101,14 @@ function MissionDetail() {
 
       try {
         const data = await getAppointmentDetail(Number(appointmentId));
+
+        // 장소가 없는 약속인 경우 -> 온보딩 플로우로 리다이렉트
+        if (!data.placeName) {
+          console.log('📍 장소가 없는 약속 -> 온보딩 플로우로 이동');
+          navigate('/location', { replace: true });
+          return;
+        }
+
         setAppointment(data);
       } catch (err) {
         console.error('약속 로딩 실패:', err);

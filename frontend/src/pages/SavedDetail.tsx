@@ -28,7 +28,8 @@ const ICON_MAP: Record<string, string> = {
   PHOTO: '📸',
 };
 
-// Mock 데이터 (상세 코스 예시)
+// Mock 데이터 (상세 코스 예시) - 향후 코스 상세 표시에 사용
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const MOCK_DETAILED_COURSE = '1. 성수역 3번 출구에서 도보 5분\n2. 골목길을 따라 왼쪽으로 돌아\n3. 빨간 간판이 보이면 2층으로 올라가면 돼';
 
 function SavedDetail() {

@@ -87,6 +87,14 @@ public class Appointment extends BaseTimeEntity {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    /**
+     * 미션 공개 여부 (D-1에 공개)
+     * - false: 미션 정보 비공개 (장소만 공개)
+     * - true: 미션 정보 공개 (D-1 이후)
+     */
+    @Column(name = "is_mission_revealed", nullable = false)
+    private boolean isMissionRevealed = false;
+
     // 비즈니스 로직 메서드
     public void cancel() {
         this.status = AppointmentStatus.CANCELLED;
@@ -102,5 +110,12 @@ public class Appointment extends BaseTimeEntity {
 
     public void toggleFavorite() {
         this.isFavorite = !this.isFavorite;
+    }
+
+    /**
+     * 미션 공개 처리 (D-1 스케줄러에서 호출)
+     */
+    public void revealMission() {
+        this.isMissionRevealed = true;
     }
 }

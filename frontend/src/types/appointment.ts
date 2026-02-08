@@ -9,6 +9,7 @@ export enum AppointmentStatus {
   NO_SHOW = 'NO_SHOW',
   ARRIVED = 'ARRIVED',
   IN_PROGRESS = 'IN_PROGRESS',
+  EXPIRED = 'EXPIRED',     // 만료됨 (24시간 내 미완료)
 }
 
 export interface Appointment {
@@ -38,4 +39,5 @@ export interface Appointment {
   missionGuide?: string; // JSON 형식 단계별 가이드
   rating?: number; // 별점 (0.0 ~ 5.0)
   missionDescription?: string; // 미션 상세 설명
+  isMissionRevealed?: boolean; // 미션 공개 여부 (D-1에 공개)
 }

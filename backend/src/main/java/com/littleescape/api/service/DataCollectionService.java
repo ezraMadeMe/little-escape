@@ -223,6 +223,20 @@ public class DataCollectionService {
                     return;
                 }
 
+                // 3차 필터링: 관람연령에 '개월' 포함 시 영유아 대상 → 제외
+                if (filteringService.shouldExcludeByAge(detailInfo.getAge())) {
+                    result.filtered++;
+                    log.debug("필터링 (연령/개월): {} - age: {}", detailInfo.getName(), detailInfo.getAge());
+                    return;
+                }
+
+                // 4차 필터링: 공연장/시설명에 '어린이' 포함 시 → 제외
+                if (filteringService.shouldExcludeByPlaceName(detailInfo.getFacilityName())) {
+                    result.filtered++;
+                    log.debug("필터링 (장소명/어린이): {} - facility: {}", detailInfo.getName(), detailInfo.getFacilityName());
+                    return;
+                }
+
                 // 가격 파싱
                 Integer ticketPrice = filteringService.parseMinPrice(detailInfo.getPriceInfo());
                 Boolean isFree = filteringService.isFree(detailInfo.getPriceInfo());
@@ -378,9 +392,17 @@ public class DataCollectionService {
      */
     private void processFestival(FestivalResponse.Festival fest, CollectionResult result) {
         try {
-            // 필터링
-            if (filteringService.shouldExclude(fest.getName(), null)) {
+            // 1차 필터링: 축제명 + 시설명 종합 검사
+            if (filteringService.shouldExclude(fest.getName(), fest.getFacilityName())) {
                 result.filtered++;
+                log.debug("필터링 (키워드): {} - facility: {}", fest.getName(), fest.getFacilityName());
+                return;
+            }
+
+            // 2차 필터링: 공연장/시설명에 '어린이' 포함 시 → 제외
+            if (filteringService.shouldExcludeByPlaceName(fest.getFacilityName())) {
+                result.filtered++;
+                log.debug("필터링 (장소명/어린이): {} - facility: {}", fest.getName(), fest.getFacilityName());
                 return;
             }
 
@@ -493,9 +515,17 @@ public class DataCollectionService {
      */
     private void processSeoulEvent(SeoulEventResponse.Event event, CollectionResult result) {
         try {
-            // 필터링
-            if (filteringService.shouldExclude(event.getTitle(), null)) {
+            // 1차 필터링: 제목 + 장소 + 코드명 종합 검사
+            if (filteringService.shouldExclude(event.getTitle(), event.getPlace(), event.getCodeName())) {
                 result.filtered++;
+                log.debug("필터링 (키워드): {} - place: {}", event.getTitle(), event.getPlace());
+                return;
+            }
+
+            // 2차 필터링: 장소명에 '어린이' 포함 시 → 제외
+            if (filteringService.shouldExcludeByPlaceName(event.getPlace())) {
+                result.filtered++;
+                log.debug("필터링 (장소명/어린이): {} - place: {}", event.getTitle(), event.getPlace());
                 return;
             }
 
@@ -594,9 +624,10 @@ public class DataCollectionService {
      */
     private void processPark(SeoulParkResponse.Park park, CollectionResult result) {
         try {
-            // 어린이공원, 소공원 등 필터링
-            if (filteringService.shouldExclude(park.getParkName(), null)) {
+            // 어린이공원, 소공원 등 필터링 (공원명 + 주소 검사)
+            if (filteringService.shouldExclude(park.getParkName(), park.getAddress())) {
                 result.filtered++;
+                log.debug("필터링 (키워드): {} - address: {}", park.getParkName(), park.getAddress());
                 return;
             }
 
@@ -698,6 +729,22 @@ public class DataCollectionService {
                  event.getTargetInfo().contains("초등") ||
                  event.getTargetInfo().contains("유아"))) {
                 result.filtered++;
+                return;
+            }
+
+            // V_MIN/V_MAX 연령 필터링: '개월' 포함 시 영유아 대상 → 제외
+            if (filteringService.shouldExcludeByAge(event.getMinAge()) ||
+                filteringService.shouldExcludeByAge(event.getMaxAge())) {
+                result.filtered++;
+                log.debug("필터링 (연령/개월): {} - minAge: {}, maxAge: {}",
+                        event.getServiceName(), event.getMinAge(), event.getMaxAge());
+                return;
+            }
+
+            // 장소명에 '어린이' 포함 시 → 제외
+            if (filteringService.shouldExcludeByPlaceName(event.getPlaceName())) {
+                result.filtered++;
+                log.debug("필터링 (장소명/어린이): {} - place: {}", event.getServiceName(), event.getPlaceName());
                 return;
             }
 
@@ -804,6 +851,13 @@ public class DataCollectionService {
 
             if (restaurant.getBusinessName() == null || restaurant.getBusinessName().isEmpty()) {
                 result.skipped++;
+                return;
+            }
+
+            // 키워드 필터링 (업소명 + 주소)
+            if (filteringService.shouldExclude(restaurant.getBusinessName(), restaurant.getFullAddress())) {
+                result.filtered++;
+                log.debug("필터링 (키워드): {}", restaurant.getBusinessName());
                 return;
             }
 
@@ -920,6 +974,20 @@ public class DataCollectionService {
             // 필수 필드 체크
             if (lib.getName() == null || lib.getName().isEmpty()) {
                 result.skipped++;
+                return;
+            }
+
+            // 어린이도서관, 유아전용실 등 필터링
+            if (filteringService.shouldExclude(lib.getName(), null)) {
+                result.filtered++;
+                log.debug("필터링 (키워드): {}", lib.getName());
+                return;
+            }
+
+            // 장소명에 '어린이' 포함 시 → 제외
+            if (filteringService.shouldExcludeByPlaceName(lib.getName())) {
+                result.filtered++;
+                log.debug("필터링 (장소명/어린이): {}", lib.getName());
                 return;
             }
 

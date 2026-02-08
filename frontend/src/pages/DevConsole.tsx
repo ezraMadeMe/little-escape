@@ -22,8 +22,21 @@ interface SimulationRequest {
   airQuality: AirQuality;
   congestion: Congestion;
   userMbti: string;
-  soloLevel: number;
   forcedCategory?: MissionCategory;
+}
+
+interface PerformanceDetailInfo {
+  startDate: string | null;
+  endDate: string | null;
+  ticketPrice: number | null;
+  performanceState: string | null;
+}
+
+interface FacilityDetailInfo {
+  operatingTime: string | null;
+  closedDays: string | null;
+  tel: string | null;
+  homepage: string | null;
 }
 
 interface PlaceInfo {
@@ -35,6 +48,11 @@ interface PlaceInfo {
   longitude: number;
   imageUrl: string;
   tags: string;
+  url: string | null;
+  dataSource: string | null;
+  isFree: boolean | null;
+  performanceDetail: PerformanceDetailInfo | null;
+  facilityDetail: FacilityDetailInfo | null;
 }
 
 interface MissionInfo {
@@ -92,7 +110,6 @@ const DevConsole = () => {
   const [airQuality, setAirQuality] = useState<AirQuality>('GOOD');
   const [congestion, setCongestion] = useState<Congestion>('NORMAL');
   const [userMbti, setUserMbti] = useState<'I' | 'E'>('I');
-  const [soloLevel, setSoloLevel] = useState<number>(3);
   const [forcedCategory, setForcedCategory] = useState<MissionCategory | ''>('');
   const [timeTravelId, setTimeTravelId] = useState<string>('');
 
@@ -130,9 +147,6 @@ const DevConsole = () => {
     // Random MBTI
     setUserMbti(Math.random() > 0.5 ? 'I' : 'E');
 
-    // Random solo level (1-5)
-    setSoloLevel(1 + Math.floor(Math.random() * 5));
-
     // Random category (optional)
     const categories: (MissionCategory | '')[] = ['', 'FOOD', 'ACTIVITY', 'RELAX', 'CULTURE'];
     setForcedCategory(categories[Math.floor(Math.random() * categories.length)]);
@@ -154,7 +168,6 @@ const DevConsole = () => {
       airQuality,
       congestion,
       userMbti,
-      soloLevel,
       ...(forcedCategory && { forcedCategory }),
     };
 
@@ -385,26 +398,6 @@ const DevConsole = () => {
                 </div>
               </div>
 
-              {/* Solo Level */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  솔로 레벨: {soloLevel}
-                </label>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <button
-                      key={level}
-                      onClick={() => setSoloLevel(level)}
-                      className={`flex-1 h-12 rounded-md transition-all ${
-                        level <= soloLevel ? 'bg-yellow-400' : 'bg-gray-200'
-                      }`}
-                    >
-                      ⭐
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Forced Category (Optional) */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -517,7 +510,7 @@ const DevConsole = () => {
                   </section>
                 )}
 
-                {/* Place Card */}
+                {/* Place Card (with detail) */}
                 {result.place && (
                   <section className="bg-white rounded-lg shadow p-6">
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">
@@ -535,7 +528,62 @@ const DevConsole = () => {
                             {result.place.tags}
                           </span>
                         )}
+                        {result.place.dataSource && (
+                          <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs">
+                            {result.place.dataSource}
+                          </span>
+                        )}
+                        {result.place.isFree && (
+                          <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs">
+                            무료
+                          </span>
+                        )}
                       </div>
+                      {result.place.url && (
+                        <div className="text-xs text-blue-500 truncate mt-1">
+                          <a href={result.place.url} target="_blank" rel="noopener noreferrer">{result.place.url}</a>
+                        </div>
+                      )}
+                      {/* Performance Detail */}
+                      {result.place.performanceDetail && (
+                        <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                          <div className="text-xs font-semibold text-purple-700 mb-1">🎭 공연/행사 정보</div>
+                          <div className="grid grid-cols-2 gap-1 text-xs text-purple-800">
+                            {result.place.performanceDetail.performanceState && (
+                              <div>상태: <span className="font-medium">{result.place.performanceDetail.performanceState}</span></div>
+                            )}
+                            {result.place.performanceDetail.ticketPrice != null && (
+                              <div>가격: <span className="font-medium">{result.place.performanceDetail.ticketPrice === 0 ? '무료' : `${result.place.performanceDetail.ticketPrice.toLocaleString()}원`}</span></div>
+                            )}
+                            {result.place.performanceDetail.startDate && (
+                              <div>시작: <span className="font-medium">{result.place.performanceDetail.startDate}</span></div>
+                            )}
+                            {result.place.performanceDetail.endDate && (
+                              <div>종료: <span className="font-medium">{result.place.performanceDetail.endDate}</span></div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Facility Detail */}
+                      {result.place.facilityDetail && (
+                        <div className="mt-3 p-3 bg-teal-50 rounded-lg border border-teal-200">
+                          <div className="text-xs font-semibold text-teal-700 mb-1">🏢 시설 정보</div>
+                          <div className="space-y-1 text-xs text-teal-800">
+                            {result.place.facilityDetail.operatingTime && (
+                              <div>운영: <span className="font-medium">{result.place.facilityDetail.operatingTime}</span></div>
+                            )}
+                            {result.place.facilityDetail.closedDays && (
+                              <div>휴관: <span className="font-medium">{result.place.facilityDetail.closedDays}</span></div>
+                            )}
+                            {result.place.facilityDetail.tel && (
+                              <div>전화: <span className="font-medium">{result.place.facilityDetail.tel}</span></div>
+                            )}
+                            {result.place.facilityDetail.homepage && (
+                              <div className="truncate">홈페이지: <a href={result.place.facilityDetail.homepage} target="_blank" rel="noopener noreferrer" className="font-medium text-teal-600 underline">{result.place.facilityDetail.homepage}</a></div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </section>
                 )}
@@ -570,6 +618,114 @@ const DevConsole = () => {
                     </div>
                   </div>
                 </section>
+
+                {/* Integrated View: Mission + Place + Detail */}
+                {result.mission && (
+                  <section className="bg-white rounded-lg shadow p-6 border-2 border-yellow-300">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                      🔗 미션 + 장소 + 디테일 통합 조회
+                    </h3>
+                    <div className="space-y-3">
+                      {/* Mission */}
+                      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="text-xs font-semibold text-blue-500 mb-1">MISSION</div>
+                        <div className="font-bold text-blue-700">{result.mission.title}</div>
+                        <div className="text-sm text-gray-600 mt-1">{result.mission.description}</div>
+                        <div className="flex gap-1 flex-wrap mt-2">
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{result.mission.category}</span>
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">{result.mission.difficultyLevel}</span>
+                          <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">{result.mission.locationType}</span>
+                          <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">{result.mission.timeOfDay}</span>
+                        </div>
+                        {result.mission.guide && (
+                          <div className="mt-2 text-xs text-gray-500 truncate">가이드: {result.mission.guide}</div>
+                        )}
+                      </div>
+
+                      {/* Arrow */}
+                      <div className="flex justify-center text-gray-400 text-2xl">↓</div>
+
+                      {/* Place */}
+                      {result.place ? (
+                        <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                          <div className="text-xs font-semibold text-green-500 mb-1">PLACE (허브)</div>
+                          <div className="font-bold text-green-700">{result.place.name}</div>
+                          <div className="text-sm text-gray-600">{result.place.address}</div>
+                          <div className="flex gap-1 flex-wrap mt-2">
+                            <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">{result.place.category}</span>
+                            {result.place.tags && <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">{result.place.tags}</span>}
+                            {result.place.dataSource && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">{result.place.dataSource}</span>}
+                            {result.place.isFree && <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs">무료</span>}
+                          </div>
+                          {result.place.url && (
+                            <div className="text-xs text-blue-500 truncate mt-1">
+                              <a href={result.place.url} target="_blank" rel="noopener noreferrer">{result.place.url}</a>
+                            </div>
+                          )}
+
+                          {/* Place Detail: Performance */}
+                          {result.place.performanceDetail && (
+                            <>
+                              <div className="flex justify-center text-gray-400 text-lg mt-2">↓</div>
+                              <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 mt-1">
+                                <div className="text-xs font-semibold text-purple-500 mb-1">DETAIL: 공연/행사</div>
+                                <div className="grid grid-cols-2 gap-2 text-xs text-purple-800">
+                                  {result.place.performanceDetail.performanceState && (
+                                    <div>상태: <span className="font-bold">{result.place.performanceDetail.performanceState}</span></div>
+                                  )}
+                                  {result.place.performanceDetail.ticketPrice != null && (
+                                    <div>가격: <span className="font-bold">{result.place.performanceDetail.ticketPrice === 0 ? '무료' : `${result.place.performanceDetail.ticketPrice.toLocaleString()}원`}</span></div>
+                                  )}
+                                  {result.place.performanceDetail.startDate && (
+                                    <div>시작: <span className="font-bold">{result.place.performanceDetail.startDate}</span></div>
+                                  )}
+                                  {result.place.performanceDetail.endDate && (
+                                    <div>종료: <span className="font-bold">{result.place.performanceDetail.endDate}</span></div>
+                                  )}
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {/* Place Detail: Facility */}
+                          {result.place.facilityDetail && (
+                            <>
+                              <div className="flex justify-center text-gray-400 text-lg mt-2">↓</div>
+                              <div className="p-3 bg-teal-50 rounded-lg border border-teal-200 mt-1">
+                                <div className="text-xs font-semibold text-teal-500 mb-1">DETAIL: 시설 정보</div>
+                                <div className="space-y-1 text-xs text-teal-800">
+                                  {result.place.facilityDetail.operatingTime && (
+                                    <div>운영시간: <span className="font-bold">{result.place.facilityDetail.operatingTime}</span></div>
+                                  )}
+                                  {result.place.facilityDetail.closedDays && (
+                                    <div>휴관일: <span className="font-bold">{result.place.facilityDetail.closedDays}</span></div>
+                                  )}
+                                  {result.place.facilityDetail.tel && (
+                                    <div>전화: <span className="font-bold">{result.place.facilityDetail.tel}</span></div>
+                                  )}
+                                  {result.place.facilityDetail.homepage && (
+                                    <div className="truncate">홈페이지: <a href={result.place.facilityDetail.homepage} target="_blank" rel="noopener noreferrer" className="font-bold text-teal-600 underline">{result.place.facilityDetail.homepage}</a></div>
+                                  )}
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {/* No detail */}
+                          {!result.place.performanceDetail && !result.place.facilityDetail && (
+                            <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-500 text-center">
+                              디테일 정보 없음 (수동 등록 장소)
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center text-sm text-gray-500">
+                          장소 불필요 미션 - 어디서든 수행 가능
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )}
 
                 {/* All Filtered Missions */}
                 {result.allFilteredMissions && result.allFilteredMissions.length > 0 && (
@@ -618,13 +774,13 @@ const DevConsole = () => {
                   </section>
                 )}
 
-                {/* All Filtered Places */}
+                {/* All Filtered Places (with details) */}
                 {result.allFilteredPlaces && result.allFilteredPlaces.length > 0 && (
                   <section className="bg-white rounded-lg shadow p-6">
                     <h3 className="text-lg font-semibold text-gray-900 mb-3">
                       📍 필터링된 전체 장소 ({result.allFilteredPlaces.length}개)
                     </h3>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="space-y-2 max-h-[600px] overflow-y-auto">
                       {result.allFilteredPlaces.map((place, index) => (
                         <div
                           key={place.id}
@@ -652,10 +808,47 @@ const DevConsole = () => {
                                     {place.tags}
                                   </span>
                                 )}
+                                {place.dataSource && (
+                                  <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs">
+                                    {place.dataSource}
+                                  </span>
+                                )}
+                                {place.isFree && (
+                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs">
+                                    무료
+                                  </span>
+                                )}
                                 <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
                                   ({place.latitude.toFixed(4)}, {place.longitude.toFixed(4)})
                                 </span>
                               </div>
+                              {/* Performance Detail */}
+                              {place.performanceDetail && (
+                                <div className="mt-2 p-2 bg-purple-50 rounded border border-purple-100 text-xs text-purple-800">
+                                  <span className="font-semibold">🎭</span>
+                                  {place.performanceDetail.performanceState && (
+                                    <span className="ml-1">{place.performanceDetail.performanceState}</span>
+                                  )}
+                                  {place.performanceDetail.startDate && place.performanceDetail.endDate && (
+                                    <span className="ml-2">{place.performanceDetail.startDate} ~ {place.performanceDetail.endDate}</span>
+                                  )}
+                                  {place.performanceDetail.ticketPrice != null && (
+                                    <span className="ml-2">{place.performanceDetail.ticketPrice === 0 ? '무료' : `${place.performanceDetail.ticketPrice.toLocaleString()}원`}</span>
+                                  )}
+                                </div>
+                              )}
+                              {/* Facility Detail */}
+                              {place.facilityDetail && (
+                                <div className="mt-2 p-2 bg-teal-50 rounded border border-teal-100 text-xs text-teal-800">
+                                  <span className="font-semibold">🏢</span>
+                                  {place.facilityDetail.operatingTime && (
+                                    <span className="ml-1">{place.facilityDetail.operatingTime}</span>
+                                  )}
+                                  {place.facilityDetail.closedDays && (
+                                    <span className="ml-2">휴관: {place.facilityDetail.closedDays}</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
