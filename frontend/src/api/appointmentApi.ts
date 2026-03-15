@@ -1,5 +1,14 @@
 import { apiFetch } from './client';
-import { Appointment } from '../types/appointment';
+import { Appointment, AppointmentStatus } from '../types/appointment';
+
+const ACTIVE_APPOINTMENT_STATUSES = new Set<AppointmentStatus>([
+  AppointmentStatus.CREATED,
+  AppointmentStatus.UNLOCKED,
+  AppointmentStatus.PENDING,
+  AppointmentStatus.ACCEPTED,
+  AppointmentStatus.ARRIVED,
+  AppointmentStatus.IN_PROGRESS,
+]);
 
 export async function createAppointment(params: {
   scheduledAt: string;
@@ -260,11 +269,8 @@ export async function getNextAppointment(): Promise<Appointment | null> {
     console.log('📋 약속 개수:', appointments.length);
 
     // 완료되지 않은 약속만 필터링 (PENDING, ACCEPTED 포함)
-    const activeAppointments = appointments.filter(
-      (apt) => apt.status !== 'COMPLETED' &&
-               apt.status !== 'CANCELLED' &&
-               apt.status !== 'NO_SHOW' &&
-               apt.status !== 'REJECTED'
+    const activeAppointments = appointments.filter((apt) =>
+      ACTIVE_APPOINTMENT_STATUSES.has(apt.status)
     );
 
     console.log('🔄 진행 중인 약속:', activeAppointments);
@@ -272,6 +278,7 @@ export async function getNextAppointment(): Promise<Appointment | null> {
 
     if (activeAppointments.length === 0) {
       console.log('❌ 진행 중인 약속 없음');
+      localStorage.removeItem('appointmentId');
       return null;
     }
 
@@ -286,9 +293,11 @@ export async function getNextAppointment(): Promise<Appointment | null> {
     console.log('  - Mission:', sorted[0].missionTitle || '미선택');
     console.log('  - Scheduled:', sorted[0].scheduledAt);
 
+    localStorage.setItem('appointmentId', String(sorted[0].id));
     return sorted[0];
   } catch (error) {
     console.error('❌ 다음 약속 조회 실패:', error);
+    localStorage.removeItem('appointmentId');
     return null;
   }
 }

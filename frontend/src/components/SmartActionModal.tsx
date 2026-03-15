@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getMyAppointments } from '../api/appointmentApi';
 import { Appointment, AppointmentStatus } from '../types/appointment';
+import { getAppointmentNavigationPath } from '../utils/appointmentNavigation';
 
 interface SmartActionModalProps {
   onClose: () => void;
@@ -47,7 +48,7 @@ const SmartActionModal = ({ onClose }: SmartActionModalProps) => {
   const handleContinue = () => {
     if (activeAppointment) {
       // 진행 중인 약속의 미션 상세로 이동
-      navigate(`/mission/${activeAppointment.id}`);
+      navigate(getAppointmentNavigationPath(activeAppointment));
       onClose();
     }
   };

@@ -37,6 +37,8 @@ import Contact from './pages/Contact';
 import SavedAppointments from './pages/SavedAppointments';
 import SavedDetail from './pages/SavedDetail';
 import ArchivedAppointmentDetail from './pages/ArchivedAppointmentDetail';
+import { getNextAppointment } from './api/appointmentApi';
+import { getAppointmentNavigationPath } from './utils/appointmentNavigation';
 
 // 보호된 라우트 컴포넌트
 const ProtectedRoute = ({ children }: { children: ReactNode }) => {
@@ -56,47 +58,62 @@ const GlobalRedirectWrapper = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const appointmentId = localStorage.getItem('appointmentId');
-    const onboardingComplete = localStorage.getItem('onboarding_complete');
-    const currentPath = location.pathname;
+    let cancelled = false;
 
-    console.log('=== GlobalRedirectWrapper 체크 ===');
-    console.log('현재 경로:', currentPath);
-    console.log('약속 ID:', appointmentId);
-    console.log('온보딩 완료:', onboardingComplete === 'true');
+    const validateRedirect = async () => {
+      const appointmentId = localStorage.getItem('appointmentId');
+      const onboardingComplete = localStorage.getItem('onboarding_complete');
+      const currentPath = location.pathname;
 
-    // 예외 경로: 피드, 마이페이지, 약속 목록, 로그인, 약속 설정 플로우 등은 체크 안 함
-    const exemptPaths = ['/feed', '/mypage', '/appointments', '/reviews', '/mission', '/login', '/oauth/callback', '/auth/callback', '/magic-login', '/dev-console', '/profile-edit', '/contact', '/mypage/saved', '/saved/detail', '/location', '/time-picker'];
-    if (exemptPaths.some(path => currentPath.startsWith(path))) {
-      console.log('✅ 예외 경로 - 리다이렉트 skip');
-      return;
-    }
+      console.log('=== GlobalRedirectWrapper 체크 ===');
+      console.log('현재 경로:', currentPath);
+      console.log('약속 ID:', appointmentId);
+      console.log('온보딩 완료:', onboardingComplete === 'true');
 
-    // 약속 ID 유효성 검사
-    const isValidAppointmentId = appointmentId && 
-                                 appointmentId !== 'null' && 
-                                 appointmentId !== 'undefined' && 
-                                 appointmentId.trim() !== '' && 
-                                 !isNaN(Number(appointmentId));
-
-    // 1순위: 약속 있음 -> 채팅 온보딩에 있으면 미션으로 납치
-    // 단, /location, /time-picker는 약속 설정 플로우이므로 예외
-    if (isValidAppointmentId) {
-      if (currentPath.startsWith('/chat') || currentPath.startsWith('/onboarding')) {
-        console.log('🎯 약속 있는데 온보딩 접근 시도 -> /mission으로 납치!');
-        navigate(`/mission/${appointmentId}`, { replace: true });
+      // 예외 경로: 피드, 마이페이지, 약속 목록, 로그인, 약속 설정 플로우 등은 체크 안 함
+      const exemptPaths = ['/feed', '/mypage', '/appointments', '/reviews', '/mission', '/login', '/oauth/callback', '/auth/callback', '/magic-login', '/dev-console', '/profile-edit', '/contact', '/mypage/saved', '/saved/detail', '/location', '/time-picker'];
+      if (exemptPaths.some(path => currentPath.startsWith(path))) {
+        console.log('✅ 예외 경로 - 리다이렉트 skip');
         return;
       }
-    }
 
-    // 2순위: 가입 완료 -> 온보딩 접근 시 피드로 튕김
-    if (onboardingComplete === 'true') {
-      if (currentPath.startsWith('/chat') || currentPath.startsWith('/onboarding')) {
+      const isOnboardingPath = currentPath.startsWith('/chat') || currentPath.startsWith('/onboarding');
+      if (!isOnboardingPath) {
+        return;
+      }
+
+      const hasStoredAppointmentId = appointmentId &&
+        appointmentId !== 'null' &&
+        appointmentId !== 'undefined' &&
+        appointmentId.trim() !== '' &&
+        !isNaN(Number(appointmentId));
+
+      if (hasStoredAppointmentId) {
+        const nextAppointment = await getNextAppointment();
+
+        if (cancelled) {
+          return;
+        }
+
+        if (nextAppointment) {
+          console.log('🎯 유효한 진행 중 약속 확인 -> /mission으로 이동!');
+          const targetPath = getAppointmentNavigationPath(nextAppointment);
+          navigate(targetPath, { replace: true });
+          return;
+        }
+      }
+
+      if (onboardingComplete === 'true') {
         console.log('⚠️ 이미 가입한 유저가 온보딩 접근 -> /feed로 튕김!');
         navigate('/feed', { replace: true });
-        return;
       }
-    }
+    };
+
+    validateRedirect();
+
+    return () => {
+      cancelled = true;
+    };
   }, [location.pathname, navigate]);
 
   return <>{children}</>;

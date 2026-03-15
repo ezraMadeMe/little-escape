@@ -555,6 +555,20 @@ public class AdminController {
                 null,
                 null,
                 List.of("❌ 시뮬레이션 실행 실패: " + e.getMessage()),
+                List.of(new SimulationResponse.StageInfo(
+                        "SIMULATION_ERROR",
+                        "Simulation error",
+                        "RESULT",
+                        0,
+                        0,
+                        List.of(new SimulationResponse.ReasonInfo(
+                                "SIMULATION_EXCEPTION",
+                                0,
+                                0,
+                                e.getMessage()
+                        )),
+                        List.of()
+                )),
                 0, 0, 0, 0,
                 List.of(),
                 List.of()

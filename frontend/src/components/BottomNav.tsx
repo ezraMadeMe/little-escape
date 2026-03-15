@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useNextAppointment } from '../hooks/useNextAppointment';
 import { Home, Calendar, User, Zap } from 'lucide-react';
+import { getAppointmentNavigationPath } from '../utils/appointmentNavigation';
 
 const BottomNav = () => {
   const navigate = useNavigate();
@@ -12,7 +13,7 @@ const BottomNav = () => {
 
     if (appointment) {
       // 진행 중인 약속이 있으면 상세 페이지로 이동
-      navigate(`/mission/${appointment.id}`);
+      navigate(getAppointmentNavigationPath(appointment));
     } else {
       // 진행 중인 약속이 없으면 새 약속 생성 (localStorage 정리)
       localStorage.removeItem('appointmentId');

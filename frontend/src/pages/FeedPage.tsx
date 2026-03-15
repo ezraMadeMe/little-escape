@@ -12,6 +12,7 @@ import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { showToast } from '../utils/toast';
 import { Comment, createComment, getComments, deleteComment } from '../api/commentApi';
 import { Appointment } from '../types/appointment';
+import { getAppointmentNavigationPath, needsAppointmentSelection } from '../utils/appointmentNavigation';
 
 const FeedPage = () => {
   const navigate = useNavigate();
@@ -42,8 +43,11 @@ const FeedPage = () => {
         console.log('📋 미완료 약속 발견:', appointment);
         setPendingAppointment(appointment);
         localStorage.setItem('appointmentId', String(appointment.id));
+      } else {
+        setPendingAppointment(null);
       }
     } catch {
+      setPendingAppointment(null);
       console.log('ℹ️ 진행 중인 약속 없음');
     }
   };
@@ -52,20 +56,7 @@ const FeedPage = () => {
   const handleContinueAppointment = () => {
     if (!pendingAppointment) return;
 
-    // 장소가 없으면 위치 설정으로
-    if (!pendingAppointment.placeName) {
-      navigate('/location');
-      return;
-    }
-
-    // 미션이 없으면 미션 선택으로
-    if (!pendingAppointment.missionTitle) {
-      navigate('/missions');
-      return;
-    }
-
-    // 모두 있으면 미션 상세로
-    navigate(`/mission/${pendingAppointment.id}`);
+    navigate(getAppointmentNavigationPath(pendingAppointment));
   };
 
   const loadFeeds = async (pageNum: number = page) => {
@@ -326,10 +317,10 @@ const FeedPage = () => {
                 onClick={handleContinueAppointment}
                 className="flex-shrink-0 bg-electric-lime text-deep-charcoal px-4 py-2 rounded-full font-bold text-sm hover:bg-electric-lime/90 transition-colors"
               >
-                {!pendingAppointment.placeName
-                  ? '장소 선택'
-                  : !pendingAppointment.missionTitle
-                  ? '미션 선택'
+                {needsAppointmentSelection(pendingAppointment)
+                  ? '선택 이어가기'
+                  : !pendingAppointment.placeName || !pendingAppointment.missionTitle
+                  ? '이어서 진행'
                   : '확인하기'}
               </button>
             </div>

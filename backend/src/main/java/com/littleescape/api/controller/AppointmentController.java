@@ -45,7 +45,8 @@ public class AppointmentController {
             request.scheduledAt(),
             request.missionId(),
             request.getUserLatitude(),
-            request.getUserLongitude()
+            request.getUserLongitude(),
+            request.searchRadius()
         );
 
         return ResponseEntity

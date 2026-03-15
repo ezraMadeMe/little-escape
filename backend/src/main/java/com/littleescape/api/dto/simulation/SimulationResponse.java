@@ -25,6 +25,9 @@ public record SimulationResponse(
     @Schema(description = "디버그 로그 - 필터링/추천 과정 설명")
     List<String> debugLogs,
 
+    @Schema(description = "Structured stage-by-stage simulation trace")
+    List<StageInfo> stages,
+
     @Schema(description = "총 검색된 미션 후보 개수")
     Integer totalMissionCandidates,
 
@@ -43,6 +46,37 @@ public record SimulationResponse(
     @Schema(description = "필터링 후 전체 장소 목록")
     List<PlaceInfo> allFilteredPlaces
 ) {
+
+    @Schema(description = "Stage-level structured debug info")
+    public record StageInfo(
+        String code,
+        String label,
+        String targetType,
+        Integer beforeCount,
+        Integer afterCount,
+        List<ReasonInfo> reasons,
+        List<SelectionInfo> selections
+    ) {
+    }
+
+    @Schema(description = "Structured exclusion or transition reason")
+    public record ReasonInfo(
+        String code,
+        Integer beforeCount,
+        Integer afterCount,
+        String detail
+    ) {
+    }
+
+    @Schema(description = "Final selected entity info")
+    public record SelectionInfo(
+        String type,
+        Long id,
+        String name,
+        String category,
+        String detail
+    ) {
+    }
 
     /**
      * 공연/축제 상세 정보

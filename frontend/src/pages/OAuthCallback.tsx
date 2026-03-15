@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getMyInfo } from '../api/userApi';
 import { getNextAppointment } from '../api/appointmentApi';
+import { getAppointmentNavigationPath } from '../utils/appointmentNavigation';
 
 function OAuthCallback() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ function OAuthCallback() {
               console.log('🎯 진행 중인 약속 발견! -> 약속 상세로 이동:', nextAppointment.id);
               localStorage.setItem('appointmentId', String(nextAppointment.id));
               localStorage.setItem('onboarding_complete', 'true');
-              navigate(`/mission/${nextAppointment.id}`, { replace: true });
+              navigate(getAppointmentNavigationPath(nextAppointment), { replace: true });
               return;
             }
           } catch (appointmentError) {

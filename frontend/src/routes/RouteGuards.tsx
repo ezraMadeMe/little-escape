@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { getMyInfo } from '../api/userApi';
 import { getNextAppointment } from '../api/appointmentApi';
+import { getAppointmentNavigationPath } from '../utils/appointmentNavigation';
 
 // ID 유효성 검사 헬퍼 함수
 const isValidId = (id: string | null): boolean => {
@@ -22,12 +23,12 @@ export const RequireNewUser = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const checkStatus = async () => {
       const onboardingComplete = localStorage.getItem('onboarding_complete');
-      const appointmentId = localStorage.getItem('appointmentId');
+      const nextAppointment = await getNextAppointment();
 
-      // 1. 약속이 있는 경우 -> 미션 상세 페이지로
-      if (isValidId(appointmentId)) {
-        console.warn('⚠️ [RequireNewUser] 약속이 있는 유저 -> /mission으로 리다이렉트');
-        setShouldRedirect(`/mission/${appointmentId}`);
+      // 1. 실제 진행 중 약속이 있는 경우에만 미션 상세 페이지로
+      if (nextAppointment) {
+        console.warn('⚠️ [RequireNewUser] 진행 중 약속이 있는 유저 -> /mission으로 리다이렉트');
+        setShouldRedirect(getAppointmentNavigationPath(nextAppointment));
         setIsChecking(false);
         return;
       }
@@ -191,17 +192,18 @@ export const SmartRedirect = () => {
 
             // 미완료 약속 (장소/미션 미선택)은 피드로 이동
             // 피드에서 배너를 통해 이어서 진행 가능
-            const isIncomplete = !nextAppointment.placeName || !nextAppointment.missionTitle;
+            const targetPath = getAppointmentNavigationPath(nextAppointment);
+            const isIncomplete = targetPath !== `/mission/${nextAppointment.id}`;
             if (isIncomplete) {
               console.log('📋 미완료 약속 -> /feed로 이동 (배너에서 이어하기)');
-              setRedirectPath('/feed');
+              setRedirectPath(targetPath);
               setIsLoading(false);
               return;
             }
 
             // 정상적인 약속 (장소+미션 모두 있음) -> 미션 상세 페이지로
             console.log('✅ 완료된 약속 -> /mission으로 이동:', nextAppointment.id);
-            setRedirectPath(`/mission/${nextAppointment.id}`);
+            setRedirectPath(targetPath);
             setIsLoading(false);
             return;
           }

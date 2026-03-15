@@ -1,6 +1,7 @@
 package com.littleescape.api.domain;
 
 import com.littleescape.api.domain.type.AppointmentStatus;
+import com.littleescape.api.domain.type.RecommendationRadiusPolicy;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -56,7 +57,7 @@ public class Appointment extends BaseTimeEntity {
 
     // 검색 반경 (km)
     @Column(name = "search_radius", nullable = false)
-    private Integer searchRadius = 5;
+    private Integer searchRadius = RecommendationRadiusPolicy.DEFAULT_SEARCH_RADIUS_KM;
 
     @Column(name = "proof_comment", columnDefinition = "TEXT")
     private String proofComment;
