@@ -2,7 +2,13 @@ package com.littleescape.api.service;
 
 import com.littleescape.api.domain.MissionTemplate;
 import com.littleescape.api.domain.Place;
-import com.littleescape.api.domain.type.*;
+import com.littleescape.api.domain.type.AirQuality;
+import com.littleescape.api.domain.type.Congestion;
+import com.littleescape.api.domain.type.DataSource;
+import com.littleescape.api.domain.type.LocationType;
+import com.littleescape.api.domain.type.MissionCategory;
+import com.littleescape.api.domain.type.TimeOfDay;
+import com.littleescape.api.domain.type.Weather;
 import com.littleescape.api.dto.MissionTemplateResponse;
 import com.littleescape.api.dto.simulation.SimulationRequest;
 import com.littleescape.api.dto.simulation.SimulationResponse;
@@ -15,13 +21,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.*;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/**
- * God Mode Simulation Service
- * 환경 변수를 통제하여 추천 로직을 테스트하는 서비스
- */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -30,18 +39,18 @@ public class SimulationService {
     private final MissionTemplateRepository missionTemplateRepository;
     private final PlaceRepository placeRepository;
     private final ContentFilteringService contentFilteringService;
+    private final RecommendationTagConflictService recommendationTagConflictService;
+    private final RecommendationSupportService recommendationSupportService;
+    private final PlaceScheduleFilterService placeScheduleFilterService;
+    private final PlaceRecommendationScoringService placeRecommendationScoringService;
+    private final RecommendationPreferenceService recommendationPreferenceService;
+    private final MissionRecommendationSelectionService missionRecommendationSelectionService;
 
-    /**
-     * 시뮬레이션 실행 - 환경 변수를 통제하여 추천 결과 생성
-     */
     @Transactional
     public SimulationResponse runSimulation(SimulationRequest request) {
-        log.info("=== God Mode Simulation 시작 ===");
+        log.info("=== God Mode Simulation start ===");
 
-        // 디버그 로그 수집
         List<String> debugLogs = new ArrayList<>();
-
-        // 1. 환경 컨텍스트 생성
         EnvironmentContext context = EnvironmentContext.fromSimulation(
                 request.targetDateTime(),
                 request.latitude(),
@@ -52,498 +61,1050 @@ public class SimulationService {
                 request.airQuality(),
                 request.congestion(),
                 request.userMbti(),
-                null // 시뮬레이션에서는 사용자 태그 미사용
+                request.userTags()
         );
 
-        debugLogs.add(String.format("🕒 시뮬레이션 시간: %s (%s, %d시)",
-                context.getTargetDateTime(), context.getDayOfWeek(), context.getHour()));
-        debugLogs.add(String.format("📍 위치: (%.4f, %.4f), 반경: %dkm",
-                context.getLatitude(), context.getLongitude(), context.getSearchRadius()));
-        debugLogs.add(String.format("☁️ 날씨: %s, 기온: %.1f°C, 미세먼지: %s",
-                context.getWeather(), context.getTemperature(), context.getAirQuality()));
-        debugLogs.add(String.format("👥 혼잡도: %s, MBTI: %s",
-                context.getCongestion(), context.getUserMbti()));
-
-        // 2. 미션 필터링
-        List<MissionTemplate> missionCandidates = filterMissions(context, request.forcedCategory(), debugLogs);
-
-        if (missionCandidates.isEmpty()) {
-            debugLogs.add("❌ 조건에 맞는 미션을 찾을 수 없습니다.");
-            return new SimulationResponse(null, null, debugLogs, 0, 0, 0, 0, List.of(), List.of());
+        debugLogs.add(String.format(
+                "Simulation context: %s (%s, hour=%d)",
+                context.getTargetDateTime(),
+                context.getDayOfWeek(),
+                context.getHour()
+        ));
+        debugLogs.add(String.format(
+                "Location: (%.4f, %.4f), radius=%dkm",
+                context.getLatitude(),
+                context.getLongitude(),
+                context.getSearchRadius()
+        ));
+        debugLogs.add(String.format(
+                "Environment: weather=%s, temperature=%.1fC, airQuality=%s",
+                context.getWeather(),
+                context.getTemperature(),
+                context.getAirQuality()
+        ));
+        debugLogs.add(String.format(
+                "Persona: congestion=%s, mbti=%s",
+                context.getCongestion(),
+                context.getUserMbti()
+        ));
+        if (context.hasUserTags()) {
+            debugLogs.add("User constraints: " + recommendationTagConflictService.normalizeUserTags(context.getUserTags()));
         }
 
-        // 3. 랜덤으로 미션 선택
-        Collections.shuffle(missionCandidates);
-        MissionTemplate selectedMission = missionCandidates.get(0);
+        RecommendationPreferenceService.UserPreferenceProfile preferenceProfile =
+                request.userId() != null ? recommendationPreferenceService.buildProfile(request.userId()) : null;
+        appendPreferenceProfileDebug(debugLogs, request.userId(), preferenceProfile);
 
-        debugLogs.add(String.format("✅ 선택된 미션: %s (카테고리: %s, 난이도: %s)",
-                selectedMission.getTitle(), selectedMission.getCategory(), selectedMission.getDifficultyLevel()));
+        MissionFilterResult missionResult = filterMissions(context, request.forcedCategory(), debugLogs);
+        List<SimulationResponse.StageInfo> stages = new ArrayList<>(missionResult.stages());
 
-        // 4. 장소 필터링 (dev-console: isPlaceRequired 와 무관하게 항상 조회)
+        if (missionResult.candidates().isEmpty()) {
+            debugLogs.add("No mission candidates matched the current simulation conditions.");
+            stages.add(buildFinalSelectionStage(List.of(), null, List.of(), null, false));
+
+            return new SimulationResponse(
+                    null,
+                    null,
+                    debugLogs,
+                    stages,
+                    missionResult.totalCount(),
+                    0,
+                    0,
+                    0,
+                    List.of(),
+                    List.of()
+            );
+        }
+
+        MissionRecommendationSelectionService.MissionSelectionResult missionSelectionResult =
+                missionRecommendationSelectionService.selectMission(missionResult.candidates(), preferenceProfile);
+        List<MissionTemplate> missionCandidates = missionSelectionResult.rankedCandidates().stream()
+                .map(MissionRecommendationSelectionService.MissionCandidateScore::mission)
+                .collect(Collectors.toList());
+        MissionTemplate selectedMission = missionSelectionResult.selected().mission();
+        stages.add(buildMissionSelectionStage(missionSelectionResult, preferenceProfile, request.userId()));
+        debugLogs.add(String.format(
+                "Selected mission: %s (%s, %s, weight=%.2f, point=%.3f/%.3f)",
+                selectedMission.getTitle(),
+                selectedMission.getCategory(),
+                selectedMission.getDifficultyLevel(),
+                missionSelectionResult.selected().categoryWeight(),
+                missionSelectionResult.selectedPoint(),
+                missionSelectionResult.totalWeight()
+        ));
+
+        boolean isPlaceRequired = Boolean.TRUE.equals(selectedMission.getIsPlaceRequired());
+        debugLogs.add(isPlaceRequired
+                ? "Selected mission requires a place. Running place pipeline."
+                : "Selected mission does not require a place. DevConsole still runs the place pipeline for inspection.");
+
+        PlaceFilterResult placeResult = filterPlaces(context, selectedMission.getCategory(), debugLogs);
+        List<Place> placeCandidates = new ArrayList<>(placeResult.candidates());
+        Place selectedPlace = null;
         SimulationResponse.PlaceInfo placeInfo = null;
-        List<Place> placeCandidates = new ArrayList<>();
-        int totalPlaceCandidates = 0;
-        int filteredPlaceCandidates = 0;
-
-        boolean isPlaceRequired = selectedMission.getIsPlaceRequired() != null && selectedMission.getIsPlaceRequired();
-        if (isPlaceRequired) {
-            debugLogs.add("🏠 장소가 필요한 미션 - 장소 필터링 시작");
-        } else {
-            debugLogs.add("🌍 장소 불필요 미션이지만, dev-console에서 전체 장소도 함께 조회합니다");
-        }
-
-        placeCandidates = filterPlaces(context, selectedMission.getCategory(), debugLogs);
-        totalPlaceCandidates = placeCandidates.size();
 
         if (!placeCandidates.isEmpty()) {
-            Collections.shuffle(placeCandidates);
-            Place selectedPlace = placeCandidates.get(0);
-            filteredPlaceCandidates = placeCandidates.size();
-
+            PlaceRecommendationScoringService.PlaceSelectionResult placeSelectionResult =
+                    placeRecommendationScoringService.selectTopPlace(
+                            placeCandidates,
+                            new PlaceRecommendationScoringService.PlaceRankingContext(
+                                    selectedMission.getCategory(),
+                                    context.getUserTags(),
+                                    context.getLatitude(),
+                                    context.getLongitude(),
+                                    context.getSearchRadius(),
+                                    context,
+                                    preferenceProfile
+                            )
+                    );
+            selectedPlace = placeSelectionResult.selected() != null
+                    ? placeSelectionResult.selected().place()
+                    : null;
             placeInfo = SimulationResponse.PlaceInfo.from(selectedPlace);
-
-            debugLogs.add(String.format("✅ 선택된 장소: %s (카테고리: %s)",
-                    selectedPlace.getName(), selectedPlace.getCategory()));
+            debugLogs.add(String.format(
+                    "Selected place: %s (%s, score=%.1f, tieBreak=%s)",
+                    selectedPlace.getName(),
+                    selectedPlace.getCategory(),
+                    placeSelectionResult.selected().totalScore(),
+                    placeSelectionResult.tieBreakApplied()
+            ));
         } else {
-            debugLogs.add("❌ 조건에 맞는 장소를 찾을 수 없습니다.");
+            debugLogs.add(isPlaceRequired
+                    ? "No place candidates survived the pipeline for the selected mission."
+                    : "No place candidates survived the pipeline.");
         }
 
-        // 5. 전체 미션 목록 변환
+        stages.addAll(placeResult.stages());
+        stages.add(buildFinalSelectionStage(
+                missionCandidates,
+                selectedMission,
+                placeCandidates,
+                selectedPlace,
+                isPlaceRequired
+        ));
+
         List<MissionTemplateResponse> allMissions = missionCandidates.stream()
                 .map(MissionTemplateResponse::from)
                 .collect(Collectors.toList());
-
-        // 6. 전체 장소 목록 변환 (허브 + 디테일 통합)
         List<SimulationResponse.PlaceInfo> allPlaces = placeCandidates.stream()
                 .map(SimulationResponse.PlaceInfo::from)
                 .collect(Collectors.toList());
 
-        // 7. 응답 생성
-        MissionTemplateResponse missionResponse = MissionTemplateResponse.from(selectedMission);
-
-        log.info("=== God Mode Simulation 완료 ===");
+        log.info("=== God Mode Simulation complete ===");
         return new SimulationResponse(
-                missionResponse,
+                MissionTemplateResponse.from(selectedMission),
                 placeInfo,
                 debugLogs,
+                stages,
+                missionResult.totalCount(),
                 missionCandidates.size(),
-                missionCandidates.size(),
-                totalPlaceCandidates,
-                filteredPlaceCandidates,
+                placeResult.totalCount(),
+                placeCandidates.size(),
                 allMissions,
                 allPlaces
         );
     }
 
-    /**
-     * 미션 필터링 로직
-     */
-    private List<MissionTemplate> filterMissions(
+    private MissionFilterResult filterMissions(
             EnvironmentContext context,
             MissionCategory forcedCategory,
-            List<String> debugLogs) {
-
-        // 1. 시간대 분석
+            List<String> debugLogs
+    ) {
+        List<SimulationResponse.StageInfo> stages = new ArrayList<>();
+        List<MissionTemplate> allMissions = missionTemplateRepository.findAll();
         List<TimeOfDay> targetTimes = analyzeTimeOfDay(context, debugLogs);
-
-        // 2. 장소 타입 분석 (날씨 기반)
         List<LocationType> targetLocations = analyzeLocation(context, debugLogs);
 
-        // 3. 카테고리 강제 지정 여부
-        if (forcedCategory != null) {
-            debugLogs.add(String.format("🎯 카테고리 강제 지정: %s", forcedCategory));
-        }
+        List<SimulationResponse.ReasonInfo> baseReasons = new ArrayList<>();
+        List<MissionTemplate> scopedMissions = allMissions;
 
-        // 4. 미션 후보 조회
-        List<MissionTemplate> candidates;
         if (forcedCategory != null) {
-            // 카테고리가 강제된 경우, 전체 미션에서 필터링
-            candidates = missionTemplateRepository.findAll().stream()
-                    .filter(m -> m.getCategory() == forcedCategory)
-                    .filter(m -> targetTimes.contains(m.getTimeOfDay()))
-                    .filter(m -> targetLocations.contains(m.getLocationType()))
+            scopedMissions = allMissions.stream()
+                    .filter(mission -> mission.getCategory() == forcedCategory)
                     .collect(Collectors.toList());
-        } else {
-            // 일반 경우
-            candidates = missionTemplateRepository.findAllByTimeOfDayInAndLocationTypeIn(
-                    targetTimes, targetLocations);
+            baseReasons.add(reason(
+                    "FORCED_CATEGORY",
+                    allMissions.size(),
+                    scopedMissions.size(),
+                    "forcedCategory=" + forcedCategory
+            ));
+            debugLogs.add("Forced mission category applied: " + forcedCategory);
         }
 
-        debugLogs.add(String.format("📋 조건에 맞는 미션 후보: %d개", candidates.size()));
+        List<MissionTemplate> timeLocationCandidates = scopedMissions.stream()
+                .filter(mission -> targetTimes.contains(mission.getTimeOfDay()))
+                .filter(mission -> targetLocations.contains(mission.getLocationType()))
+                .collect(Collectors.toList());
 
-        // 5. 시간대별 추가 필터링
-        candidates = applyTimeFilters(candidates, context, debugLogs);
+        baseReasons.add(reason(
+                "TIME_LOCATION_MATCH",
+                scopedMissions.size(),
+                timeLocationCandidates.size(),
+                "times=" + targetTimes + ", locations=" + targetLocations
+        ));
+        debugLogs.add("Mission candidates after time/location filter: " + timeLocationCandidates.size());
 
-        debugLogs.add(String.format("✅ 필터링 후 미션 후보: %d개", candidates.size()));
+        stages.add(stage(
+                "MISSION_TIME_LOCATION_FILTER",
+                "Mission: time/location filter",
+                "MISSION",
+                allMissions.size(),
+                timeLocationCandidates.size(),
+                baseReasons,
+                List.of()
+        ));
 
-        return candidates;
+        FilterOutcome<MissionTemplate> contextFiltered = applyMissionContextFilters(
+                timeLocationCandidates,
+                context,
+                debugLogs
+        );
+
+        stages.add(stage(
+                "MISSION_CONTEXT_FILTER",
+                "Mission: schedule/tag filter",
+                "MISSION",
+                timeLocationCandidates.size(),
+                contextFiltered.candidates().size(),
+                contextFiltered.reasons(),
+                List.of()
+        ));
+
+        return new MissionFilterResult(
+                contextFiltered.candidates(),
+                allMissions.size(),
+                stages
+        );
     }
 
-    /**
-     * 시간대 분석
-     */
     private List<TimeOfDay> analyzeTimeOfDay(EnvironmentContext context, List<String> debugLogs) {
-        int hour = context.getHour();
-        List<TimeOfDay> times = new ArrayList<>();
-
-        if (hour >= 6 && hour < 12) {
-            times.add(TimeOfDay.MORNING);
-            debugLogs.add("⏰ 시간대: 아침 (MORNING)");
-        } else if (hour >= 12 && hour < 18) {
-            times.add(TimeOfDay.AFTERNOON);
-            debugLogs.add("⏰ 시간대: 오후 (AFTERNOON)");
-        } else {
-            times.add(TimeOfDay.NIGHT);
-            debugLogs.add("⏰ 시간대: 밤 (NIGHT)");
-        }
-
-        times.add(TimeOfDay.ANY);
+        List<TimeOfDay> times = recommendationSupportService.resolveTimeOfDayOptions(context);
+        TimeOfDay primaryTime = times.stream()
+                .filter(time -> time != TimeOfDay.ANY)
+                .findFirst()
+                .orElse(TimeOfDay.ANY);
+        debugLogs.add("Time of day resolved to " + primaryTime + ".");
         return times;
     }
 
-    /**
-     * 장소 타입 분석 (날씨 기반)
-     */
     private List<LocationType> analyzeLocation(EnvironmentContext context, List<String> debugLogs) {
-        List<LocationType> locations = new ArrayList<>();
+        List<LocationType> locations = recommendationSupportService.resolveLocationTypes(context);
 
         if (context.isOutdoorRestricted()) {
-            // 야외 활동 제한 (비/눈/극한 기온/최악의 미세먼지)
-            locations.add(LocationType.INDOOR);
-            locations.add(LocationType.ANY);
-            debugLogs.add("🌧️ 야외 활동 제한 - 실내 장소만 추천 (비/눈/극한기온/미세먼지)");
+            debugLogs.add("Outdoor activity restricted. Indoor-only mission scope enabled.");
         } else if (context.isIndoorPreferred()) {
-            // 실내 선호 (미세먼지 나쁨)
-            locations.add(LocationType.INDOOR);
-            locations.add(LocationType.ANY);
-            debugLogs.add("🏠 실내 장소 선호 - 미세먼지 나쁨");
+            debugLogs.add("Indoor preference enabled by weather or air quality.");
         } else {
-            // 모든 장소 가능
-            locations.add(LocationType.INDOOR);
-            locations.add(LocationType.OUTDOOR);
-            locations.add(LocationType.ANY);
-            debugLogs.add("☀️ 모든 장소 타입 가능");
+            debugLogs.add("Indoor and outdoor mission scope enabled.");
         }
 
         return locations;
     }
 
-    /**
-     * 시간대별 추가 필터링
-     */
-    private List<MissionTemplate> applyTimeFilters(
+    private FilterOutcome<MissionTemplate> applyMissionContextFilters(
             List<MissionTemplate> candidates,
             EnvironmentContext context,
-            List<String> debugLogs) {
-
+            List<String> debugLogs
+    ) {
         List<MissionTemplate> filtered = new ArrayList<>(candidates);
+        List<SimulationResponse.ReasonInfo> reasons = new ArrayList<>();
 
-        // 월요일: 도서관 제외 (CULTURE 카테고리 중 도서관 관련)
         if (context.isMonday()) {
-            int beforeSize = filtered.size();
+            int before = filtered.size();
             filtered = filtered.stream()
-                    .filter(m -> !(m.getCategory() == MissionCategory.CULTURE &&
-                            (m.getTitle().contains("도서관") || m.getDescription().contains("도서관"))))
+                    .filter(mission -> !(mission.getCategory() == MissionCategory.CULTURE
+                            && (mission.getTitle().contains("도서관")
+                            || mission.getDescription().contains("도서관"))))
                     .collect(Collectors.toList());
+            int after = filtered.size();
 
-            if (beforeSize > filtered.size()) {
-                debugLogs.add(String.format("📅 월요일 - 도서관 미션 제외 (%d개 제외됨)",
-                        beforeSize - filtered.size()));
+            reasons.add(reason(
+                    "MONDAY_LIBRARY_EXCLUSION",
+                    before,
+                    after,
+                    "Exclude library-style culture missions on Monday"
+            ));
+
+            if (before > after) {
+                debugLogs.add("Monday rule removed " + (before - after) + " mission(s).");
             }
         }
 
-        // 밤 10시 이후: 전시/공연 제외
         if (context.isLateNight()) {
-            int beforeSize = filtered.size();
+            int before = filtered.size();
             filtered = filtered.stream()
-                    .filter(m -> !(m.getCategory() == MissionCategory.CULTURE &&
-                            (m.getTitle().contains("전시") || m.getTitle().contains("공연"))))
+                    .filter(mission -> !(mission.getCategory() == MissionCategory.CULTURE
+                            && (mission.getTitle().contains("전시")
+                            || mission.getTitle().contains("공연"))))
                     .collect(Collectors.toList());
+            int after = filtered.size();
 
-            if (beforeSize > filtered.size()) {
-                debugLogs.add(String.format("🌙 밤 10시 이후 - 전시/공연 미션 제외 (%d개 제외됨)",
-                        beforeSize - filtered.size()));
+            reasons.add(reason(
+                    "LATE_NIGHT_CULTURE_EXCLUSION",
+                    before,
+                    after,
+                    "Exclude exhibition/performance missions after 22:00"
+            ));
+
+            if (before > after) {
+                debugLogs.add("Late-night rule removed " + (before - after) + " mission(s).");
             }
         }
 
-        return filtered;
+        FilterOutcome<MissionTemplate> tagFiltered = applyUserTagConflictFilter(
+                filtered,
+                context.getUserTags(),
+                MissionTemplate::getTags,
+                "Mission",
+                debugLogs
+        );
+        filtered = tagFiltered.candidates();
+        reasons.addAll(tagFiltered.reasons());
+
+        if (reasons.isEmpty()) {
+            reasons.add(reason(
+                    "NO_MISSION_CONTEXT_FILTER",
+                    filtered.size(),
+                    filtered.size(),
+                    "No additional mission context rules applied"
+            ));
+        }
+
+        debugLogs.add("Mission candidates after context filter: " + filtered.size());
+        return new FilterOutcome<>(filtered, reasons);
     }
 
-    /**
-     * 장소 필터링 로직
-     */
-    private List<Place> filterPlaces(
+    private PlaceFilterResult filterPlaces(
             EnvironmentContext context,
             MissionCategory missionCategory,
-            List<String> debugLogs) {
-
-        // 1. 카테고리 매핑
+            List<String> debugLogs
+    ) {
+        List<SimulationResponse.StageInfo> stages = new ArrayList<>();
+        List<Place> activePlaces = placeRepository.findByIsActiveTrue();
         List<MissionCategory> targetCategories = getCategoryMapping(missionCategory);
-        debugLogs.add(String.format("🗂️ 매칭 카테고리: %s", targetCategories));
 
-        // 2. 카테고리별 장소 검색
-        List<Place> allPlaces = new ArrayList<>();
+        debugLogs.add("Mapped place categories: " + targetCategories);
+
+        List<Place> categoryScopedPlaces = loadActivePlacesForCategories(targetCategories);
+        stages.add(stage(
+                "PLACE_CATEGORY_MAPPING",
+                "Place: category mapping",
+                "PLACE",
+                activePlaces.size(),
+                categoryScopedPlaces.size(),
+                List.of(reason(
+                        "CATEGORY_MAPPING",
+                        activePlaces.size(),
+                        categoryScopedPlaces.size(),
+                        "mappedCategories=" + targetCategories
+                )),
+                List.of()
+        ));
+
+        int distanceBaseCount = categoryScopedPlaces.size();
+        List<SimulationResponse.ReasonInfo> distanceReasons = new ArrayList<>();
+        List<Place> distanceCandidates;
+
+        if (categoryScopedPlaces.isEmpty()) {
+            distanceBaseCount = activePlaces.size();
+            distanceReasons.add(reason(
+                    "CATEGORY_FALLBACK_ALL_ACTIVE",
+                    0,
+                    activePlaces.size(),
+                    "No active places found in mapped categories"
+            ));
+            debugLogs.add("Category mapping returned 0 active places. Falling back to all active places.");
+            distanceCandidates = placeRepository.findAllWithDistanceAndRadius(
+                    context.getLatitude(),
+                    context.getLongitude(),
+                    context.getSearchRadius()
+            );
+        } else {
+            distanceCandidates = queryPlacesByCategoriesWithinRadius(targetCategories, context);
+        }
+
+        distanceCandidates = deduplicatePlaces(distanceCandidates);
+        distanceReasons.add(reason(
+                "DISTANCE_RADIUS_FILTER",
+                distanceBaseCount,
+                distanceCandidates.size(),
+                "radiusKm=" + context.getSearchRadius()
+        ));
+        debugLogs.add("Place candidates after distance filter: " + distanceCandidates.size());
+
+        stages.add(stage(
+                "PLACE_DISTANCE_FILTER",
+                "Place: distance filter",
+                "PLACE",
+                distanceBaseCount,
+                distanceCandidates.size(),
+                distanceReasons,
+                List.of()
+        ));
+
+        FilterOutcome<Place> keywordFiltered = applyKeywordFilter(distanceCandidates, debugLogs);
+        stages.add(stage(
+                "PLACE_KEYWORD_FILTER",
+                "Place: content keyword filter",
+                "PLACE",
+                distanceCandidates.size(),
+                keywordFiltered.candidates().size(),
+                keywordFiltered.reasons(),
+                List.of()
+        ));
+
+        FilterOutcome<Place> scheduleFiltered = applyPerformanceFilter(
+                keywordFiltered.candidates(),
+                context.getTargetDateTime(),
+                LocalDate.now(),
+                debugLogs
+        );
+        stages.add(stage(
+                "PLACE_SCHEDULE_FILTER",
+                "Place: performance/schedule filter",
+                "PLACE",
+                keywordFiltered.candidates().size(),
+                scheduleFiltered.candidates().size(),
+                scheduleFiltered.reasons(),
+                List.of()
+        ));
+
+        FilterOutcome<Place> personalized = applyPlacePersonalization(
+                scheduleFiltered.candidates(),
+                context,
+                debugLogs
+        );
+        stages.add(stage(
+                "PLACE_PERSONALIZATION_FILTER",
+                "Place: tag/personalization filter",
+                "PLACE",
+                scheduleFiltered.candidates().size(),
+                personalized.candidates().size(),
+                personalized.reasons(),
+                List.of()
+        ));
+
+        return new PlaceFilterResult(
+                personalized.candidates(),
+                activePlaces.size(),
+                stages
+        );
+    }
+
+    private List<Place> loadActivePlacesForCategories(List<MissionCategory> targetCategories) {
+        LinkedHashMap<Long, Place> deduped = new LinkedHashMap<>();
         for (MissionCategory category : targetCategories) {
-            List<Place> places = placeRepository.findByCategoryWithDistance(
+            for (Place place : placeRepository.findByCategoryAndIsActiveTrue(category)) {
+                deduped.putIfAbsent(place.getId(), place);
+            }
+        }
+        return new ArrayList<>(deduped.values());
+    }
+
+    private List<Place> queryPlacesByCategoriesWithinRadius(
+            List<MissionCategory> targetCategories,
+            EnvironmentContext context
+    ) {
+        List<Place> places = new ArrayList<>();
+        for (MissionCategory category : targetCategories) {
+            places.addAll(placeRepository.findByCategoryWithDistanceAndRadius(
                     category,
                     context.getLatitude(),
-                    context.getLongitude()
-            );
-            allPlaces.addAll(places);
+                    context.getLongitude(),
+                    context.getSearchRadius()
+            ));
         }
+        return places;
+    }
 
-        debugLogs.add(String.format("📍 반경 %dkm 내 장소: %d개",
-                context.getSearchRadius(), allPlaces.size()));
-
-        // 3. Fallback - 카테고리 무관 검색
-        if (allPlaces.isEmpty()) {
-            debugLogs.add("⚠️ 카테고리 매칭 장소 없음 - 전체 장소에서 검색");
-            allPlaces = placeRepository.findAllWithDistance(
-                    context.getLatitude(),
-                    context.getLongitude()
-            );
-            debugLogs.add(String.format("📍 Fallback - 전체 장소: %d개", allPlaces.size()));
-        }
-
-        // 4. ContentFilteringService를 사용한 키워드 필터링
-        int beforeFilterSize = allPlaces.size();
-        allPlaces = allPlaces.stream()
-                .filter(p -> !contentFilteringService.shouldExclude(
-                        p.getName(), p.getAddress(), p.getTags()))
+    private FilterOutcome<Place> applyKeywordFilter(List<Place> candidates, List<String> debugLogs) {
+        int before = candidates.size();
+        List<Place> filtered = candidates.stream()
+                .filter(place -> !contentFilteringService.shouldExclude(
+                        place.getName(),
+                        place.getAddress(),
+                        place.getTags()
+                ))
                 .collect(Collectors.toList());
-        int excludedByKeyword = beforeFilterSize - allPlaces.size();
-        if (excludedByKeyword > 0) {
-            debugLogs.add(String.format("🚫 키워드 필터: %d개 → %d개 (제외 %d개)",
-                    beforeFilterSize, allPlaces.size(), excludedByKeyword));
+
+        int after = filtered.size();
+        if (before > after) {
+            debugLogs.add("Keyword filter removed " + (before - after) + " place(s).");
         }
 
-        // 5. 공연/행사 기간 필터링 + 종료 공연 즉시 비활성화
-        LocalDate simulationDate = context.getTargetDateTime().toLocalDate();
-        LocalDate today = LocalDate.now();
-        allPlaces = applyPerformanceFilter(allPlaces, simulationDate, today, debugLogs);
+        return new FilterOutcome<>(
+                filtered,
+                List.of(reason(
+                        "CONTENT_KEYWORD_FILTER",
+                        before,
+                        after,
+                        "Application-level keyword exclusion"
+                ))
+        );
+    }
 
-        // 6. 맑은 날 + 미세먼지 좋음 → 도서관 전체 배제 (야외 활동 유도)
+    private FilterOutcome<Place> applyPlacePersonalization(
+            List<Place> places,
+            EnvironmentContext context,
+            List<String> debugLogs
+    ) {
+        List<SimulationResponse.ReasonInfo> reasons = new ArrayList<>();
+        List<Place> current = new ArrayList<>(places);
+
+        FilterOutcome<Place> tagFiltered = applyUserTagConflictFilter(
+                current,
+                context.getUserTags(),
+                Place::getTags,
+                "Place",
+                debugLogs
+        );
+        current = tagFiltered.candidates();
+        reasons.addAll(tagFiltered.reasons());
+
         if (context.getWeather() == Weather.SUNNY && context.getAirQuality() == AirQuality.GOOD) {
-            int beforeSize = allPlaces.size();
-            allPlaces = allPlaces.stream()
-                    .filter(p -> p.getDataSource() != DataSource.LIBRARY)
+            int before = current.size();
+            current = current.stream()
+                    .filter(place -> place.getDataSource() != DataSource.LIBRARY)
                     .collect(Collectors.toList());
-            int excluded = beforeSize - allPlaces.size();
-            if (excluded > 0) {
-                debugLogs.add(String.format("📚 맑음+미세먼지좋음 → 도서관 %d개 배제 (%d개 → %d개)",
-                        excluded, beforeSize, allPlaces.size()));
+            int after = current.size();
+
+            reasons.add(reason(
+                    "EXCLUDE_LIBRARY_ON_GOOD_WEATHER",
+                    before,
+                    after,
+                    "weather=SUNNY and airQuality=GOOD"
+            ));
+
+            if (before > after) {
+                debugLogs.add("Sunny/good-air preference removed " + (before - after) + " library place(s).");
             }
         }
 
-        // 7. 혼잡도 기반 필터링 (조용한 장소 선호)
         if (context.prefersQuietPlace()) {
-            int beforeSize = allPlaces.size();
-            List<Place> quietPlaces = allPlaces.stream()
-                    .filter(p -> p.getTags() != null && p.getTags().contains("QUIET"))
+            int before = current.size();
+            List<Place> quietPlaces = current.stream()
+                    .filter(place -> place.getTags() != null && place.getTags().contains("QUIET"))
                     .collect(Collectors.toList());
 
             if (!quietPlaces.isEmpty()) {
-                allPlaces = quietPlaces;
-                debugLogs.add(String.format("🤫 혼잡도 높음 - 조용한 장소 우선 (%d개 → %d개)",
-                        beforeSize, allPlaces.size()));
+                current = quietPlaces;
+                reasons.add(reason(
+                        "PREFER_QUIET_TAG",
+                        before,
+                        current.size(),
+                        "congestion=HIGH prefers QUIET-tagged places"
+                ));
+                debugLogs.add("Quiet-place preference narrowed candidates to " + current.size() + " place(s).");
+            } else {
+                reasons.add(reason(
+                        "PREFER_QUIET_TAG_NO_MATCH",
+                        before,
+                        before,
+                        "congestion=HIGH but no QUIET-tagged places were available"
+                ));
             }
         }
 
-        // 8. DataSource별 가중치 기반 선택 (도서관 추천 빈도 억제)
-        allPlaces = applyDataSourceWeighting(allPlaces, context, debugLogs);
+        FilterOutcome<Place> weighted = applyDataSourceWeighting(current, context, debugLogs);
+        current = weighted.candidates();
+        reasons.addAll(weighted.reasons());
 
-        return allPlaces;
+        if (reasons.isEmpty()) {
+            reasons.add(reason(
+                    "NO_PERSONALIZATION_CHANGE",
+                    places.size(),
+                    places.size(),
+                    "No personalization rules changed the place set"
+            ));
+        }
+
+        return new FilterOutcome<>(current, reasons);
     }
 
-    /**
-     * DataSource별 가중치 기반 장소 리밸런싱
-     *
-     * 도서관(LIBRARY)은 수적 우위(서울 200+개)로 인해 과다 추천되는 문제를 해결
-     * - 기본 가중치: 도서관 0.3 (30%), 공원 0.8 (80%), 기타 1.0 (100%)
-     * - 혼잡도 HIGH + MBTI I성향 → 도서관 가중치 보너스 (+0.3)
-     * - 혼잡도 LOW + MBTI E성향 → 도서관 가중치 추가 감소 (-0.1)
-     *
-     * 가중치를 "선택 확률"로 변환하여 가중치가 높은 장소가 리스트 앞쪽에 오도록 정렬 후
-     * 확률 기반으로 장소를 선별합니다.
-     */
-    private List<Place> applyDataSourceWeighting(
+    private <T> FilterOutcome<T> applyUserTagConflictFilter(
+            List<T> candidates,
+            String userTags,
+            Function<T, String> targetTagsExtractor,
+            String scope,
+            List<String> debugLogs
+    ) {
+        RecommendationTagConflictService.TagConflictFilterResult<T> result =
+                recommendationTagConflictService.filterConflicts(candidates, userTags, targetTagsExtractor);
+
+        if (result.normalizedUserTags().isEmpty()) {
+            return new FilterOutcome<>(candidates, List.of());
+        }
+
+        debugLogs.add(scope + " constraints applied: " + result.normalizedUserTags());
+
+        if (result.steps().isEmpty()) {
+            return new FilterOutcome<>(
+                    candidates,
+                    List.of(reason(
+                            "USER_TAG_CONFLICT_FILTER_SKIPPED",
+                            candidates.size(),
+                            candidates.size(),
+                            "userTags=" + result.normalizedUserTags() + ", no supported conflict rule matched"
+                    ))
+            );
+        }
+
+        int removedCount = candidates.size() - result.candidates().size();
+        if (removedCount > 0) {
+            debugLogs.add(scope + " tag conflict filter removed " + removedCount + " candidate(s).");
+        }
+
+        List<SimulationResponse.ReasonInfo> reasons = result.steps().stream()
+                .map(step -> reason(
+                        step.reasonCode(),
+                        step.beforeCount(),
+                        step.afterCount(),
+                        step.detail()
+                ))
+                .collect(Collectors.toList());
+
+        return new FilterOutcome<>(result.candidates(), reasons);
+    }
+
+    private FilterOutcome<Place> applyDataSourceWeighting(
             List<Place> places,
             EnvironmentContext context,
-            List<String> debugLogs) {
+            List<String> debugLogs
+    ) {
+        if (places.isEmpty()) {
+            return new FilterOutcome<>(
+                    places,
+                    List.of(reason(
+                            "DATASOURCE_WEIGHTING_SKIPPED",
+                            0,
+                            0,
+                            "No place candidates available for weighting"
+                    ))
+            );
+        }
 
-        if (places.isEmpty()) return places;
-
-        // 1. DataSource별 기본 가중치 설정
         Map<DataSource, Double> weights = new HashMap<>();
-        weights.put(DataSource.LIBRARY, 0.3);         // 도서관: 기본 30%
-        weights.put(DataSource.SEOUL_PARK, 0.8);       // 공원: 기본 80%
-        weights.put(DataSource.KOPIS, 1.0);            // 공연: 100%
-        weights.put(DataSource.SEOUL_CULTURE, 1.0);    // 문화행사: 100%
-        weights.put(DataSource.SEOUL_RESERVATION, 1.0);// 공공예약: 100%
-        weights.put(DataSource.SEOUL_RESTAURANT, 1.0); // 음식점: 100%
-        weights.put(DataSource.MANUAL, 1.0);           // 수동: 100%
+        weights.put(DataSource.LIBRARY, 0.3);
+        weights.put(DataSource.SEOUL_PARK, 0.8);
+        weights.put(DataSource.KOPIS, 1.0);
+        weights.put(DataSource.SEOUL_CULTURE, 1.0);
+        weights.put(DataSource.SEOUL_RESERVATION, 1.0);
+        weights.put(DataSource.SEOUL_RESTAURANT, 1.0);
+        weights.put(DataSource.MANUAL, 1.0);
 
-        // 2. 혼잡도 + MBTI(I/E) 기반 도서관 가중치 조정
-        double libraryWeight = weights.get(DataSource.LIBRARY);
-        String mbti = context.getUserMbti();
-        boolean isIntrovert = mbti != null && mbti.toUpperCase().startsWith("I");
-        boolean isExtrovert = mbti != null && mbti.toUpperCase().startsWith("E");
-        Congestion congestion = context.getCongestion();
-
-        StringBuilder weightLog = new StringBuilder();
-        weightLog.append(String.format("📊 도서관 기본 가중치: %.1f", libraryWeight));
-
-        // 혼잡도 HIGH + I성향 → 조용한 곳 선호 → 도서관 가중치 보너스
-        if (congestion == Congestion.HIGH && isIntrovert) {
-            libraryWeight += 0.3;
-            weightLog.append(String.format(" → +0.3 (혼잡도 HIGH + I성향) = %.1f", libraryWeight));
-        }
-        // 혼잡도 MEDIUM + I성향 → 약간의 보너스
-        else if (congestion == Congestion.MEDIUM && isIntrovert) {
-            libraryWeight += 0.15;
-            weightLog.append(String.format(" → +0.15 (혼잡도 MEDIUM + I성향) = %.1f", libraryWeight));
-        }
-        // 혼잡도 LOW + E성향 → 활동적인 장소 선호 → 도서관 추가 감소
-        else if (congestion == Congestion.LOW && isExtrovert) {
-            libraryWeight -= 0.1;
-            libraryWeight = Math.max(0.1, libraryWeight); // 최소 10%
-            weightLog.append(String.format(" → -0.1 (혼잡도 LOW + E성향) = %.1f", libraryWeight));
-        }
-
+        double libraryWeight = recommendationSupportService.resolveLibrarySourceWeight(context);
         weights.put(DataSource.LIBRARY, libraryWeight);
-        debugLogs.add(weightLog.toString());
+        debugLogs.add(recommendationSupportService.describeLibrarySourceWeight(context));
 
-        // 3. DataSource별 장소 그룹핑
         Map<DataSource, List<Place>> groupedBySource = places.stream()
                 .collect(Collectors.groupingBy(
-                        p -> p.getDataSource() != null ? p.getDataSource() : DataSource.MANUAL));
+                        place -> place.getDataSource() != null ? place.getDataSource() : DataSource.MANUAL
+                ));
 
-        // 4. 가중치 기반 리밸런싱: 각 그룹에서 가중치 비율만큼 장소 선별
         List<Place> rebalanced = new ArrayList<>();
-        int totalSize = places.size();
-
         for (Map.Entry<DataSource, List<Place>> entry : groupedBySource.entrySet()) {
             DataSource source = entry.getKey();
             List<Place> sourcePlaces = new ArrayList<>(entry.getValue());
             double weight = weights.getOrDefault(source, 1.0);
-
-            // 가중치 적용된 최대 개수 = 원본 개수 * 가중치 (최소 1개)
             int maxCount = Math.max(1, (int) Math.round(sourcePlaces.size() * weight));
 
-            // 셔플 후 가중치만큼만 선별
             Collections.shuffle(sourcePlaces);
             List<Place> selected = sourcePlaces.subList(0, Math.min(maxCount, sourcePlaces.size()));
             rebalanced.addAll(selected);
 
             if (selected.size() < sourcePlaces.size()) {
-                debugLogs.add(String.format("  ⚖️ %s: %d개 → %d개 (가중치 %.1f)",
-                        source, sourcePlaces.size(), selected.size(), weight));
+                debugLogs.add(String.format(
+                        "Datasource weighting: %s %d -> %d (weight %.1f)",
+                        source,
+                        sourcePlaces.size(),
+                        selected.size(),
+                        weight
+                ));
             }
         }
 
-        if (rebalanced.size() != places.size()) {
-            debugLogs.add(String.format("📊 가중치 리밸런싱: %d개 → %d개", places.size(), rebalanced.size()));
-        }
-
-        // 최종 셔플
         Collections.shuffle(rebalanced);
-        return rebalanced;
+        if (rebalanced.size() != places.size()) {
+            debugLogs.add(String.format(
+                    "Datasource weighting changed place count: %d -> %d",
+                    places.size(),
+                    rebalanced.size()
+            ));
+        }
+
+        return new FilterOutcome<>(
+                rebalanced,
+                List.of(reason(
+                        "DATASOURCE_WEIGHTING",
+                        places.size(),
+                        rebalanced.size(),
+                        String.format("libraryWeight=%.2f", libraryWeight)
+                ))
+        );
     }
 
-    /**
-     * 공연/행사 기간 필터링
-     * - performanceDetail이 있는 장소: 시뮬레이션 날짜가 공연 기간(startDate~endDate) 내인 것만 통과
-     * - endDate < 오늘: 공연이 이미 종료 → isActive=false로 즉시 비활성화
-     * - performanceDetail이 없는 장소(음식점, 카페 등): 필터 없이 통과
-     */
-    private List<Place> applyPerformanceFilter(
+    private FilterOutcome<Place> applyPerformanceFilter(
             List<Place> places,
-            LocalDate simulationDate,
+            LocalDateTime simulationDateTime,
             LocalDate today,
-            List<String> debugLogs) {
+            List<String> debugLogs
+    ) {
+        PlaceScheduleFilterService.PlaceScheduleFilterResult scheduleResult =
+                placeScheduleFilterService.filterPlacesBySchedule(places, simulationDateTime, today);
 
-        int beforeSize = places.size();
-        int deactivatedCount = 0;
-        int expiredFilteredCount = 0;
-        int notYetStartedCount = 0;
+        int currentCount = scheduleResult.beforeCount();
+        List<SimulationResponse.ReasonInfo> reasons = new ArrayList<>();
 
-        List<Place> filtered = new ArrayList<>();
-
-        for (Place place : places) {
-            // 공연 detail이 없는 장소 (음식점, 카페, 공원 등) → 그대로 통과
-            if (place.getPerformanceDetail() == null) {
-                filtered.add(place);
-                continue;
-            }
-
-            LocalDate startDate = place.getPerformanceDetail().getStartDate();
-            LocalDate endDate = place.getPerformanceDetail().getEndDate();
-
-            // endDate가 오늘 이전 → 공연 완전 종료 → 즉시 비활성화
-            if (endDate != null && endDate.isBefore(today)) {
-                place.deactivate();
-                deactivatedCount++;
-                debugLogs.add(String.format("🚫 [비활성화] %s - 공연종료(%s), isActive=false 처리",
-                        place.getName(), endDate));
-                continue; // 필터에서 제외
-            }
-
-            // 시뮬레이션 날짜 기준 공연 기간 체크
-            boolean afterStart = (startDate == null || !simulationDate.isBefore(startDate));
-            boolean beforeEnd = (endDate == null || !simulationDate.isAfter(endDate));
-
-            if (afterStart && beforeEnd) {
-                // 시뮬레이션 날짜에 공연중 → 통과
-                filtered.add(place);
-            } else if (!afterStart) {
-                // 아직 시작 전
-                notYetStartedCount++;
-            } else {
-                // 시뮬레이션 날짜 기준 종료 (실제 오늘과 별개)
-                expiredFilteredCount++;
-            }
+        if (scheduleResult.deactivatedCount() > 0) {
+            reasons.add(reason(
+                    "DEACTIVATE_EXPIRED_PERFORMANCE",
+                    currentCount,
+                    currentCount - scheduleResult.deactivatedCount(),
+                    "expiredBeforeToday=" + scheduleResult.deactivatedCount()
+            ));
+            currentCount -= scheduleResult.deactivatedCount();
         }
 
-        int totalExcluded = beforeSize - filtered.size();
-        if (totalExcluded > 0) {
-            debugLogs.add(String.format("🎭 공연 기간 필터: %d개 → %d개 (제외 %d개: 비활성화 %d, 기간외 %d, 미시작 %d)",
-                    beforeSize, filtered.size(), totalExcluded,
-                    deactivatedCount, expiredFilteredCount, notYetStartedCount));
-        }
-        if (deactivatedCount > 0) {
-            debugLogs.add(String.format("⚡ 종료 공연 %d건 즉시 비활성화 완료 (isActive=false)", deactivatedCount));
+        if (scheduleResult.notStartedCount() > 0) {
+            reasons.add(reason(
+                    "EXCLUDE_NOT_YET_STARTED",
+                    currentCount,
+                    currentCount - scheduleResult.notStartedCount(),
+                    "startDate after targetDateTime: " + scheduleResult.notStartedCount()
+            ));
+            currentCount -= scheduleResult.notStartedCount();
         }
 
-        return filtered;
+        if (scheduleResult.expiredCount() > 0) {
+            reasons.add(reason(
+                    "EXCLUDE_OUTSIDE_SIMULATION_DATE",
+                    currentCount,
+                    currentCount - scheduleResult.expiredCount(),
+                    "endDate before targetDateTime: " + scheduleResult.expiredCount()
+            ));
+            currentCount -= scheduleResult.expiredCount();
+        }
+
+        if (scheduleResult.closedDayCount() > 0) {
+            reasons.add(reason(
+                    "EXCLUDE_CLOSED_DAY",
+                    currentCount,
+                    currentCount - scheduleResult.closedDayCount(),
+                    "closedDays matched targetDateTime: " + scheduleResult.closedDayCount()
+            ));
+            currentCount -= scheduleResult.closedDayCount();
+        }
+
+        if (scheduleResult.outsideOperatingHoursCount() > 0) {
+            reasons.add(reason(
+                    "EXCLUDE_OUTSIDE_OPERATING_HOURS",
+                    currentCount,
+                    currentCount - scheduleResult.outsideOperatingHoursCount(),
+                    "operatingTime excluded targetDateTime: " + scheduleResult.outsideOperatingHoursCount()
+            ));
+            currentCount -= scheduleResult.outsideOperatingHoursCount();
+        }
+
+        if (scheduleResult.unavailableOperationInfoCount() > 0) {
+            reasons.add(reason(
+                    "EXCLUDE_CLEARLY_UNAVAILABLE_OPERATION_INFO",
+                    currentCount,
+                    currentCount - scheduleResult.unavailableOperationInfoCount(),
+                    "explicit unavailable operation info: " + scheduleResult.unavailableOperationInfoCount()
+            ));
+            currentCount -= scheduleResult.unavailableOperationInfoCount();
+        }
+
+        if (scheduleResult.unknownOperationalInfoCount() > 0) {
+            reasons.add(reason(
+                    "OPERATIONAL_INFO_FALLBACK",
+                    currentCount,
+                    currentCount,
+                    "unparsed operation info allowed: " + scheduleResult.unknownOperationalInfoCount()
+            ));
+        }
+
+        if (reasons.isEmpty()) {
+            reasons.add(reason(
+                    "PERFORMANCE_SCHEDULE_PASS",
+                    scheduleResult.beforeCount(),
+                    scheduleResult.beforeCount(),
+                    "No schedule or operational exclusions applied"
+            ));
+        } else {
+            debugLogs.add(String.format(
+                    "Performance/operation filter result: %d -> %d (deactivated=%d, notStarted=%d, outsideDate=%d, closedDay=%d, outsideHours=%d, unavailableStatus=%d, unknownOperationalInfo=%d)",
+                    scheduleResult.beforeCount(),
+                    scheduleResult.afterCount(),
+                    scheduleResult.deactivatedCount(),
+                    scheduleResult.notStartedCount(),
+                    scheduleResult.expiredCount(),
+                    scheduleResult.closedDayCount(),
+                    scheduleResult.outsideOperatingHoursCount(),
+                    scheduleResult.unavailableOperationInfoCount(),
+                    scheduleResult.unknownOperationalInfoCount()
+            ));
+            scheduleResult.exclusionDetails().stream()
+                    .limit(3)
+                    .forEach(detail -> debugLogs.add(String.format(
+                            "Operational exclusion: %s (%s) - %s",
+                            detail.placeName(),
+                            detail.reasonCode(),
+                            detail.detail()
+                    )));
+        }
+
+        return new FilterOutcome<>(scheduleResult.filteredPlaces(), reasons);
     }
 
-    /**
-     * 카테고리 매핑 (AppointmentService와 동일한 로직)
-     */
-    private List<MissionCategory> getCategoryMapping(MissionCategory missionCategory) {
-        List<MissionCategory> mapping = new ArrayList<>();
+    private List<Place> deduplicatePlaces(List<Place> places) {
+        LinkedHashMap<Long, Place> deduped = new LinkedHashMap<>();
+        for (Place place : places) {
+            deduped.putIfAbsent(place.getId(), place);
+        }
+        return new ArrayList<>(deduped.values());
+    }
 
-        switch (missionCategory) {
-            case ACTIVITY:
-                mapping.add(MissionCategory.ACTIVITY);
-                mapping.add(MissionCategory.CULTURE);
-                break;
-            case CULTURE:
-                mapping.add(MissionCategory.CULTURE);
-                break;
-            case RELAX:
-                mapping.add(MissionCategory.RELAX);
-                mapping.add(MissionCategory.CULTURE);
-                break;
-            case FOOD:
-                mapping.add(MissionCategory.FOOD);
-                mapping.add(MissionCategory.RELAX);
-                break;
-            default:
-                mapping.add(missionCategory);
-                break;
+    private SimulationResponse.StageInfo buildFinalSelectionStage(
+            List<MissionTemplate> missionCandidates,
+            MissionTemplate selectedMission,
+            List<Place> placeCandidates,
+            Place selectedPlace,
+            boolean isPlaceRequired
+    ) {
+        List<SimulationResponse.ReasonInfo> reasons = new ArrayList<>();
+        List<SimulationResponse.SelectionInfo> selections = new ArrayList<>();
+
+        reasons.add(reason(
+                selectedMission != null ? "SELECT_MISSION" : "NO_MISSION_SELECTED",
+                missionCandidates.size(),
+                selectedMission != null ? 1 : 0,
+                selectedMission != null ? selectedMission.getTitle() : "No mission selected"
+        ));
+
+        if (selectedMission != null) {
+            selections.add(selection(
+                    "MISSION",
+                    selectedMission.getId(),
+                    selectedMission.getTitle(),
+                    selectedMission.getCategory().name(),
+                    "finalSelected=true"
+            ));
         }
 
-        return mapping;
+        if (isPlaceRequired) {
+            reasons.add(reason(
+                    selectedPlace != null ? "SELECT_PLACE" : "PLACE_REQUIRED_NO_MATCH",
+                    placeCandidates.size(),
+                    selectedPlace != null ? 1 : 0,
+                    selectedPlace != null ? selectedPlace.getName() : "Mission required a place but none survived"
+            ));
+        } else {
+            reasons.add(reason(
+                    selectedPlace != null ? "SELECT_OPTIONAL_PLACE" : "PLACE_OPTIONAL_SKIPPED",
+                    placeCandidates.size(),
+                    selectedPlace != null ? 1 : 0,
+                    "Selected mission does not require a place"
+            ));
+        }
+
+        if (selectedPlace != null) {
+            selections.add(selection(
+                    "PLACE",
+                    selectedPlace.getId(),
+                    selectedPlace.getName(),
+                    selectedPlace.getCategory().name(),
+                    "finalSelected=true"
+            ));
+        }
+
+        return stage(
+                "FINAL_SELECTION",
+                "Final selection",
+                "RESULT",
+                missionCandidates.size() + placeCandidates.size(),
+                selections.size(),
+                reasons,
+                selections
+        );
+    }
+
+    private SimulationResponse.StageInfo stage(
+            String code,
+            String label,
+            String targetType,
+            int beforeCount,
+            int afterCount,
+            List<SimulationResponse.ReasonInfo> reasons,
+            List<SimulationResponse.SelectionInfo> selections
+    ) {
+        return new SimulationResponse.StageInfo(
+                code,
+                label,
+                targetType,
+                beforeCount,
+                afterCount,
+                List.copyOf(reasons),
+                List.copyOf(selections)
+        );
+    }
+
+    private SimulationResponse.ReasonInfo reason(
+            String code,
+            int beforeCount,
+            int afterCount,
+            String detail
+    ) {
+        return new SimulationResponse.ReasonInfo(code, beforeCount, afterCount, detail);
+    }
+
+    private SimulationResponse.SelectionInfo selection(
+            String type,
+            Long id,
+            String name,
+            String category,
+            String detail
+    ) {
+        return new SimulationResponse.SelectionInfo(type, id, name, category, detail);
+    }
+
+    private void appendPreferenceProfileDebug(
+            List<String> debugLogs,
+            Long userId,
+            RecommendationPreferenceService.UserPreferenceProfile preferenceProfile
+    ) {
+        if (userId == null) {
+            debugLogs.add("Preference profile: default mission weights (no userId supplied).");
+            return;
+        }
+
+        if (preferenceProfile == null || !preferenceProfile.hasSignals()) {
+            debugLogs.add("Preference profile: userId=" + userId + " has no saved/liked/completed/cancelled signals.");
+            return;
+        }
+
+        debugLogs.add(String.format(
+                "Preference profile: userId=%d, signals=%d",
+                userId,
+                preferenceProfile.signals().size()
+        ));
+        preferenceProfile.signals().stream()
+                .limit(5)
+                .forEach(signal -> debugLogs.add(String.format(
+                        "Preference signal: %s/%s %s delta=%.2f (%d/%d)",
+                        signal.targetType(),
+                        signal.signalType(),
+                        signal.key(),
+                        signal.delta(),
+                        signal.count(),
+                        signal.totalCount()
+                )));
+    }
+
+    private SimulationResponse.StageInfo buildMissionSelectionStage(
+            MissionRecommendationSelectionService.MissionSelectionResult selectionResult,
+            RecommendationPreferenceService.UserPreferenceProfile preferenceProfile,
+            Long userId
+    ) {
+        int candidateCount = selectionResult.rankedCandidates().size();
+        List<SimulationResponse.ReasonInfo> reasons = new ArrayList<>();
+
+        if (userId == null) {
+            reasons.add(reason(
+                    "MISSION_WEIGHT_DEFAULT_PROFILE",
+                    candidateCount,
+                    candidateCount,
+                    "No userId supplied. Category weights default to 1.0."
+            ));
+        } else if (preferenceProfile == null || !preferenceProfile.hasSignals()) {
+            reasons.add(reason(
+                    "MISSION_WEIGHT_NO_SIGNALS",
+                    candidateCount,
+                    candidateCount,
+                    "userId=" + userId + " but no saved/liked/completed/cancelled signals were found."
+            ));
+        } else {
+            reasons.add(reason(
+                    "MISSION_WEIGHT_PROFILE_APPLIED",
+                    candidateCount,
+                    candidateCount,
+                    String.format(
+                            "userId=%d, signals=%d, topSignals=%s",
+                            userId,
+                            preferenceProfile.signals().size(),
+                            preferenceProfile.signals().stream()
+                                    .limit(3)
+                                    .map(signal -> signal.signalType() + ":" + signal.key() + "(" + signal.delta() + ")")
+                                    .collect(Collectors.joining(", "))
+                    )
+            ));
+        }
+
+        reasons.add(reason(
+                "MISSION_WEIGHTED_RANDOM_SELECTION",
+                candidateCount,
+                selectionResult.selected() != null ? 1 : 0,
+                String.format(
+                        "selectedPoint=%.3f,totalWeight=%.3f,randomFraction=%.3f,selectedMissionId=%s",
+                        selectionResult.selectedPoint(),
+                        selectionResult.totalWeight(),
+                        selectionResult.randomFraction(),
+                        selectionResult.selected() != null ? selectionResult.selected().mission().getId() : "none"
+                )
+        ));
+
+        Long selectedMissionId = selectionResult.selected() != null
+                ? selectionResult.selected().mission().getId()
+                : null;
+        List<SimulationResponse.SelectionInfo> selections = selectionResult.rankedCandidates().stream()
+                .limit(5)
+                .map(candidate -> selection(
+                        "MISSION_CANDIDATE",
+                        candidate.mission().getId(),
+                        candidate.mission().getTitle(),
+                        candidate.mission().getCategory().name(),
+                        String.format(
+                                "categoryWeight=%.2f%s",
+                                candidate.categoryWeight(),
+                                candidate.mission().getId() != null && candidate.mission().getId().equals(selectedMissionId)
+                                        ? ", selected=true"
+                                        : ""
+                        )
+                ))
+                .collect(Collectors.toList());
+
+        return stage(
+                "MISSION_WEIGHTED_SELECTION",
+                "Mission: weighted selection",
+                "MISSION",
+                candidateCount,
+                selectionResult.selected() != null ? 1 : 0,
+                reasons,
+                selections
+        );
+    }
+
+    private List<MissionCategory> getCategoryMapping(MissionCategory missionCategory) {
+        return recommendationSupportService.mapMissionToPlaceCategories(missionCategory);
+    }
+
+    private record MissionFilterResult(
+            List<MissionTemplate> candidates,
+            int totalCount,
+            List<SimulationResponse.StageInfo> stages
+    ) {
+    }
+
+    private record PlaceFilterResult(
+            List<Place> candidates,
+            int totalCount,
+            List<SimulationResponse.StageInfo> stages
+    ) {
+    }
+
+    private record FilterOutcome<T>(
+            List<T> candidates,
+            List<SimulationResponse.ReasonInfo> reasons
+    ) {
     }
 }

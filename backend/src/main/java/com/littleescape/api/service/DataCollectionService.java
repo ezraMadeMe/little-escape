@@ -550,14 +550,31 @@ public class DataCollectionService {
 
             MissionCategory category = determineCategoryFromCodeName(event.getCodeName());
             Boolean isFree = event.getIsFree() != null && "무료".equals(event.getIsFree());
+            LocalDate startDate = parseDate(event.getStartDate());
+            LocalDate endDate = parseDate(event.getEndDate());
+            String performanceState = resolvePerformanceState(null, startDate, endDate);
+            String eventUrl = event.getOrgLink() != null ? event.getOrgLink() : event.getHomepageAddr();
 
             if (existing.isPresent()) {
-                result.skipped++;  // 서울시 이벤트는 업데이트 로직 단순화
+                Place place = existing.get();
+                place.updateBasicInfo(
+                        event.getTitle(),
+                        event.getPlace(),
+                        eventUrl,
+                        latitude,
+                        longitude,
+                        category,
+                        event.getMainImg(),
+                        isFree,
+                        DataSource.SEOUL_CULTURE
+                );
+                syncPerformancePeriod(place, startDate, endDate, null, performanceState, event.getMainImg());
+                result.updated++;
             } else {
                 Place place = Place.builder()
                         .name(event.getTitle())
                         .address(event.getPlace())
-                        .url(event.getOrgLink() != null ? event.getOrgLink() : event.getHomepageAddr())
+                        .url(eventUrl)
                         .latitude(latitude)
                         .longitude(longitude)
                         .category(category)
@@ -565,7 +582,18 @@ public class DataCollectionService {
                         .dataSource(DataSource.SEOUL_CULTURE)
                         .externalId(externalId)
                         .isFree(isFree)
+                        .startDate(startDate)
+                        .endDate(endDate)
+                        .performanceState(performanceState)
+                        .isActive(endDate == null || !endDate.isBefore(LocalDate.now()))
                         .build();
+
+                place.setPerformanceDetail(PlaceDetailPerformance.builder()
+                        .startDate(startDate)
+                        .endDate(endDate)
+                        .ticketPrice(null)
+                        .performanceState(performanceState)
+                        .build());
 
                 placeRepository.save(place);
                 result.inserted++;
@@ -751,11 +779,6 @@ public class DataCollectionService {
             String externalId = event.getServiceId();
             Optional<Place> existing = placeRepository.findByExternalId(externalId);
 
-            if (existing.isPresent()) {
-                result.skipped++;
-                return;
-            }
-
             Double latitude = parseDouble(event.getLatitude());
             Double longitude = parseDouble(event.getLongitude());
 
@@ -767,10 +790,32 @@ public class DataCollectionService {
 
             Boolean isFree = "무료".equals(event.getPayType());
             MissionCategory category = determineCategoryFromClassName(event.getMaxClassName());
+            LocalDate startDate = parseDate(event.getOpenBeginDate());
+            LocalDate endDate = parseDate(event.getOpenEndDate());
+            String performanceState = resolvePerformanceState(event.getServiceStatusName(), startDate, endDate);
+            String address = event.getPlaceName() + " (" + event.getAreaName() + ")";
+
+            if (existing.isPresent()) {
+                Place place = existing.get();
+                place.updateBasicInfo(
+                        event.getServiceName(),
+                        address,
+                        event.getServiceUrl(),
+                        latitude,
+                        longitude,
+                        category,
+                        event.getImageUrl(),
+                        isFree,
+                        DataSource.SEOUL_RESERVATION
+                );
+                syncPerformancePeriod(place, startDate, endDate, null, performanceState, event.getImageUrl());
+                result.updated++;
+                return;
+            }
 
             Place place = Place.builder()
                     .name(event.getServiceName())
-                    .address(event.getPlaceName() + " (" + event.getAreaName() + ")")
+                    .address(address)
                     .url(event.getServiceUrl())
                     .latitude(latitude)
                     .longitude(longitude)
@@ -779,7 +824,18 @@ public class DataCollectionService {
                     .dataSource(DataSource.SEOUL_RESERVATION)
                     .externalId(externalId)
                     .isFree(isFree)
+                    .startDate(startDate)
+                    .endDate(endDate)
+                    .performanceState(performanceState)
+                    .isActive(endDate == null || !endDate.isBefore(LocalDate.now()))
                     .build();
+
+            place.setPerformanceDetail(PlaceDetailPerformance.builder()
+                    .startDate(startDate)
+                    .endDate(endDate)
+                    .ticketPrice(null)
+                    .performanceState(performanceState)
+                    .build());
 
             placeRepository.save(place);
             result.inserted++;
@@ -1310,6 +1366,41 @@ public class DataCollectionService {
             return MissionCategory.ACTIVITY;
         }
         return MissionCategory.CULTURE;
+    }
+
+    private void syncPerformancePeriod(Place place, LocalDate startDate, LocalDate endDate,
+                                       Integer ticketPrice, String performanceState, String imageUrl) {
+        place.updatePerformanceInfo(performanceState, ticketPrice, startDate, endDate, imageUrl);
+
+        if (place.getPerformanceDetail() == null) {
+            place.setPerformanceDetail(PlaceDetailPerformance.builder()
+                    .startDate(startDate)
+                    .endDate(endDate)
+                    .ticketPrice(ticketPrice)
+                    .performanceState(performanceState)
+                    .build());
+        }
+
+        if (endDate != null && endDate.isBefore(LocalDate.now())) {
+            place.deactivate();
+        } else {
+            place.activate();
+        }
+    }
+
+    private String resolvePerformanceState(String sourceState, LocalDate startDate, LocalDate endDate) {
+        if (sourceState != null && !sourceState.isBlank()) {
+            return sourceState;
+        }
+
+        LocalDate today = LocalDate.now();
+        if (endDate != null && endDate.isBefore(today)) {
+            return "공연완료";
+        }
+        if (startDate != null && startDate.isAfter(today)) {
+            return "공연예정";
+        }
+        return "진행중";
     }
 
     /**

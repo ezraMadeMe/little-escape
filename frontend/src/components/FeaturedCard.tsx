@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Appointment, AppointmentStatus } from '../types/appointment';
 import { differenceInHours, differenceInMinutes } from 'date-fns';
+import { getAppointmentNavigationPath } from '../utils/appointmentNavigation';
 
 interface FeaturedCardProps {
   appointment: Appointment;
@@ -55,7 +56,7 @@ const FeaturedCard: React.FC<FeaturedCardProps> = ({
 
   const handleClick = () => {
     // 약속 상세 화면으로 이동 (미션 상세)
-    navigate(`/mission/${appointment.id}`);
+    navigate(getAppointmentNavigationPath(appointment));
   };
 
   const getStatusText = (status: AppointmentStatus) => {

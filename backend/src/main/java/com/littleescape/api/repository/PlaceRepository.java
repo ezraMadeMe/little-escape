@@ -3,6 +3,7 @@ package com.littleescape.api.repository;
 import com.littleescape.api.domain.Place;
 import com.littleescape.api.domain.type.DataSource;
 import com.littleescape.api.domain.type.MissionCategory;
+import com.littleescape.api.domain.type.RecommendationRadiusPolicy;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -13,6 +14,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface PlaceRepository extends JpaRepository<Place, Long> {
+    int DEFAULT_DISTANCE_RADIUS_KM = RecommendationRadiusPolicy.DEFAULT_SEARCH_RADIUS_KM;
+
     List<Place> findByCategory(MissionCategory category);
 
     /**
@@ -99,19 +102,20 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             "LEFT JOIN FETCH p.facilityDetail " +
             "WHERE p.category = :category AND " +
             "p.isActive = true AND " +
-            "ABS(p.latitude - :userLat) <= 0.1 AND " +
-            "ABS(p.longitude - :userLon) <= 0.1 AND " +
+            "ABS(p.latitude - :userLat) <= (:radiusKm / 111.0) AND " +
+            "ABS(p.longitude - :userLon) <= (:radiusKm / (111.0 * cos(radians(:userLat)))) AND " +
             "(6371 * acos(cos(radians(:userLat)) * cos(radians(p.latitude)) * " +
             "cos(radians(p.longitude) - radians(:userLon)) + " +
-            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= 10 AND " +
+            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= :radiusKm AND " +
             "p.name NOT LIKE %:keyword1% AND p.name NOT LIKE %:keyword2% AND " +
             "p.name NOT LIKE %:keyword3% AND p.name NOT LIKE %:keyword4% AND " +
             "p.name NOT LIKE %:keyword5% AND p.name NOT LIKE %:keyword6% AND " +
             "p.name NOT LIKE %:keyword7%")
-    List<Place> findByCategoryFilteredWithDistance(
+    List<Place> findByCategoryFilteredWithDistanceAndRadius(
             @Param("category") MissionCategory category,
             @Param("userLat") Double userLatitude,
             @Param("userLon") Double userLongitude,
+            @Param("radiusKm") Integer radiusKm,
             @Param("keyword1") String keyword1,
             @Param("keyword2") String keyword2,
             @Param("keyword3") String keyword3,
@@ -120,6 +124,33 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             @Param("keyword6") String keyword6,
             @Param("keyword7") String keyword7
     );
+
+    default List<Place> findByCategoryFilteredWithDistance(
+            MissionCategory category,
+            Double userLatitude,
+            Double userLongitude,
+            String keyword1,
+            String keyword2,
+            String keyword3,
+            String keyword4,
+            String keyword5,
+            String keyword6,
+            String keyword7
+    ) {
+        return findByCategoryFilteredWithDistanceAndRadius(
+                category,
+                userLatitude,
+                userLongitude,
+                DEFAULT_DISTANCE_RADIUS_KM,
+                keyword1,
+                keyword2,
+                keyword3,
+                keyword4,
+                keyword5,
+                keyword6,
+                keyword7
+        );
+    }
 
     /**
      * 필터링된 양질의 장소 조회 (카테고리 무관 fallback + 거리 제한)
@@ -130,18 +161,19 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             "LEFT JOIN FETCH p.facilityDetail " +
             "WHERE " +
             "p.isActive = true AND " +
-            "ABS(p.latitude - :userLat) <= 0.1 AND " +
-            "ABS(p.longitude - :userLon) <= 0.1 AND " +
+            "ABS(p.latitude - :userLat) <= (:radiusKm / 111.0) AND " +
+            "ABS(p.longitude - :userLon) <= (:radiusKm / (111.0 * cos(radians(:userLat)))) AND " +
             "(6371 * acos(cos(radians(:userLat)) * cos(radians(p.latitude)) * " +
             "cos(radians(p.longitude) - radians(:userLon)) + " +
-            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= 10 AND " +
+            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= :radiusKm AND " +
             "p.name NOT LIKE %:keyword1% AND p.name NOT LIKE %:keyword2% AND " +
             "p.name NOT LIKE %:keyword3% AND p.name NOT LIKE %:keyword4% AND " +
             "p.name NOT LIKE %:keyword5% AND p.name NOT LIKE %:keyword6% AND " +
             "p.name NOT LIKE %:keyword7%")
-    List<Place> findAllFilteredWithDistance(
+    List<Place> findAllFilteredWithDistanceAndRadius(
             @Param("userLat") Double userLatitude,
             @Param("userLon") Double userLongitude,
+            @Param("radiusKm") Integer radiusKm,
             @Param("keyword1") String keyword1,
             @Param("keyword2") String keyword2,
             @Param("keyword3") String keyword3,
@@ -150,6 +182,31 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             @Param("keyword6") String keyword6,
             @Param("keyword7") String keyword7
     );
+
+    default List<Place> findAllFilteredWithDistance(
+            Double userLatitude,
+            Double userLongitude,
+            String keyword1,
+            String keyword2,
+            String keyword3,
+            String keyword4,
+            String keyword5,
+            String keyword6,
+            String keyword7
+    ) {
+        return findAllFilteredWithDistanceAndRadius(
+                userLatitude,
+                userLongitude,
+                DEFAULT_DISTANCE_RADIUS_KM,
+                keyword1,
+                keyword2,
+                keyword3,
+                keyword4,
+                keyword5,
+                keyword6,
+                keyword7
+        );
+    }
 
     /**
      * 카테고리별 + 거리 제한 장소 조회 (키워드 필터링 없음)
@@ -160,16 +217,30 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             "LEFT JOIN FETCH p.facilityDetail " +
             "WHERE p.category = :category AND " +
             "p.isActive = true AND " +
-            "ABS(p.latitude - :userLat) <= 0.1 AND " +
-            "ABS(p.longitude - :userLon) <= 0.1 AND " +
+            "ABS(p.latitude - :userLat) <= (:radiusKm / 111.0) AND " +
+            "ABS(p.longitude - :userLon) <= (:radiusKm / (111.0 * cos(radians(:userLat)))) AND " +
             "(6371 * acos(cos(radians(:userLat)) * cos(radians(p.latitude)) * " +
             "cos(radians(p.longitude) - radians(:userLon)) + " +
-            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= 10")
-    List<Place> findByCategoryWithDistance(
+            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= :radiusKm")
+    List<Place> findByCategoryWithDistanceAndRadius(
             @Param("category") MissionCategory category,
             @Param("userLat") Double userLatitude,
-            @Param("userLon") Double userLongitude
+            @Param("userLon") Double userLongitude,
+            @Param("radiusKm") Integer radiusKm
     );
+
+    default List<Place> findByCategoryWithDistance(
+            MissionCategory category,
+            Double userLatitude,
+            Double userLongitude
+    ) {
+        return findByCategoryWithDistanceAndRadius(
+                category,
+                userLatitude,
+                userLongitude,
+                DEFAULT_DISTANCE_RADIUS_KM
+        );
+    }
 
     /**
      * 전체 장소 + 거리 제한 조회 (키워드 필터링 없음)
@@ -179,15 +250,27 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
             "LEFT JOIN FETCH p.performanceDetail " +
             "LEFT JOIN FETCH p.facilityDetail " +
             "WHERE p.isActive = true AND " +
-            "ABS(p.latitude - :userLat) <= 0.1 AND " +
-            "ABS(p.longitude - :userLon) <= 0.1 AND " +
+            "ABS(p.latitude - :userLat) <= (:radiusKm / 111.0) AND " +
+            "ABS(p.longitude - :userLon) <= (:radiusKm / (111.0 * cos(radians(:userLat)))) AND " +
             "(6371 * acos(cos(radians(:userLat)) * cos(radians(p.latitude)) * " +
             "cos(radians(p.longitude) - radians(:userLon)) + " +
-            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= 10")
-    List<Place> findAllWithDistance(
+            "sin(radians(:userLat)) * sin(radians(p.latitude)))) <= :radiusKm")
+    List<Place> findAllWithDistanceAndRadius(
             @Param("userLat") Double userLatitude,
-            @Param("userLon") Double userLongitude
+            @Param("userLon") Double userLongitude,
+            @Param("radiusKm") Integer radiusKm
     );
+
+    default List<Place> findAllWithDistance(
+            Double userLatitude,
+            Double userLongitude
+    ) {
+        return findAllWithDistanceAndRadius(
+                userLatitude,
+                userLongitude,
+                DEFAULT_DISTANCE_RADIUS_KM
+        );
+    }
 
     // ========== 신규 메서드 (데이터 수집용) ==========
 

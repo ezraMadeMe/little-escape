@@ -198,6 +198,25 @@ public class Place extends BaseTimeEntity {
         }
     }
 
+    public void activate() {
+        this.isActive = true;
+    }
+
+    public void updateBasicInfo(String name, String address, String url,
+                                Double latitude, Double longitude,
+                                MissionCategory category, String imageUrl,
+                                Boolean isFree, DataSource dataSource) {
+        this.name = name;
+        this.address = address;
+        this.url = url;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.category = category;
+        this.imageUrl = imageUrl;
+        this.isFree = isFree;
+        this.dataSource = dataSource;
+    }
+
     /**
      * 공연 정보 업데이트 (upsert 시 사용)
      * 허브 컬럼 + detail 테이블 동시 업데이트 (dual-write)
@@ -209,6 +228,11 @@ public class Place extends BaseTimeEntity {
         this.ticketPrice = ticketPrice;
         this.startDate = startDate;
         this.endDate = endDate;
+        if (endDate != null && endDate.isBefore(LocalDate.now())) {
+            this.isActive = false;
+        } else {
+            this.isActive = true;
+        }
         if (imageUrl != null) {
             this.imageUrl = imageUrl;
         }

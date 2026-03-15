@@ -15,6 +15,7 @@ import { formatDateTime } from '../utils/dateUtils';
 import FeaturedCard from '../components/FeaturedCard';
 import { MapPin, Trash2 } from 'lucide-react';
 import { showToast } from '../utils/toast';
+import { getAppointmentNavigationPath } from '../utils/appointmentNavigation';
 
 const Appointments = () => {
   const navigate = useNavigate();
@@ -288,8 +289,9 @@ const Appointments = () => {
                         className="card p-0 overflow-hidden relative group cursor-pointer"
                         onClick={() => {
                           const isArchived = apt.status === AppointmentStatus.COMPLETED ||
-                                           apt.status === AppointmentStatus.CANCELLED;
-                          navigate(isArchived ? `/archived/${apt.id}` : `/mission/${apt.id}`);
+                                           apt.status === AppointmentStatus.CANCELLED ||
+                                           apt.status === AppointmentStatus.EXPIRED;
+                          navigate(isArchived ? `/archived/${apt.id}` : getAppointmentNavigationPath(apt));
                         }}
                       >
                         {/* 썸네일 */}
@@ -335,6 +337,9 @@ const Appointments = () => {
                             )}
                             {apt.status === AppointmentStatus.CANCELLED && (
                               <span className="bg-gray-500/90 text-white text-[10px] px-2 py-1 rounded-full font-bold">취소됨</span>
+                            )}
+                            {apt.status === AppointmentStatus.EXPIRED && (
+                              <span className="bg-amber-500/90 text-white text-[10px] px-2 py-1 rounded-full font-bold">만료</span>
                             )}
                           </div>
                         </div>

@@ -50,6 +50,7 @@ function ArchivedAppointmentDetail() {
   }
 
   const isCompleted = appointment.status === AppointmentStatus.COMPLETED;
+  const isExpired = appointment.status === AppointmentStatus.EXPIRED;
   // isCancelled은 향후 취소 상태 UI 표시에 사용 예정
   const _isCancelled = appointment.status === AppointmentStatus.CANCELLED;
   void _isCancelled; // 미사용 경고 방지
@@ -85,11 +86,13 @@ function ArchivedAppointmentDetail() {
             className={`inline-flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm ${
               isCompleted
                 ? 'bg-green-500/20 text-green-400 border-2 border-green-500/30'
+                : isExpired
+                ? 'bg-amber-500/20 text-amber-300 border-2 border-amber-500/30'
                 : 'bg-gray-500/20 text-gray-400 border-2 border-gray-500/30'
             }`}
           >
-            <span className="text-lg">{isCompleted ? '✓' : '×'}</span>
-            <span>{isCompleted ? '완료된 약속' : '취소된 약속'}</span>
+            <span className="text-lg">{isCompleted ? '✓' : isExpired ? '⏰' : '×'}</span>
+            <span>{isCompleted ? '완료된 약속' : isExpired ? '만료된 약속' : '취소된 약속'}</span>
           </div>
         </motion.div>
 
@@ -240,6 +243,8 @@ function ArchivedAppointmentDetail() {
           <p className="text-text-gray-dark text-xs text-center">
             {isCompleted
               ? '소중한 추억을 간직하고 있어요'
+              : isExpired
+              ? '기한이 지나 이어서 진행할 수 없는 약속이에요.'
               : '다음에는 꼭 함께 할 거예요'}
           </p>
         </motion.div>

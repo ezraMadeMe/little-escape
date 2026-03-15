@@ -2,6 +2,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import { adminTimeTravel } from '../api/appointmentApi';
 import { showToast } from '../utils/toast';
+import DevApiControlPanel from '../components/DevApiControlPanel';
 import LocationSelectbox from '../components/LocationSelectbox';
 import type { LocationSelection } from '../components/LocationSelectbox';
 import { ALL_HOTSPOTS } from '../data/seoulDistricts';
@@ -9,8 +10,9 @@ import { ALL_HOTSPOTS } from '../data/seoulDistricts';
 // API Types
 type Weather = 'SUNNY' | 'RAIN' | 'SNOW' | 'CLOUDY';
 type AirQuality = 'GOOD' | 'BAD' | 'WORST';
-type Congestion = 'LOW' | 'MEDIUM' | 'HIGH' | 'NORMAL'; // NORMAL 추가 (서울시 API 기본값)
+type Congestion = 'LOW' | 'NORMAL' | 'HIGH';
 type MissionCategory = 'FOOD' | 'ACTIVITY' | 'RELAX' | 'CULTURE';
+type UserConstraint = 'NO_ALCOHOL' | 'HATE_WALKING' | 'NO_SPORTS' | 'INDOOR_ONLY';
 
 interface SimulationRequest {
   targetDateTime: string;
@@ -22,6 +24,8 @@ interface SimulationRequest {
   airQuality: AirQuality;
   congestion: Congestion;
   userMbti: string;
+  userId?: number;
+  userTags?: string;
   forcedCategory?: MissionCategory;
 }
 
@@ -68,10 +72,36 @@ interface MissionInfo {
   guide: string;
 }
 
+interface SimulationReasonInfo {
+  code: string;
+  beforeCount: number;
+  afterCount: number;
+  detail: string | null;
+}
+
+interface SimulationSelectionInfo {
+  type: string;
+  id: number | null;
+  name: string | null;
+  category: string | null;
+  detail?: string | null;
+}
+
+interface SimulationStageInfo {
+  code: string;
+  label: string;
+  targetType: string;
+  beforeCount: number;
+  afterCount: number;
+  reasons: SimulationReasonInfo[];
+  selections: SimulationSelectionInfo[];
+}
+
 interface SimulationResponse {
   mission: MissionInfo | null;
   place: PlaceInfo | null;
   debugLogs: string[];
+  stages: SimulationStageInfo[];
   totalMissionCandidates: number;
   filteredMissionCandidates: number;
   totalPlaceCandidates: number;
@@ -89,6 +119,45 @@ const WEATHER_OPTIONS: { value: Weather; icon: string; label: string }[] = [
   { value: 'SNOW', icon: '❄️', label: '눈' },
   { value: 'CLOUDY', icon: '☁️', label: '흐림' },
 ];
+
+const CONGESTION_OPTIONS: { value: Congestion; label: string }[] = [
+  { value: 'LOW', label: 'Low' },
+  { value: 'NORMAL', label: 'Normal' },
+  { value: 'HIGH', label: 'High' },
+];
+
+const USER_CONSTRAINT_OPTIONS: {
+  value: UserConstraint;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'NO_ALCOHOL',
+    label: 'NO_ALCOHOL',
+    description: 'Exclude alcohol-only missions and places.',
+  },
+  {
+    value: 'HATE_WALKING',
+    label: 'HATE_WALKING',
+    description: 'Exclude high-activity or walking-heavy options.',
+  },
+  {
+    value: 'NO_SPORTS',
+    label: 'NO_SPORTS',
+    description: 'Exclude sports-required options.',
+  },
+  {
+    value: 'INDOOR_ONLY',
+    label: 'INDOOR_ONLY',
+    description: 'Exclude outdoor-required options.',
+  },
+];
+
+const getStageTone = (targetType: string) => {
+  if (targetType === 'MISSION') return 'bg-blue-100 text-blue-700';
+  if (targetType === 'PLACE') return 'bg-emerald-100 text-emerald-700';
+  return 'bg-amber-100 text-amber-700';
+};
 
 const DevConsole = () => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
@@ -110,8 +179,19 @@ const DevConsole = () => {
   const [airQuality, setAirQuality] = useState<AirQuality>('GOOD');
   const [congestion, setCongestion] = useState<Congestion>('NORMAL');
   const [userMbti, setUserMbti] = useState<'I' | 'E'>('I');
+  const [preferenceUserId, setPreferenceUserId] = useState<string>('');
+  const [userTags, setUserTags] = useState<UserConstraint[]>([]);
+  const [appliedUserTags, setAppliedUserTags] = useState<UserConstraint[]>([]);
   const [forcedCategory, setForcedCategory] = useState<MissionCategory | ''>('');
   const [timeTravelId, setTimeTravelId] = useState<string>('');
+
+  const toggleUserConstraint = (constraint: UserConstraint) => {
+    setUserTags((current) =>
+      current.includes(constraint)
+        ? current.filter((value) => value !== constraint)
+        : [...current, constraint]
+    );
+  };
 
   // Random Scenario Generator
   const generateRandomScenario = () => {
@@ -141,11 +221,16 @@ const DevConsole = () => {
     setAirQuality(airQualities[Math.floor(Math.random() * airQualities.length)]);
 
     // Random congestion
-    const congestions: Congestion[] = ['LOW', 'NORMAL', 'MEDIUM', 'HIGH'];
+    const congestions = CONGESTION_OPTIONS.map((option) => option.value);
     setCongestion(congestions[Math.floor(Math.random() * congestions.length)]);
 
     // Random MBTI
     setUserMbti(Math.random() > 0.5 ? 'I' : 'E');
+
+    // Random user constraints
+    setUserTags(
+      USER_CONSTRAINT_OPTIONS.filter(() => Math.random() > 0.65).map((option) => option.value)
+    );
 
     // Random category (optional)
     const categories: (MissionCategory | '')[] = ['', 'FOOD', 'ACTIVITY', 'RELAX', 'CULTURE'];
@@ -158,6 +243,8 @@ const DevConsole = () => {
     setError(null);
     setResult(null);
 
+    const submittedUserTags = [...userTags];
+
     const request: SimulationRequest = {
       targetDateTime,
       latitude,
@@ -168,8 +255,11 @@ const DevConsole = () => {
       airQuality,
       congestion,
       userMbti,
+      ...(preferenceUserId.trim() && { userId: Number(preferenceUserId) }),
+      ...(submittedUserTags.length > 0 && { userTags: submittedUserTags.join(',') }),
       ...(forcedCategory && { forcedCategory }),
     };
+    setAppliedUserTags(submittedUserTags);
 
     try {
       const response = await axios.post<SimulationResponse>(
@@ -178,7 +268,12 @@ const DevConsole = () => {
       );
       setResult(response.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message || '시뮬레이션 실행 실패');
+      setError(
+        err.response?.data?.message ||
+          err.response?.data?.debugLogs?.[0] ||
+          err.message ||
+          '시뮬레이션 실행 실패'
+      );
     } finally {
       setLoading(false);
     }
@@ -343,20 +438,18 @@ const DevConsole = () => {
               {/* Congestion */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">혼잡도</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {(['LOW', 'NORMAL', 'MEDIUM', 'HIGH'] as Congestion[]).map((value) => (
+                <div className="grid grid-cols-3 gap-2">
+                  {CONGESTION_OPTIONS.map((option) => (
                     <button
-                      key={value}
-                      onClick={() => setCongestion(value)}
+                      key={option.value}
+                      onClick={() => setCongestion(option.value)}
                       className={`px-3 py-2 rounded-md border-2 transition-all ${
-                        congestion === value
+                        congestion === option.value
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-300 hover:border-blue-300'
                       }`}
                     >
-                      {value === 'LOW' ? '🤗 한적함' :
-                       value === 'NORMAL' ? '😊 여유' :
-                       value === 'MEDIUM' ? '🙂 보통' : '😵 터짐'}
+                      {option.label}
                     </button>
                   ))}
                 </div>
@@ -395,6 +488,53 @@ const DevConsole = () => {
                     <div className="text-lg font-bold">E</div>
                     <div className="text-xs text-gray-600">외향형</div>
                   </button>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Preference User ID
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Optional userId for saved/liked/completed weights"
+                  value={preferenceUserId}
+                  onChange={(e) => setPreferenceUserId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="mt-2 text-xs text-gray-500">
+                  Leave blank to use neutral mission weights. Set a user ID to reuse saved, liked,
+                  completed, and cancelled preference signals from real recommendations.
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  User Constraints
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {USER_CONSTRAINT_OPTIONS.map((option) => {
+                    const isActive = userTags.includes(option.value);
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => toggleUserConstraint(option.value)}
+                        className={`rounded-md border-2 px-3 py-3 text-left transition-all ${
+                          isActive
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-300 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="text-sm font-semibold text-gray-900">{option.label}</div>
+                        <div className="mt-1 text-xs text-gray-600">{option.description}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  Uses the same backend tag-conflict rules as appointment recommendations.
                 </div>
               </div>
 
@@ -483,6 +623,35 @@ const DevConsole = () => {
             {/* Result Display */}
             {result && (
               <>
+                <section className="bg-white rounded-lg shadow p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold text-gray-900">Applied User Constraints</h3>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {appliedUserTags.length} active
+                    </span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {appliedUserTags.length > 0 ? (
+                      appliedUserTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"
+                        >
+                          {tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-500">
+                        None
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-3 text-xs text-gray-500">
+                    These constraints feed the simulation request and the shared backend tag-conflict
+                    rule set.
+                  </p>
+                </section>
+
                 {/* Mission Card */}
                 {result.mission && (
                   <section className="bg-white rounded-lg shadow p-6">
@@ -618,6 +787,101 @@ const DevConsole = () => {
                     </div>
                   </div>
                 </section>
+
+                {result.stages && result.stages.length > 0 && (
+                  <section className="bg-white rounded-lg shadow p-6 border-2 border-slate-200">
+                    <div className="mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Structured Debug Trace</h3>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Stage counts and reason codes for the simulation pipeline.
+                      </p>
+                    </div>
+                    <div className="space-y-4">
+                      {result.stages.map((stage) => (
+                        <div
+                          key={stage.code}
+                          className="rounded-xl border border-gray-200 p-4 bg-slate-50/50"
+                        >
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${getStageTone(stage.targetType)}`}
+                                >
+                                  {stage.targetType}
+                                </span>
+                                <div className="font-semibold text-gray-900">{stage.label}</div>
+                              </div>
+                              <div className="text-[11px] text-gray-500 font-mono mt-1">
+                                {stage.code}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-sm min-w-[180px]">
+                              <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
+                                <div className="text-[11px] text-gray-500">Before</div>
+                                <div className="font-semibold text-gray-900">{stage.beforeCount}</div>
+                              </div>
+                              <div className="rounded-lg bg-white border border-gray-200 px-3 py-2">
+                                <div className="text-[11px] text-gray-500">After</div>
+                                <div className="font-semibold text-gray-900">{stage.afterCount}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {stage.reasons.length > 0 && (
+                            <div className="mt-4 overflow-x-auto">
+                              <table className="min-w-full text-xs">
+                                <thead>
+                                  <tr className="text-left text-gray-500 border-b border-gray-200">
+                                    <th className="py-2 pr-4 font-medium">Reason</th>
+                                    <th className="py-2 pr-4 font-medium">Before</th>
+                                    <th className="py-2 pr-4 font-medium">After</th>
+                                    <th className="py-2 font-medium">Detail</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {stage.reasons.map((reason) => (
+                                    <tr
+                                      key={`${stage.code}-${reason.code}-${reason.beforeCount}-${reason.afterCount}`}
+                                      className="border-b border-gray-100 last:border-b-0"
+                                    >
+                                      <td className="py-2 pr-4 font-mono text-[11px] text-gray-700">
+                                        {reason.code}
+                                      </td>
+                                      <td className="py-2 pr-4 text-gray-700">{reason.beforeCount}</td>
+                                      <td className="py-2 pr-4 text-gray-700">{reason.afterCount}</td>
+                                      <td className="py-2 text-gray-600">{reason.detail || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+
+                          {stage.selections.length > 0 && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {stage.selections.map((selection) => (
+                                <div
+                                  key={`${stage.code}-${selection.type}-${selection.id ?? 'none'}`}
+                                  className="rounded-lg bg-white border border-gray-200 px-3 py-2 text-xs"
+                                >
+                                  <div className="font-semibold text-gray-700">{selection.type}</div>
+                                  <div className="text-gray-900">{selection.name || 'N/A'}</div>
+                                  <div className="text-gray-500">{selection.category || 'N/A'}</div>
+                                  {selection.detail && (
+                                    <div className="mt-1 text-[11px] text-gray-500">
+                                      {selection.detail}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
 
                 {/* Integrated View: Mission + Place + Detail */}
                 {result.mission && (
@@ -860,7 +1124,7 @@ const DevConsole = () => {
                 {/* Debug Logs (Terminal Style) */}
                 <section className="bg-gray-900 rounded-lg shadow p-6">
                   <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                    🖥️ Debug Logs
+                    🖥️ Legacy Debug Logs
                   </h3>
                   <div className="bg-black rounded-lg p-4 font-mono text-sm max-h-96 overflow-y-auto">
                     {result.debugLogs.map((log, index) => (
@@ -895,6 +1159,10 @@ const DevConsole = () => {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="mt-8">
+          <DevApiControlPanel apiBaseUrl={API_BASE_URL} />
         </div>
       </div>
     </div>

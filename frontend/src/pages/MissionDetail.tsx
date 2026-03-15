@@ -2,12 +2,13 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAppointmentDetail, completeAppointment, markAsArrived, swapMission, deleteAppointment } from '../api/appointmentApi';
-import { Appointment } from '../types/appointment';
+import { Appointment, AppointmentStatus } from '../types/appointment';
 import { PlanB } from '../types/mission';
 import { supabase } from '../lib/supabaseClient';
 import MissionReview from '../components/MissionReview';
 import { showToast } from '../utils/toast';
 import { Trash2 } from 'lucide-react';
+import { getAppointmentNavigationPath } from '../utils/appointmentNavigation';
 
 // 가이드 스텝 인터페이스
 interface GuideStep {
@@ -101,11 +102,9 @@ function MissionDetail() {
 
       try {
         const data = await getAppointmentDetail(Number(appointmentId));
-
-        // 장소가 없는 약속인 경우 -> 온보딩 플로우로 리다이렉트
-        if (!data.placeName) {
-          console.log('📍 장소가 없는 약속 -> 온보딩 플로우로 이동');
-          navigate('/location', { replace: true });
+        const targetPath = getAppointmentNavigationPath(data);
+        if (targetPath !== `/mission/${data.id}`) {
+          navigate(targetPath, { replace: true });
           return;
         }
 
@@ -114,8 +113,8 @@ function MissionDetail() {
         console.error('약속 로딩 실패:', err);
         // 약속을 찾을 수 없는 경우 (404, 400 등) -> 로컬 스토리지 정리 및 이동
         localStorage.removeItem('appointmentId');
-        alert('약속 정보를 찾을 수 없어. 다시 시작할게.');
-        navigate('/location', { replace: true });
+        alert('약속 정보를 찾을 수 없어. 피드로 돌아갈게.');
+        navigate('/feed', { replace: true });
       } finally {
         setLoading(false);
       }
@@ -465,6 +464,10 @@ function MissionDetail() {
   const backgroundImage = unlocked
     ? appointment.placeImageUrl || appointment.missionImageUrl
     : appointment.missionImageUrl;
+  const appointmentTitle = appointment.missionTitle || (appointment.placeName ? `${appointment.placeName}에서 만나요!` : '약속 준비 중');
+  const appointmentPlaceLabel = appointment.placeName || '장소 정보 준비 중';
+  const appointmentPlaceAddress = appointment.placeAddress || '상세 위치가 아직 준비 중이에요.';
+  const hasPlaceInfo = Boolean(appointment.placeName);
 
   // 서버 데이터 기반으로 도착 여부 판단
   const isArrived = appointment.status === 'ARRIVED' ||
@@ -473,8 +476,8 @@ function MissionDetail() {
 
   // Timeline Step 상태 계산
   const isStep1Complete = true; // 준비는 항상 활성화
-  const isStep2Complete = isArrived;
-  const isStep3Unlocked = isArrived;
+  const isStep2Complete = hasPlaceInfo ? isArrived : unlocked;
+  const isStep3Unlocked = hasPlaceInfo ? isArrived : unlocked;
 
   return (
     <div className="min-h-screen bg-deep-charcoal flex flex-col pb-24">
@@ -521,7 +524,7 @@ function MissionDetail() {
           className="space-y-4"
         >
           <h1 className="text-off-white text-3xl sm:text-4xl font-extra-bold tracking-tight">
-            {appointment.missionTitle || '미션 미선택'}
+            {appointmentTitle}
           </h1>
           <p className="text-text-gray text-lg">
             {new Date(appointment.scheduledAt).toLocaleDateString('ko-KR', {
@@ -551,7 +554,7 @@ function MissionDetail() {
           >
             <img
               src={backgroundImage}
-              alt={appointment.missionTitle || '미션'}
+              alt={appointmentTitle}
               className="w-full h-full object-cover brightness-75"
             />
           </motion.div>
@@ -646,64 +649,75 @@ function MissionDetail() {
                 {unlocked ? (
                   <>
                     <p className="text-text-gray text-lg font-semibold">
-                      {appointment.placeName || '장소 정보 없음'}
+                      {appointmentPlaceLabel}
                     </p>
                     <p className="text-text-gray-dark text-sm">
-                      {appointment.placeAddress || '주소 정보 없음'}
+                      {appointmentPlaceAddress}
                     </p>
 
-                    {/* 지도 버튼 - 카카오맵 통일 */}
-                    <div className="w-full">
-                      <a
-                        href={
-                          appointment.latitude && appointment.longitude
-                            ? `https://map.kakao.com/link/to/${encodeURIComponent(appointment.placeName || '목적지')},${appointment.latitude},${appointment.longitude}`
-                            : `https://map.kakao.com/link/search/${encodeURIComponent(appointment.placeName || '')}`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-primary flex items-center justify-center gap-2 text-sm w-full"
-                      >
-                        🗺️ 카카오맵으로 길찾기
-                      </a>
-                    </div>
+                    {hasPlaceInfo ? (
+                      <>
+                        {/* 지도 버튼 - 카카오맵 통일 */}
+                        <div className="w-full">
+                          <a
+                            href={
+                              appointment.latitude && appointment.longitude
+                                ? `https://map.kakao.com/link/to/${encodeURIComponent(appointment.placeName || '목적지')},${appointment.latitude},${appointment.longitude}`
+                                : `https://map.kakao.com/link/search/${encodeURIComponent(appointment.placeName || '')}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-primary flex items-center justify-center gap-2 text-sm w-full"
+                          >
+                            🗺️ 카카오맵으로 길찾기
+                          </a>
+                        </div>
 
-                    {/* 도착 인증 버튼 */}
-                    {!isArrived && (
-                      <button
-                        onClick={handleArrivalCheck}
-                        disabled={isArrivingLoading}
-                        className="btn-outline w-full mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {isArrivingLoading ? (
-                          <>
-                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                                fill="none"
-                              />
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              />
-                            </svg>
-                            <span>인증 중...</span>
-                          </>
-                        ) : (
-                          <>📍 도착 인증하기</>
+                        {/* 도착 인증 버튼 */}
+                        {!isArrived && (
+                          <button
+                            onClick={handleArrivalCheck}
+                            disabled={isArrivingLoading}
+                            className="btn-outline w-full mt-4 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {isArrivingLoading ? (
+                              <>
+                                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                  <circle
+                                    className="opacity-25"
+                                    cx="12"
+                                    cy="12"
+                                    r="10"
+                                    stroke="currentColor"
+                                    strokeWidth="4"
+                                    fill="none"
+                                  />
+                                  <path
+                                    className="opacity-75"
+                                    fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                  />
+                                </svg>
+                                <span>인증 중...</span>
+                              </>
+                            ) : (
+                              <>📍 도착 인증하기</>
+                            )}
+                          </button>
                         )}
-                      </button>
-                    )}
 
-                    {isArrived && (
-                      <div className="bg-electric-lime/10 border border-electric-lime/30 rounded-solotion p-3 text-center">
-                        <p className="text-electric-lime font-bold">✅ 도착 인증 완료!</p>
+                        {isArrived && (
+                          <div className="bg-electric-lime/10 border border-electric-lime/30 rounded-solotion p-3 text-center">
+                            <p className="text-electric-lime font-bold">✅ 도착 인증 완료!</p>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="rounded-solotion border border-charcoal-lighter bg-charcoal-lighter/40 p-4">
+                        <p className="text-off-white font-semibold mb-2">기존 약속을 이어서 불러왔어요.</p>
+                        <p className="text-text-gray text-sm leading-relaxed">
+                          장소 정보가 아직 확정되지 않았어도 약속 상세는 계속 확인할 수 있어요.
+                        </p>
                       </div>
                     )}
                   </>
@@ -723,10 +737,10 @@ function MissionDetail() {
                             }}
                           >
                             <p className="text-text-gray text-lg font-semibold select-none">
-                              {appointment.placeName || '장소 정보 없음'}
+                              {appointmentPlaceLabel}
                             </p>
                             <p className="text-text-gray-dark text-sm select-none">
-                              {appointment.placeAddress || '주소 정보 없음'}
+                              {appointmentPlaceAddress}
                             </p>
                           </div>
 

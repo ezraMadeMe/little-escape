@@ -13,6 +13,7 @@ import com.littleescape.api.repository.AppointmentRepository;
 import com.littleescape.api.repository.MissionTemplateRepository;
 import com.littleescape.api.repository.PlaceRepository;
 import com.littleescape.api.repository.UserRepository;
+import com.littleescape.api.service.simulation.EnvironmentContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -20,13 +21,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.HashSet;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,214 +40,204 @@ public class AppointmentService {
     private final com.littleescape.api.repository.SavedAppointmentRepository savedAppointmentRepository;
     private final com.littleescape.api.repository.LikedAppointmentRepository likedAppointmentRepository;
     private final com.littleescape.api.repository.CommentRepository commentRepository;
+    private final RecommendationTagConflictService recommendationTagConflictService;
+    private final RecommendationSupportService recommendationSupportService;
+    private final PlaceScheduleFilterService placeScheduleFilterService;
+    private final PlaceRecommendationScoringService placeRecommendationScoringService;
+    private final RecommendationEnvironmentService recommendationEnvironmentService;
+    private final RecommendationPreferenceService recommendationPreferenceService;
+    private final MissionRecommendationSelectionService missionRecommendationSelectionService;
 
-    // 1인 가구 타겟에 맞지 않는 키워드
+    // Keywords that indicate venues outside the intended single-person recommendation scope.
     private static final String[] BAD_KEYWORDS = {
-        "어린이", "유아", "강좌", "교실", "모집", "시니어", "동호회"
+        "어린이",
+        "유아",
+        "강좌",
+        "교실",
+        "모집",
+        "시니어",
+        "동호회"
     };
 
-    /**
-     * 가중치 기반 미션 선택
-     * 사용자가 저장한 약속의 카테고리를 분석하여 선호 카테고리에 가중치 부여
-     *
-     * @param userId 사용자 ID
-     * @param candidates 미션 후보 리스트
-     * @return 선택된 미션
-     */
-    private MissionTemplate selectMissionWithCategoryWeight(Long userId, List<MissionTemplate> candidates) {
-        // 카테고리별 가중치 조회
-        java.util.Map<com.littleescape.api.domain.type.MissionCategory, Double> weights = getCategoryWeights(userId);
+    private static final int MIN_PLACE_CANDIDATE_POOL = 5;
+    private static final int MAX_RELAXED_RADIUS_KM = 20;
+    private static final int DATA_SOURCE_PER_SOURCE_CAP = 3;
 
-        // 가중치 적용된 후보 리스트 생성
-        List<MissionTemplate> weightedCandidates = new ArrayList<>();
-        for (MissionTemplate mission : candidates) {
-            Double weight = weights.getOrDefault(mission.getCategory(), 1.0);
+    private MissionTemplate selectMissionWithCategoryWeight(
+            List<MissionTemplate> candidates,
+            RecommendationPreferenceService.UserPreferenceProfile preferenceProfile,
+            String stageLabel
+    ) {
+        MissionRecommendationSelectionService.MissionSelectionResult selectionResult =
+                missionRecommendationSelectionService.selectMission(candidates, preferenceProfile);
 
-            // 가중치만큼 리스트에 중복 추가 (예: 가중치 2.0이면 2번 추가)
-            int repeatCount = (int) Math.ceil(weight);
-            for (int i = 0; i < repeatCount; i++) {
-                weightedCandidates.add(mission);
-            }
-        }
+        selectionResult.rankedCandidates().stream()
+                .limit(5)
+                .forEach(candidate -> log.info(
+                        "{} - mission candidate id={}, title={}, category={}, categoryWeight={}",
+                        stageLabel,
+                        candidate.mission().getId(),
+                        candidate.mission().getTitle(),
+                        candidate.mission().getCategory(),
+                        candidate.categoryWeight()
+                ));
 
-        log.info("가중치 적용 전 후보: {}개 → 적용 후: {}개",
-                candidates.size(), weightedCandidates.size());
-
-        // 가중치 적용된 리스트에서 랜덤 선택
-        Collections.shuffle(weightedCandidates);
-        return weightedCandidates.get(0);
-    }
-
-    /**
-     * 태그 충돌 검증 메서드
-     * 사용자 태그와 미션/장소 태그를 비교하여 충돌 여부 반환
-     *
-     * @param userTags 사용자 태그 (쉼표로 구분된 문자열, 예: "NO_ALCOHOL,HATE_WALKING")
-     * @param targetTags 미션/장소 태그 (쉼표로 구분된 문자열, 예: "ALCOHOL_ONLY,HIGH_ACTIVITY")
-     * @return true면 충돌 (추천 제외), false면 충돌 없음 (추천 가능)
-     */
-    private boolean hasTagConflict(String userTags, String targetTags) {
-        if (userTags == null || userTags.trim().isEmpty()
-            || targetTags == null || targetTags.trim().isEmpty()) {
-            return false; // 태그가 없으면 충돌 없음
-        }
-
-        Set<String> userTagSet = Arrays.stream(userTags.split(","))
-                .map(String::trim)
-                .collect(Collectors.toSet());
-
-        Set<String> targetTagSet = Arrays.stream(targetTags.split(","))
-                .map(String::trim)
-                .collect(Collectors.toSet());
-
-        // 충돌 규칙 정의
-        // 1. 유저가 NO_ALCOHOL && 장소/미션이 ALCOHOL_ONLY -> 충돌
-        if (userTagSet.contains("NO_ALCOHOL") && targetTagSet.contains("ALCOHOL_ONLY")) {
-            log.info("🚫 태그 충돌 감지: 사용자는 NO_ALCOHOL, 대상은 ALCOHOL_ONLY");
-            return true;
-        }
-
-        // 2. 유저가 HATE_WALKING && 미션이 HIGH_ACTIVITY -> 충돌
-        if (userTagSet.contains("HATE_WALKING") && targetTagSet.contains("HIGH_ACTIVITY")) {
-            log.info("🚫 태그 충돌 감지: 사용자는 HATE_WALKING, 대상은 HIGH_ACTIVITY");
-            return true;
-        }
-
-        // 3. 유저가 NO_SPORTS && 미션이 SPORTS_REQUIRED -> 충돌
-        if (userTagSet.contains("NO_SPORTS") && targetTagSet.contains("SPORTS_REQUIRED")) {
-            log.info("🚫 태그 충돌 감지: 사용자는 NO_SPORTS, 대상은 SPORTS_REQUIRED");
-            return true;
-        }
-
-        // 4. 유저가 INDOOR_ONLY && 미션이 OUTDOOR_REQUIRED -> 충돌
-        if (userTagSet.contains("INDOOR_ONLY") && targetTagSet.contains("OUTDOOR_REQUIRED")) {
-            log.info("🚫 태그 충돌 감지: 사용자는 INDOOR_ONLY, 대상은 OUTDOOR_REQUIRED");
-            return true;
-        }
-
-        return false; // 충돌 없음
+        MissionRecommendationSelectionService.MissionCandidateScore selected = selectionResult.selected();
+        log.info(
+                "{} - selected mission id={}, title={}, category={}, selectedPoint={}, totalWeight={}, randomFraction={}",
+                stageLabel,
+                selected.mission().getId(),
+                selected.mission().getTitle(),
+                selected.mission().getCategory(),
+                String.format("%.3f", selectionResult.selectedPoint()),
+                String.format("%.3f", selectionResult.totalWeight()),
+                String.format("%.3f", selectionResult.randomFraction())
+        );
+        return selected.mission();
     }
 
     @Transactional
     public Appointment createAppointment(Long userId, LocalDateTime scheduledAt, Long missionId,
-                                        Double userLatitude, Double userLongitude) {
-        log.info("=== 약속 생성 시작 ===");
-        log.info("사용자 ID: {}, 약속 시간: {}, 미션 ID: {}", userId, scheduledAt, missionId);
-        log.info("사용자 위치: 위도 {}, 경도 {}", userLatitude, userLongitude);
+                                         Double userLatitude, Double userLongitude, Integer searchRadius) {
+        log.info("=== create appointment start ===");
+        log.info("userId={}, scheduledAt={}, missionId={}", userId, scheduledAt, missionId);
+        log.info("user location lat={}, lon={}", userLatitude, userLongitude);
 
-        // 진행 중인 약속이 있는지 검증
         List<AppointmentStatus> activeStatuses = List.of(AppointmentStatus.PENDING, AppointmentStatus.ACCEPTED);
         boolean hasActiveAppointment = appointmentRepository.existsByUserIdAndStatusIn(userId, activeStatuses);
 
         if (hasActiveAppointment) {
-            log.warn("이미 진행 중인 약속이 존재함 - 사용자 ID: {}", userId);
-            throw new IllegalStateException("이미 진행 중인 약속이 있습니다. 기존 약속을 완료하거나 취소해주세요.");
+            log.warn("active appointment already exists for userId={}", userId);
+            throw new IllegalStateException("An active appointment already exists. Complete or cancel it first.");
         }
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+                .orElseThrow(() -> new RuntimeException("User not found."));
 
         Appointment appointment = new Appointment();
         appointment.setUser(user);
         appointment.setStatus(AppointmentStatus.PENDING);
         appointment.setScheduledAt(scheduledAt);
+        appointment.setSearchRadius(EnvironmentContext.resolveSearchRadius(searchRadius));
+        log.info("resolved appointment search radius={}km", appointment.getSearchRadius());
 
-        // 미션 자동 배정 로직
+        EnvironmentContext environmentContext = buildRealTimeEnvironmentContext(
+                scheduledAt,
+                userLatitude,
+                userLongitude,
+                appointment.getSearchRadius(),
+                user
+        );
+
+        RecommendationPreferenceService.UserPreferenceProfile preferenceProfile =
+                recommendationPreferenceService.buildProfile(userId);
+        logPreferenceProfile("create appointment", userId, preferenceProfile);
+
         MissionTemplate selectedMission;
-        
         if (missionId != null) {
-            // 1. 미션 ID가 명시된 경우 (기존 로직 유지)
-            log.info("미션 ID가 제공됨 - 미션 및 장소 매칭 시작");
+            log.info("explicit mission supplied; validating mission and constraints");
             selectedMission = missionTemplateRepository.findById(missionId)
-                    .orElseThrow(() -> new IllegalArgumentException("미션을 찾을 수 없습니다."));
+                    .orElseThrow(() -> new IllegalArgumentException("Mission not found."));
+            validateMissionAgainstHardConstraints(selectedMission, user.getTags(), "create appointment explicit mission");
         } else {
-            // 2. 미션 ID가 없는 경우 - 자동 랜덤 배정 (핵심 로직)
-            log.info("미션 ID 없음 - 시간/날씨에 맞는 미션 자동 선정 시작");
-            
-            // 2-1. 시간대 분석
-            List<TimeOfDay> targetTimes = analyzeTimeOfDay(scheduledAt);
-            log.info("분석된 시간대: {}", targetTimes);
-            
-            // 2-2. 날씨/장소 분석 (추후 날씨 API 연동)
-            List<LocationType> targetLocations = analyzeLocation();
-            log.info("추천 장소 타입: {}", targetLocations);
-            
-            // 2-3. 조건에 맞는 미션 후보 조회
+            log.info("no explicit mission supplied; selecting mission from environment context");
+
+            List<TimeOfDay> targetTimes = resolveTimeOfDayOptions(environmentContext);
+            log.info("resolved target times={}", targetTimes);
+
+            List<LocationType> targetLocations = resolveLocationTypes(environmentContext);
+            log.info("resolved target locations={}", targetLocations);
+
             List<MissionTemplate> candidates = missionTemplateRepository
                     .findAllByTimeOfDayInAndLocationTypeIn(targetTimes, targetLocations);
+            log.info("mission candidates after time/location filter={}", candidates.size());
 
-            log.info("조건에 맞는 미션 후보: {}개", candidates.size());
-
-            // 2-3-1. 사용자 태그 기반 필터링 (태그 충돌 제외)
             String userTags = user.getTags();
             if (userTags != null && !userTags.trim().isEmpty()) {
-                log.info("🏷️ 사용자 태그 필터링 적용: {}", userTags);
+                log.info("applying user tag constraints to mission candidates: {}", userTags);
                 List<MissionTemplate> filteredCandidates = candidates.stream()
-                        .filter(mission -> !hasTagConflict(userTags, mission.getTags()))
+                        .filter(mission -> !hasSharedTagConflict(userTags, mission.getTags()))
                         .collect(Collectors.toList());
 
-                log.info("태그 필터링 후 미션 후보: {}개 (제외된 미션: {}개)",
+                log.info(
+                        "mission candidates after hard constraint filter={} (removed={})",
                         filteredCandidates.size(),
-                        candidates.size() - filteredCandidates.size());
+                        candidates.size() - filteredCandidates.size()
+                );
 
-                // 필터링 후에도 후보가 있으면 사용
-                if (!filteredCandidates.isEmpty()) {
-                    candidates = filteredCandidates;
-                } else {
-                    log.warn("⚠️ 태그 필터링 후 미션 후보가 0개 - 필터링 무시하고 진행");
+                candidates = filteredCandidates;
+                if (filteredCandidates.isEmpty()) {
+                    log.warn("create appointment mission hard constraints removed every mission candidate; no fallback will bypass user constraints");
                 }
             }
 
             if (candidates.isEmpty()) {
-                throw new IllegalStateException(
-                    "약속 시간에 맞는 미션을 찾을 수 없습니다. 관리자에게 문의해주세요."
-                );
+                throw new IllegalStateException("No mission candidate is available for the scheduled time.");
             }
 
-            // 2-4. 가중치 기반 랜덤 선정 (저장한 약속 카테고리 우선)
-            selectedMission = selectMissionWithCategoryWeight(userId, candidates);
+            selectedMission = selectMissionWithCategoryWeight(
+                    candidates,
+                    preferenceProfile,
+                    "create appointment mission weighting"
+            );
 
-            log.info("자동 선정된 미션: {} (ID: {}, 카테고리: {})",
-                    selectedMission.getTitle(), selectedMission.getId(), selectedMission.getCategory());
+            log.info(
+                    "selected mission title={}, id={}, category={}",
+                    selectedMission.getTitle(),
+                    selectedMission.getId(),
+                    selectedMission.getCategory()
+            );
         }
 
-        // 3. 선정된 미션을 Appointment에 연결
         appointment.updateMission(selectedMission);
-        log.info("미션 연결 완료 - 카테고리: {}, 장소 필수: {}", 
-                selectedMission.getCategory(), 
-                selectedMission.getIsPlaceRequired());
+        log.info(
+                "mission attached category={}, placeRequired={}",
+                selectedMission.getCategory(),
+                selectedMission.getIsPlaceRequired()
+        );
 
-        // 4. 장소 조건부 매칭 (개선된 로직: 거리 제한 포함)
         if (selectedMission.getIsPlaceRequired() != null && selectedMission.getIsPlaceRequired()) {
-            // 4-1. 장소가 필요한 미션 -> 필터링된 양질의 장소 자동 매칭 (반경 10km 이내)
-            log.info("🏠 장소가 필요한 미션 - 필터링된 장소 자동 매칭 시작 (반경 10km 이내)");
+            log.info("place-required mission - ranked nearby place matching start (radius={}km)", appointment.getSearchRadius());
 
-            Place matchedPlace = findQualityPlaceNearby(user, selectedMission.getCategory(), userLatitude, userLongitude);
+            Place matchedPlace = findRankedQualityPlaceNearby(
+                    selectedMission.getCategory(),
+                    scheduledAt,
+                    environmentContext,
+                    preferenceProfile
+            );
 
             if (matchedPlace != null) {
                 appointment.updatePlace(matchedPlace);
-                log.info("✅ 선택된 장소: {} (카테고리: {})", matchedPlace.getName(), matchedPlace.getCategory());
+                log.info("selected place name={}, category={}", matchedPlace.getName(), matchedPlace.getCategory());
             } else {
-                log.error("❌ 장소 매칭 실패! 카테고리: {} - 반경 10km 내 필터링 후 적합한 장소가 없음", selectedMission.getCategory());
+                log.error(
+                        "place matching failed: category={}, radius={}km, no viable place after filtering",
+                        selectedMission.getCategory(),
+                        appointment.getSearchRadius()
+                );
                 throw new IllegalStateException(
-                    "이 미션은 장소가 필요하지만 주변 10km 이내에서 적절한 장소를 찾을 수 없습니다. 다른 지역을 시도해주세요."
+                        String.format(
+                                "No viable place was found within %dkm for this mission.",
+                                appointment.getSearchRadius()
+                        )
                 );
             }
         } else {
-            // 4-2. 장소가 필요 없는 미션 -> 장소 없이 진행
-            log.info("🌍 장소가 필요 없는 미션 - 어디서든 수행 가능");
+            log.info("place not required for selected mission");
             appointment.setPlace(null);
         }
 
         Appointment savedAppointment = appointmentRepository.save(appointment);
-        log.info("=== 약속 생성 완료 (ID: {}) ===", savedAppointment.getId());
-        log.info("📋 미션: {} (ID: {})", selectedMission.getTitle(), selectedMission.getId());
-        log.info("📍 장소: {}", savedAppointment.getPlace() != null ? savedAppointment.getPlace().getName() : "없음 (어디서든 가능)");
-        log.info("🏷️ 상태: {}", savedAppointment.getStatus());
+        log.info("=== create appointment complete (id={}) ===", savedAppointment.getId());
+        log.info("mission={} (id={})", selectedMission.getTitle(), selectedMission.getId());
+        log.info(
+                "place={}",
+                savedAppointment.getPlace() != null ? savedAppointment.getPlace().getName() : "none"
+        );
+        log.info("status={}", savedAppointment.getStatus());
 
-        // 약속 생성 후 매직 토큰 만료 처리
         if (user.getMagicToken() != null) {
-            log.info("매직 토큰 만료 처리 - User: {} ({})", user.getNickname(), user.getEmail());
+            log.info("clearing magic token for user {} ({})", user.getNickname(), user.getEmail());
             user.setMagicToken(null);
             user.setMagicTokenExpiry(null);
             userRepository.save(user);
@@ -257,229 +246,459 @@ public class AppointmentService {
         return savedAppointment;
     }
 
-    /**
-     * 필터링된 양질의 장소 찾기 (거리 제한 포함 + 태그 필터링)
-     * @param user 사용자 객체 (태그 필터링용)
-     * @param missionCategory 미션 카테고리
-     * @param userLatitude 사용자 위도
-     * @param userLongitude 사용자 경도
-     * @return 매칭된 장소 (없으면 null)
-     */
-    private Place findQualityPlaceNearby(User user,
-                                         com.littleescape.api.domain.type.MissionCategory missionCategory,
-                                         Double userLatitude, Double userLongitude) {
-        log.info("=== 필터링된 양질의 장소 검색 시작 (반경 10km 이내) ===");
-        log.info("미션 카테고리: {}, 사용자 위치: ({}, {})", missionCategory, userLatitude, userLongitude);
+    private Place findRankedQualityPlaceNearby(com.littleescape.api.domain.type.MissionCategory missionCategory,
+                                               LocalDateTime scheduledAt,
+                                               EnvironmentContext environmentContext,
+                                               RecommendationPreferenceService.UserPreferenceProfile preferenceProfile) {
+        if (environmentContext.getLatitude() == null || environmentContext.getLongitude() == null) {
+            log.warn("nearby ranking requested without user coordinates; falling back to global ranking");
+            return findRankedQualityPlace(missionCategory, scheduledAt, environmentContext, preferenceProfile);
+        }
 
-        // 1단계: 미션 카테고리에 매칭되는 장소 카테고리 목록 가져오기
+        log.info("=== ranked quality place search start (within {}km) ===", environmentContext.getSearchRadius());
+        log.info("missionCategory={}, userLocation=({}, {}), scheduledAt={}, weather={}, airQuality={}, congestion={}, mbti={}",
+                missionCategory,
+                environmentContext.getLatitude(),
+                environmentContext.getLongitude(),
+                scheduledAt,
+                environmentContext.getWeather(),
+                environmentContext.getAirQuality(),
+                environmentContext.getCongestion(),
+                environmentContext.getUserMbti());
+
         List<com.littleescape.api.domain.type.MissionCategory> targetCategories =
-            getCategoryMapping(missionCategory);
+                resolveCategoryMapping(missionCategory);
+        int strictRadius = EnvironmentContext.resolveSearchRadius(environmentContext.getSearchRadius());
+        int relaxedRadius = relaxedSearchRadius(strictRadius);
+        List<Place> candidatePool = queryNearbyPlaceCandidates(
+                targetCategories,
+                scheduledAt,
+                environmentContext,
+                strictRadius,
+                false,
+                "strict nearby category"
+        );
 
-        log.info("매칭 시도 카테고리 목록: {}", targetCategories);
-
-        // 2단계: 각 카테고리별로 필터링된 장소 검색 (거리 제한 포함)
-        List<Place> allFilteredPlaces = new ArrayList<>();
-
-        for (com.littleescape.api.domain.type.MissionCategory targetCategory : targetCategories) {
-            List<Place> filteredPlaces = placeRepository.findByCategoryFilteredWithDistance(
-                targetCategory,
-                userLatitude, userLongitude,
-                BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
-                BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+        if (candidatePool.size() < MIN_PLACE_CANDIDATE_POOL && relaxedRadius > strictRadius) {
+            int beforeCount = candidatePool.size();
+            List<Place> relaxedDistanceCandidates = queryNearbyPlaceCandidates(
+                    targetCategories,
+                    scheduledAt,
+                    environmentContext,
+                    relaxedRadius,
+                    false,
+                    "fallback relax distance"
             );
-            log.info("카테고리 {} - 반경 10km 내 필터링된 장소: {}개", targetCategory, filteredPlaces.size());
-            allFilteredPlaces.addAll(filteredPlaces);
+            candidatePool = mergeDistinctPlaces(candidatePool, relaxedDistanceCandidates);
+            log.info(
+                    "fallback RELAX_DISTANCE applied: radiusKm {} -> {}, candidates {} -> {}",
+                    strictRadius,
+                    relaxedRadius,
+                    beforeCount,
+                    candidatePool.size()
+            );
         }
 
-        log.info("총 필터링된 장소 개수 (반경 10km 이내): {}개", allFilteredPlaces.size());
-
-        // 3단계: 매칭된 장소가 없으면 Fallback (카테고리 무관, 거리+필터링만 유지)
-        if (allFilteredPlaces.isEmpty()) {
-            log.warn("카테고리 매칭된 장소 없음 - Fallback으로 전체 필터링된 장소 검색 (반경 10km 이내)");
-            allFilteredPlaces = placeRepository.findAllFilteredWithDistance(
-                userLatitude, userLongitude,
-                BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
-                BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+        if (candidatePool.size() < MIN_PLACE_CANDIDATE_POOL) {
+            int beforeCount = candidatePool.size();
+            List<Place> relaxedCategoryCandidates = queryNearbyPlaceCandidates(
+                    targetCategories,
+                    scheduledAt,
+                    environmentContext,
+                    relaxedRadius,
+                    true,
+                    "fallback relax category"
             );
-            log.info("Fallback - 반경 10km 내 전체 필터링된 장소: {}개", allFilteredPlaces.size());
+            candidatePool = mergeDistinctPlaces(candidatePool, relaxedCategoryCandidates);
+            log.info(
+                    "fallback RELAX_CATEGORY applied: radiusKm={}, candidates {} -> {}",
+                    relaxedRadius,
+                    beforeCount,
+                    candidatePool.size()
+            );
         }
 
-        // 4단계: 사용자 태그 기반 장소 필터링
-        String userTags = user.getTags();
-        if (userTags != null && !userTags.trim().isEmpty()) {
-            log.info("🏷️ 사용자 태그 기반 장소 필터링 적용: {}", userTags);
-            List<Place> tagFilteredPlaces = allFilteredPlaces.stream()
-                    .filter(place -> !hasTagConflict(userTags, place.getTags()))
-                    .collect(Collectors.toList());
+        if (candidatePool.isEmpty()) {
+            log.warn(
+                    "nearby place fallback exhausted while preserving hard constraints {}",
+                    recommendationTagConflictService.normalizeHardConstraintTags(environmentContext.getUserTags())
+            );
+            return null;
+        }
 
-            log.info("태그 필터링 후 장소 후보: {}개 (제외된 장소: {}개)",
-                    tagFilteredPlaces.size(),
-                    allFilteredPlaces.size() - tagFilteredPlaces.size());
+        List<Place> diversifiedCandidates = diversifyDataSources(candidatePool, "nearby ranking");
+        return selectRankedPlace(
+                diversifiedCandidates,
+                missionCategory,
+                environmentContext,
+                preferenceProfile,
+                "nearby ranking"
+        );
+    }
 
-            // 필터링 후에도 후보가 있으면 사용
-            if (!tagFilteredPlaces.isEmpty()) {
-                allFilteredPlaces = tagFilteredPlaces;
-            } else {
-                log.warn("⚠️ 태그 필터링 후 장소 후보가 0개 - 필터링 무시하고 진행");
+    private Place findRankedQualityPlace(com.littleescape.api.domain.type.MissionCategory missionCategory,
+                                         LocalDateTime scheduledAt,
+                                         EnvironmentContext environmentContext,
+                                         RecommendationPreferenceService.UserPreferenceProfile preferenceProfile) {
+        log.info("=== ranked quality place search start (no distance input) ===");
+        log.info("missionCategory={}, scheduledAt={}, weather={}, airQuality={}, congestion={}, mbti={}",
+                missionCategory,
+                scheduledAt,
+                environmentContext.getWeather(),
+                environmentContext.getAirQuality(),
+                environmentContext.getCongestion(),
+                environmentContext.getUserMbti());
+
+        List<com.littleescape.api.domain.type.MissionCategory> targetCategories =
+                resolveCategoryMapping(missionCategory);
+        log.info("fallback RELAX_DISTANCE skipped: user location unavailable");
+
+        List<Place> candidatePool = queryGlobalPlaceCandidates(
+                targetCategories,
+                scheduledAt,
+                environmentContext,
+                false,
+                "strict global category"
+        );
+
+        if (candidatePool.size() < MIN_PLACE_CANDIDATE_POOL) {
+            int beforeCount = candidatePool.size();
+            List<Place> relaxedCategoryCandidates = queryGlobalPlaceCandidates(
+                    targetCategories,
+                    scheduledAt,
+                    environmentContext,
+                    true,
+                    "fallback global category relax"
+            );
+            candidatePool = mergeDistinctPlaces(candidatePool, relaxedCategoryCandidates);
+            log.info(
+                    "fallback RELAX_CATEGORY applied without distance input: candidates {} -> {}",
+                    beforeCount,
+                    candidatePool.size()
+            );
+        }
+
+        if (candidatePool.isEmpty()) {
+            log.warn(
+                    "global place fallback exhausted while preserving hard constraints {}",
+                    recommendationTagConflictService.normalizeHardConstraintTags(environmentContext.getUserTags())
+            );
+            return null;
+        }
+
+        List<Place> diversifiedCandidates = diversifyDataSources(candidatePool, "default ranking");
+        return selectRankedPlace(
+                diversifiedCandidates,
+                missionCategory,
+                environmentContext,
+                preferenceProfile,
+                "default ranking"
+        );
+    }
+
+    private Place selectRankedPlace(List<Place> candidates,
+                                    com.littleescape.api.domain.type.MissionCategory missionCategory,
+                                    EnvironmentContext environmentContext,
+                                    RecommendationPreferenceService.UserPreferenceProfile preferenceProfile,
+                                    String stageLabel) {
+        PlaceRecommendationScoringService.PlaceSelectionResult selectionResult =
+                placeRecommendationScoringService.selectTopPlace(
+                        candidates,
+                        new PlaceRecommendationScoringService.PlaceRankingContext(
+                                missionCategory,
+                                environmentContext != null ? environmentContext.getUserTags() : null,
+                                environmentContext != null ? environmentContext.getLatitude() : null,
+                                environmentContext != null ? environmentContext.getLongitude() : null,
+                                EnvironmentContext.resolveSearchRadius(
+                                        environmentContext != null ? environmentContext.getSearchRadius() : null
+                                ),
+                                environmentContext,
+                                preferenceProfile
+                        )
+                );
+
+        logPlaceRanking(stageLabel, selectionResult);
+        return selectionResult.selected() != null ? selectionResult.selected().place() : null;
+    }
+
+    private List<Place> queryNearbyPlaceCandidates(List<com.littleescape.api.domain.type.MissionCategory> targetCategories,
+                                                   LocalDateTime scheduledAt,
+                                                   EnvironmentContext environmentContext,
+                                                   int radiusKm,
+                                                   boolean relaxCategory,
+                                                   String stageLabel) {
+        List<Place> queriedPlaces = new ArrayList<>();
+        if (relaxCategory) {
+            queriedPlaces.addAll(placeRepository.findAllFilteredWithDistanceAndRadius(
+                    environmentContext.getLatitude(),
+                    environmentContext.getLongitude(),
+                    radiusKm,
+                    BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
+                    BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+            ));
+        } else {
+            for (com.littleescape.api.domain.type.MissionCategory targetCategory : targetCategories) {
+                List<Place> filteredPlaces = placeRepository.findByCategoryFilteredWithDistanceAndRadius(
+                        targetCategory,
+                        environmentContext.getLatitude(),
+                        environmentContext.getLongitude(),
+                        radiusKm,
+                        BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
+                        BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+                );
+                log.info("{} - queried category {} count={}", stageLabel, targetCategory, filteredPlaces.size());
+                queriedPlaces.addAll(filteredPlaces);
             }
         }
 
-        // 5단계: 랜덤 선택
-        if (!allFilteredPlaces.isEmpty()) {
-            Collections.shuffle(allFilteredPlaces);
-            Place selectedPlace = allFilteredPlaces.get(0);
-            log.info("=== 최종 선택된 장소: {} (카테고리: {}) ===", selectedPlace.getName(), selectedPlace.getCategory());
-            return selectedPlace;
-        }
-
-        log.error("=== 반경 10km 내 필터링 후에도 적합한 장소를 찾을 수 없음 ===");
-        return null;
+        return finalizePlaceCandidates(
+                queriedPlaces,
+                scheduledAt,
+                environmentContext.getUserTags(),
+                stageLabel
+        );
     }
 
-    /**
-     * 필터링된 양질의 장소 찾기 (거리 제한 없음 - 레거시)
-     * updateAppointmentMission에서 사용 (사용자 위치 정보가 없는 경우)
-     * @param missionCategory 미션 카테고리
-     * @return 매칭된 장소 (없으면 null)
-     */
-    private Place findQualityPlace(com.littleescape.api.domain.type.MissionCategory missionCategory) {
-        log.info("=== 필터링된 양질의 장소 검색 시작 (거리 제한 없음) ===");
-        log.info("미션 카테고리: {}", missionCategory);
-
-        // 1단계: 미션 카테고리에 매칭되는 장소 카테고리 목록 가져오기
-        List<com.littleescape.api.domain.type.MissionCategory> targetCategories =
-            getCategoryMapping(missionCategory);
-
-        log.info("매칭 시도 카테고리 목록: {}", targetCategories);
-
-        // 2단계: 각 카테고리별로 필터링된 장소 검색
-        List<Place> allFilteredPlaces = new ArrayList<>();
-
-        for (com.littleescape.api.domain.type.MissionCategory targetCategory : targetCategories) {
-            List<Place> filteredPlaces = placeRepository.findByCategoryFiltered(
-                targetCategory,
-                BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
-                BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
-            );
-            log.info("카테고리 {} - 필터링된 장소: {}개", targetCategory, filteredPlaces.size());
-            allFilteredPlaces.addAll(filteredPlaces);
+    private List<Place> queryGlobalPlaceCandidates(List<com.littleescape.api.domain.type.MissionCategory> targetCategories,
+                                                   LocalDateTime scheduledAt,
+                                                   EnvironmentContext environmentContext,
+                                                   boolean relaxCategory,
+                                                   String stageLabel) {
+        List<Place> queriedPlaces = new ArrayList<>();
+        if (relaxCategory) {
+            queriedPlaces.addAll(placeRepository.findAllFiltered(
+                    BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
+                    BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+            ));
+        } else {
+            for (com.littleescape.api.domain.type.MissionCategory targetCategory : targetCategories) {
+                List<Place> filteredPlaces = placeRepository.findByCategoryFiltered(
+                        targetCategory,
+                        BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
+                        BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
+                );
+                log.info("{} - queried category {} count={}", stageLabel, targetCategory, filteredPlaces.size());
+                queriedPlaces.addAll(filteredPlaces);
+            }
         }
 
-        log.info("총 필터링된 장소 개수: {}개", allFilteredPlaces.size());
-
-        // 3단계: 매칭된 장소가 없으면 Fallback (카테고리 무관, 필터링만 유지)
-        if (allFilteredPlaces.isEmpty()) {
-            log.warn("카테고리 매칭된 장소 없음 - Fallback으로 전체 필터링된 장소 검색");
-            allFilteredPlaces = placeRepository.findAllFiltered(
-                BAD_KEYWORDS[0], BAD_KEYWORDS[1], BAD_KEYWORDS[2], BAD_KEYWORDS[3],
-                BAD_KEYWORDS[4], BAD_KEYWORDS[5], BAD_KEYWORDS[6]
-            );
-            log.info("Fallback - 전체 필터링된 장소: {}개", allFilteredPlaces.size());
-        }
-
-        // 4단계: 랜덤 선택
-        if (!allFilteredPlaces.isEmpty()) {
-            Collections.shuffle(allFilteredPlaces);
-            Place selectedPlace = allFilteredPlaces.get(0);
-            log.info("=== 최종 선택된 장소: {} (카테고리: {}) ===", selectedPlace.getName(), selectedPlace.getCategory());
-            return selectedPlace;
-        }
-
-        log.error("=== 필터링 후에도 적합한 장소를 찾을 수 없음 ===");
-        return null;
+        return finalizePlaceCandidates(
+                queriedPlaces,
+                scheduledAt,
+                environmentContext != null ? environmentContext.getUserTags() : null,
+                stageLabel
+        );
     }
 
-    /**
-     * 미션 카테고리에 따른 장소 카테고리 매핑 전략
-     * @param missionCategory 미션 카테고리
-     * @return 매칭 가능한 장소 카테고리 목록
-     */
-    private List<com.littleescape.api.domain.type.MissionCategory> getCategoryMapping(
+    private List<Place> finalizePlaceCandidates(List<Place> queriedPlaces,
+                                                LocalDateTime scheduledAt,
+                                                String userTags,
+                                                String stageLabel) {
+        List<Place> deduplicatedPlaces = mergeDistinctPlaces(List.of(), queriedPlaces);
+        List<Place> availablePlaces = filterPlacesByAvailability(deduplicatedPlaces, scheduledAt, stageLabel);
+        RecommendationTagConflictService.TagConflictFilterResult<Place> hardConstraintResult =
+                recommendationTagConflictService.filterConflicts(availablePlaces, userTags, Place::getTags);
+
+        log.info(
+                "{} - hard constraints {} kept {} of {} available places",
+                stageLabel,
+                hardConstraintResult.normalizedUserTags(),
+                hardConstraintResult.candidates().size(),
+                availablePlaces.size()
+        );
+        hardConstraintResult.steps().forEach(step -> log.info(
+                "{} - hard constraint reason={}, before={}, after={}, detail={}",
+                stageLabel,
+                step.reasonCode(),
+                step.beforeCount(),
+                step.afterCount(),
+                step.detail()
+        ));
+
+        if (!availablePlaces.isEmpty() && hardConstraintResult.candidates().isEmpty()) {
+            log.warn("{} - hard constraints removed every place candidate and will not be relaxed", stageLabel);
+        }
+
+        return hardConstraintResult.candidates();
+    }
+
+    private List<Place> mergeDistinctPlaces(List<Place> basePlaces, List<Place> additionalPlaces) {
+        Map<String, Place> distinctPlaces = new java.util.LinkedHashMap<>();
+
+        for (Place place : basePlaces) {
+            distinctPlaces.putIfAbsent(placeKey(place), place);
+        }
+        for (Place place : additionalPlaces) {
+            distinctPlaces.putIfAbsent(placeKey(place), place);
+        }
+
+        return new ArrayList<>(distinctPlaces.values());
+    }
+
+    private List<Place> diversifyDataSources(List<Place> candidates, String stageLabel) {
+        if (candidates.size() <= MIN_PLACE_CANDIDATE_POOL) {
+            return candidates;
+        }
+
+        Map<com.littleescape.api.domain.type.DataSource, List<Place>> groupedBySource = candidates.stream()
+                .collect(Collectors.groupingBy(
+                        place -> place.getDataSource() != null
+                                ? place.getDataSource()
+                                : com.littleescape.api.domain.type.DataSource.MANUAL
+                ));
+
+        if (groupedBySource.size() <= 1) {
+            log.info("{} - fallback DIVERSIFY_DATASOURCE skipped: only one data source present", stageLabel);
+            return candidates;
+        }
+
+        List<Place> diversifiedCandidates = groupedBySource.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .flatMap(entry -> entry.getValue().stream().limit(DATA_SOURCE_PER_SOURCE_CAP))
+                .collect(Collectors.toList());
+
+        if (diversifiedCandidates.size() != candidates.size()) {
+            log.info(
+                    "{} - fallback DIVERSIFY_DATASOURCE applied: candidates {} -> {}, sources={}",
+                    stageLabel,
+                    candidates.size(),
+                    diversifiedCandidates.size(),
+                    groupedBySource.keySet()
+            );
+        }
+
+        return diversifiedCandidates;
+    }
+
+    private int relaxedSearchRadius(int baseRadiusKm) {
+        return Math.min(MAX_RELAXED_RADIUS_KM, Math.max(baseRadiusKm + 5, baseRadiusKm * 2));
+    }
+
+    private String placeKey(Place place) {
+        if (place.getId() != null) {
+            return "id:" + place.getId();
+        }
+        return "name:" + String.valueOf(place.getName()) + "|address:" + String.valueOf(place.getAddress());
+    }
+
+    private void logPlaceRanking(String stageLabel,
+                                 PlaceRecommendationScoringService.PlaceSelectionResult selectionResult) {
+        if (selectionResult.rankedCandidates().isEmpty()) {
+            log.warn("{} - no place candidates available for ranking", stageLabel);
+            return;
+        }
+
+        selectionResult.rankedCandidates().stream()
+                .limit(3)
+                .forEach(candidate -> log.info(
+                        "{} - candidate placeId={}, name={}, totalScore={}, distanceKm={}, components={}",
+                        stageLabel,
+                        candidate.place().getId(),
+                        candidate.place().getName(),
+                        candidate.totalScore(),
+                        candidate.distanceKm(),
+                        candidate.components()
+                ));
+
+        PlaceRecommendationScoringService.PlaceScore selected = selectionResult.selected();
+        log.info(
+                "{} - selected placeId={}, name={}, totalScore={}, tieCandidates={}, tieBreakApplied={}, components={}",
+                stageLabel,
+                selected.place().getId(),
+                selected.place().getName(),
+                selected.totalScore(),
+                selectionResult.tieCandidateCount(),
+                selectionResult.tieBreakApplied(),
+                selected.components()
+        );
+    }
+
+    private EnvironmentContext buildRealTimeEnvironmentContext(LocalDateTime targetDateTime,
+                                                               Double latitude,
+                                                               Double longitude,
+                                                               Integer searchRadius,
+                                                               User user) {
+        RecommendationEnvironmentService.RealTimeEnvironmentSnapshot snapshot =
+                recommendationEnvironmentService.resolveSnapshot(latitude, longitude);
+
+        EnvironmentContext context = EnvironmentContext.fromRealTime(
+                targetDateTime,
+                latitude,
+                longitude,
+                searchRadius,
+                snapshot.weather(),
+                snapshot.temperature(),
+                snapshot.airQuality(),
+                snapshot.congestion(),
+                user != null ? user.getMbti() : null,
+                user != null ? user.getTags() : null
+        );
+
+        log.info(
+                "real-time environment resolved: source={}, searchRadius={}km, weather={}, temperature={}, airQuality={}, congestion={}, indoorPreferred={}, outdoorRestricted={}, quietPreferred={}, mbti={}",
+                snapshot.source(),
+                context.getSearchRadius(),
+                context.getWeather(),
+                context.getTemperature(),
+                context.getAirQuality(),
+                context.getCongestion(),
+                context.isIndoorPreferred(),
+                context.isOutdoorRestricted(),
+                context.prefersQuietPlace(),
+                context.getUserMbti()
+        );
+        return context;
+    }
+
+    private List<TimeOfDay> resolveTimeOfDayOptions(EnvironmentContext environmentContext) {
+        return recommendationSupportService.resolveTimeOfDayOptions(environmentContext);
+    }
+
+    private List<LocationType> resolveLocationTypes(EnvironmentContext environmentContext) {
+        return recommendationSupportService.resolveLocationTypes(environmentContext);
+    }
+
+    private boolean hasSharedTagConflict(String userTags, String targetTags) {
+        return recommendationTagConflictService.hasConflict(userTags, targetTags);
+    }
+
+    private List<com.littleescape.api.domain.type.MissionCategory> resolveCategoryMapping(
         com.littleescape.api.domain.type.MissionCategory missionCategory) {
-
-        List<com.littleescape.api.domain.type.MissionCategory> mapping = new ArrayList<>();
-
-        switch (missionCategory) {
-            case ACTIVITY:
-                // 활동(산책, 운동 등) -> ACTIVITY 우선, 부가적으로 CULTURE
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.ACTIVITY);
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.CULTURE);
-                break;
-
-            case CULTURE:
-                // 문화(전시/관람) -> CULTURE만
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.CULTURE);
-                break;
-
-            case RELAX:
-                // 휴식(카페, 도서관) -> RELAX 우선, 부가적으로 CULTURE
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.RELAX);
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.CULTURE);
-                break;
-
-            case FOOD:
-                // 음식 -> FOOD 우선, 부가적으로 RELAX
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.FOOD);
-                mapping.add(com.littleescape.api.domain.type.MissionCategory.RELAX);
-                break;
-
-            default:
-                // 기본값: 미션 카테고리 그대로
-                mapping.add(missionCategory);
-                break;
-        }
-
-        return mapping;
+        return recommendationSupportService.mapMissionToPlaceCategories(missionCategory);
     }
 
-    /**
-     * 시간대 분석 로직
-     * @param scheduledAt 약속 예정 시간
-     * @return 해당 시간대 + ANY를 포함한 리스트
-     */
-    private List<TimeOfDay> analyzeTimeOfDay(LocalDateTime scheduledAt) {
-        int hour = scheduledAt.getHour();
-        List<TimeOfDay> times = new ArrayList<>();
+    private List<Place> filterPlacesByAvailability(List<Place> places,
+                                                   LocalDateTime scheduledAt,
+                                                   String stageLabel) {
+        PlaceScheduleFilterService.PlaceScheduleFilterResult scheduleResult =
+                placeScheduleFilterService.filterPlacesBySchedule(places, scheduledAt, LocalDate.now());
 
-        // 시간대별 분류
-        if (hour >= 6 && hour < 12) {
-            times.add(TimeOfDay.MORNING);
-        } else if (hour >= 12 && hour < 18) {
-            times.add(TimeOfDay.AFTERNOON);
-        } else {
-            // 18~24시 또는 0~6시는 NIGHT
-            times.add(TimeOfDay.NIGHT);
+        if (scheduleResult.beforeCount() != scheduleResult.afterCount()
+                || scheduleResult.unknownOperationalInfoCount() > 0) {
+            log.info("{} - schedule filter: {} -> {} (deactivated={}, expired={}, notStarted={}, closedDay={}, outsideHours={}, unavailableStatus={}, unknownOperationalInfo={})",
+                    stageLabel,
+                    scheduleResult.beforeCount(),
+                    scheduleResult.afterCount(),
+                    scheduleResult.deactivatedCount(),
+                    scheduleResult.expiredCount(),
+                    scheduleResult.notStartedCount(),
+                    scheduleResult.closedDayCount(),
+                    scheduleResult.outsideOperatingHoursCount(),
+                    scheduleResult.unavailableOperationInfoCount(),
+                    scheduleResult.unknownOperationalInfoCount());
+            scheduleResult.exclusionDetails().stream()
+                    .limit(3)
+                    .forEach(detail -> log.info(
+                            "{} - schedule exclusion: placeId={}, placeName={}, reason={}, detail={}",
+                            stageLabel,
+                            detail.placeId(),
+                            detail.placeName(),
+                            detail.reasonCode(),
+                            detail.detail()
+                    ));
         }
 
-        // ANY(무관)는 항상 포함
-        times.add(TimeOfDay.ANY);
-
-        return times;
-    }
-
-    /**
-     * 날씨/장소 분석 로직
-     * TODO: 날씨 API 연동 후 실제 날씨 데이터 활용
-     * @return 추천 가능한 장소 타입 리스트
-     */
-    private List<LocationType> analyzeLocation() {
-        // 임시: 날씨 API 연동 전이므로 항상 맑음으로 가정
-        boolean isRaining = false;
-
-        List<LocationType> locations = new ArrayList<>();
-
-        if (isRaining) {
-            // 비/눈: 실내와 무관만 포함
-            locations.add(LocationType.INDOOR);
-            locations.add(LocationType.ANY);
-        } else {
-            // 맑음: 모든 장소 포함
-            locations.add(LocationType.INDOOR);
-            locations.add(LocationType.OUTDOOR);
-            locations.add(LocationType.ANY);
-        }
-
-        return locations;
+        return scheduleResult.filteredPlaces();
     }
 
     @Transactional
@@ -500,12 +719,28 @@ public class AppointmentService {
         log.info("미션 카테고리: {}", missionTemplate.getCategory());
 
         // 미션 설정
+        validateMissionAgainstHardConstraints(missionTemplate, appointment.getUser().getTags(), "update appointment mission");
         appointment.updateMission(missionTemplate);
 
         // 필터링된 양질의 장소 매칭 로직
         log.info("카테고리 {}에 해당하는 필터링된 장소 조회 중...", missionTemplate.getCategory());
 
-        Place matchedPlace = findQualityPlace(missionTemplate.getCategory());
+        EnvironmentContext environmentContext = buildRealTimeEnvironmentContext(
+                appointment.getScheduledAt(),
+                null,
+                null,
+                appointment.getSearchRadius(),
+                appointment.getUser()
+        );
+        RecommendationPreferenceService.UserPreferenceProfile preferenceProfile =
+                recommendationPreferenceService.buildProfile(userId);
+        logPreferenceProfile("update appointment mission", userId, preferenceProfile);
+        Place matchedPlace = findRankedQualityPlace(
+                missionTemplate.getCategory(),
+                appointment.getScheduledAt(),
+                environmentContext,
+                preferenceProfile
+        );
 
         if (matchedPlace != null) {
             appointment.updatePlace(matchedPlace);
@@ -774,6 +1009,7 @@ public class AppointmentService {
         Appointment newAppointment = new Appointment();
         newAppointment.setUser(user);
         newAppointment.setStatus(AppointmentStatus.PENDING);
+        newAppointment.setSearchRadius(EnvironmentContext.resolveSearchRadius(oldAppointment.getSearchRadius()));
 
         // 기존 약속의 미션, 장소, 시간 정보 복사
         if (oldAppointment.getMissionTemplate() != null) {
@@ -997,6 +1233,17 @@ public class AppointmentService {
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
 
         // 2. 기존 미션 ID 저장 (중복 방지용)
+        EnvironmentContext environmentContext = buildRealTimeEnvironmentContext(
+                appointment.getScheduledAt(),
+                null,
+                null,
+                appointment.getSearchRadius(),
+                user
+        );
+
+        RecommendationPreferenceService.UserPreferenceProfile preferenceProfile =
+                recommendationPreferenceService.buildProfile(userId);
+        logPreferenceProfile("swap mission", userId, preferenceProfile);
         Long previousMissionId = appointment.getMissionTemplate() != null
                 ? appointment.getMissionTemplate().getId()
                 : null;
@@ -1004,8 +1251,8 @@ public class AppointmentService {
         log.info("기존 미션 ID: {}", previousMissionId);
 
         // 3. 시간/날씨 조건 분석
-        List<TimeOfDay> targetTimes = analyzeTimeOfDay(appointment.getScheduledAt());
-        List<LocationType> targetLocations = analyzeLocation();
+        List<TimeOfDay> targetTimes = resolveTimeOfDayOptions(environmentContext);
+        List<LocationType> targetLocations = resolveLocationTypes(environmentContext);
 
         log.info("분석된 시간대: {}, 장소 타입: {}", targetTimes, targetLocations);
 
@@ -1028,15 +1275,13 @@ public class AppointmentService {
         if (userTags != null && !userTags.trim().isEmpty()) {
             log.info("🏷️ 사용자 태그 필터링 적용: {}", userTags);
             List<MissionTemplate> filteredCandidates = candidates.stream()
-                    .filter(mission -> !hasTagConflict(userTags, mission.getTags()))
+                    .filter(mission -> !hasSharedTagConflict(userTags, mission.getTags()))
                     .collect(Collectors.toList());
 
             log.info("태그 필터링 후 미션 후보: {}개", filteredCandidates.size());
-
-            if (!filteredCandidates.isEmpty()) {
-                candidates = filteredCandidates;
-            } else {
-                log.warn("⚠️ 태그 필터링 후 미션 후보가 0개 - 필터링 무시");
+            candidates = filteredCandidates;
+            if (filteredCandidates.isEmpty()) {
+                log.warn("swap mission hard constraints removed every mission candidate; no fallback will bypass user constraints");
             }
         }
 
@@ -1046,8 +1291,11 @@ public class AppointmentService {
         }
 
         // 8. 랜덤으로 새 미션 선택
-        Collections.shuffle(candidates);
-        MissionTemplate newMission = candidates.get(0);
+        MissionTemplate newMission = selectMissionWithCategoryWeight(
+                candidates,
+                preferenceProfile,
+                "swap mission weighting"
+        );
 
         log.info("새로 선택된 미션: {} (ID: {})", newMission.getTitle(), newMission.getId());
 
@@ -1061,7 +1309,12 @@ public class AppointmentService {
             // 사용자의 최근 위치 정보 가져오기 (위치 정보가 있다면)
             // TODO: User 엔티티에 lastLatitude, lastLongitude 필드 추가 필요
             // 현재는 Place만 교체하고 위치는 기존 정보 활용
-            Place newPlace = findQualityPlace(newMission.getCategory());
+            Place newPlace = findRankedQualityPlace(
+                    newMission.getCategory(),
+                    appointment.getScheduledAt(),
+                    environmentContext,
+                    preferenceProfile
+            );
 
             if (newPlace != null) {
                 appointment.updatePlace(newPlace);
@@ -1334,41 +1587,46 @@ public class AppointmentService {
      * @param userId 사용자 ID
      * @return 카테고리별 가중치 맵 (예: {FOOD: 2.0, ACTIVITY: 1.5, ...})
      */
-    @Transactional(readOnly = true)
-    public java.util.Map<com.littleescape.api.domain.type.MissionCategory, Double> getCategoryWeights(Long userId) {
-        List<Object[]> categoryStats = savedAppointmentRepository.findCategoryStatsByUserId(userId);
-
-        // 기본 가중치 (모든 카테고리 1.0)
-        java.util.Map<com.littleescape.api.domain.type.MissionCategory, Double> weights = new java.util.HashMap<>();
-        for (com.littleescape.api.domain.type.MissionCategory category : com.littleescape.api.domain.type.MissionCategory.values()) {
-            weights.put(category, 1.0);
+    private void logPreferenceProfile(String stageLabel,
+                                      Long userId,
+                                      RecommendationPreferenceService.UserPreferenceProfile preferenceProfile) {
+        if (preferenceProfile == null || !preferenceProfile.hasSignals()) {
+            log.info("{} - no historical personalization signals for userId={}", stageLabel, userId);
+            return;
         }
 
-        if (categoryStats.isEmpty()) {
-            log.info("저장한 약속이 없어 기본 가중치 반환");
-            return weights;
+        preferenceProfile.signals().stream()
+                .limit(8)
+                .forEach(signal -> log.info(
+                        "{} - preference signal target={}, type={}, key={}, count={}, total={}, delta={}",
+                        stageLabel,
+                        signal.targetType(),
+                        signal.signalType(),
+                        signal.key(),
+                        signal.count(),
+                        signal.totalCount(),
+                        signal.delta()
+                ));
+    }
+
+    private void validateMissionAgainstHardConstraints(MissionTemplate missionTemplate,
+                                                       String userTags,
+                                                       String stageLabel) {
+        RecommendationTagConflictService.TagConflictFilterResult<MissionTemplate> result =
+                recommendationTagConflictService.filterConflicts(
+                        List.of(missionTemplate),
+                        userTags,
+                        MissionTemplate::getTags
+                );
+
+        if (result.candidates().isEmpty() && !result.normalizedUserTags().isEmpty()) {
+            RecommendationTagConflictService.TagConflictStep step = result.steps().isEmpty()
+                    ? null
+                    : result.steps().get(result.steps().size() - 1);
+            String reasonCode = step != null ? step.reasonCode() : "USER_TAG_CONFLICT";
+            throw new IllegalArgumentException(
+                    "Mission conflicts with hard user constraints: " + reasonCode + " at " + stageLabel
+            );
         }
-
-        // 총 저장 횟수 계산
-        long totalCount = categoryStats.stream()
-                .mapToLong(row -> (Long) row[1])
-                .sum();
-
-        // 카테고리별 가중치 계산 (비율 기반)
-        for (Object[] row : categoryStats) {
-            com.littleescape.api.domain.type.MissionCategory category =
-                    (com.littleescape.api.domain.type.MissionCategory) row[0];
-            Long count = (Long) row[1];
-
-            // 가중치 = 1.0 + (해당 카테고리 비율)
-            // 예: FOOD를 60% 저장했다면 가중치 1.6
-            double weight = 1.0 + ((double) count / totalCount);
-            weights.put(category, weight);
-
-            log.info("카테고리 가중치 계산 - {}: {}회 저장 ({}%), 가중치: {}",
-                    category, count, String.format("%.1f", (double) count / totalCount * 100), weight);
-        }
-
-        return weights;
     }
 }

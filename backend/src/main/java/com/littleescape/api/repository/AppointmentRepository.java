@@ -13,69 +13,56 @@ import java.util.List;
 
 public interface AppointmentRepository extends JpaRepository<Appointment, Long> {
     List<Appointment> findByUserId(Long userId);
-    
-    // 사용자의 약속을 예정일 기준 내림차순으로 조회 (DB 정렬)
+
     List<Appointment> findAllByUserIdOrderByScheduledAtDesc(Long userId);
-    
+
     Long countByUserIdAndMissionTemplateId(Long userId, Long missionTemplateId);
+
     boolean existsByUserIdAndStatusIn(Long userId, List<AppointmentStatus> statuses);
 
-    // 특정 시간 범위 사이에 있는 약속 조회
     List<Appointment> findAllByScheduledAtBetween(LocalDateTime start, LocalDateTime end);
 
     List<Appointment> findAllByStatusAndScheduledAtBetween(
-        AppointmentStatus status,
-        LocalDateTime start,
-        LocalDateTime end
+            AppointmentStatus status,
+            LocalDateTime start,
+            LocalDateTime end
     );
 
-    // UUID 토큰으로 조회
     java.util.Optional<Appointment> findByUnlockToken(String unlockToken);
 
     void deleteByUserId(Long userId);
 
-    // 피드용: 공개된 완료 약속을 최신순으로 조회 (페이징 지원)
     List<Appointment> findAllByStatusAndIsPublicTrueOrderByCompletedAtDesc(
-        AppointmentStatus status,
-        Pageable pageable
+            AppointmentStatus status,
+            Pageable pageable
     );
 
-    // 피드용 (확장): 공개된 약속을 여러 상태로 조회 (SCHEDULED, ARRIVED, COMPLETED)
     List<Appointment> findAllByStatusInAndIsPublicTrueOrderByUpdatedAtDesc(
-        List<AppointmentStatus> statuses,
-        Pageable pageable
+            List<AppointmentStatus> statuses,
+            Pageable pageable
     );
 
-    // 만료 처리용: 특정 상태이면서 예정 시간이 지난 약속들을 배치 업데이트
     @Modifying
     @Query("UPDATE Appointment a SET a.status = :newStatus " +
            "WHERE a.status IN :currentStatuses " +
            "AND a.scheduledAt < :expirationTime")
     int updateExpiredAppointments(
-        @Param("newStatus") AppointmentStatus newStatus,
-        @Param("currentStatuses") List<AppointmentStatus> currentStatuses,
-        @Param("expirationTime") LocalDateTime expirationTime
+            @Param("newStatus") AppointmentStatus newStatus,
+            @Param("currentStatuses") List<AppointmentStatus> currentStatuses,
+            @Param("expirationTime") LocalDateTime expirationTime
     );
 
-    /**
-     * D-1 미션 공개 대상 약속 조회
-     * 조건: 미션 미공개(isMissionRevealed=false) + 예정일이 24시간 이내
-     */
     @Query("SELECT a FROM Appointment a " +
            "WHERE a.isMissionRevealed = false " +
            "AND a.missionTemplate IS NOT NULL " +
            "AND a.status IN :activeStatuses " +
            "AND a.scheduledAt BETWEEN :now AND :tomorrow")
     List<Appointment> findMissionRevealTargets(
-        @Param("activeStatuses") List<AppointmentStatus> activeStatuses,
-        @Param("now") LocalDateTime now,
-        @Param("tomorrow") LocalDateTime tomorrow
+            @Param("activeStatuses") List<AppointmentStatus> activeStatuses,
+            @Param("now") LocalDateTime now,
+            @Param("tomorrow") LocalDateTime tomorrow
     );
 
-    /**
-     * D-1 미션 공개 배치 처리
-     * 예정일이 24시간 이내인 약속들의 미션을 일괄 공개
-     */
     @Modifying
     @Query("UPDATE Appointment a SET a.isMissionRevealed = true " +
            "WHERE a.isMissionRevealed = false " +
@@ -83,8 +70,34 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
            "AND a.status IN :activeStatuses " +
            "AND a.scheduledAt BETWEEN :now AND :tomorrow")
     int revealMissionsForD1(
-        @Param("activeStatuses") List<AppointmentStatus> activeStatuses,
-        @Param("now") LocalDateTime now,
-        @Param("tomorrow") LocalDateTime tomorrow
+            @Param("activeStatuses") List<AppointmentStatus> activeStatuses,
+            @Param("now") LocalDateTime now,
+            @Param("tomorrow") LocalDateTime tomorrow
+    );
+
+    @Query("""
+        SELECT mt.category as category, COUNT(a.id) as count
+        FROM Appointment a
+        JOIN a.missionTemplate mt
+        WHERE a.user.id = :userId
+          AND a.status IN :statuses
+        GROUP BY mt.category
+        """)
+    List<Object[]> findCategoryStatsByUserIdAndStatuses(
+            @Param("userId") Long userId,
+            @Param("statuses") List<AppointmentStatus> statuses
+    );
+
+    @Query("""
+        SELECT p.dataSource as dataSource, COUNT(a.id) as count
+        FROM Appointment a
+        JOIN a.place p
+        WHERE a.user.id = :userId
+          AND a.status IN :statuses
+        GROUP BY p.dataSource
+        """)
+    List<Object[]> findPlaceDataSourceStatsByUserIdAndStatuses(
+            @Param("userId") Long userId,
+            @Param("statuses") List<AppointmentStatus> statuses
     );
 }
